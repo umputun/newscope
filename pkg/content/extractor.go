@@ -30,6 +30,10 @@ func NewHTTPExtractor(timeout time.Duration) *HTTPExtractor {
 // Extract retrieves and extracts text content from the given URL
 func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (string, error) {
 	// validate URL
+	if urlStr == "" {
+		return "", fmt.Errorf("empty URL")
+	}
+	
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
 		return "", fmt.Errorf("parse URL: %w", err)
@@ -55,7 +59,7 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (string, err
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code %d for URL %s", resp.StatusCode, urlStr)
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	// configure trafilatura options
@@ -76,13 +80,13 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (string, err
 	}
 
 	if result == nil {
-		return "", fmt.Errorf("no content extracted from %s", urlStr)
+		return "", fmt.Errorf("no content extracted")
 	}
 
 	// get main content
 	content := result.ContentText
 	if content == "" {
-		return "", fmt.Errorf("no text content extracted from %s", urlStr)
+		return "", fmt.Errorf("no content extracted")
 	}
 
 	// clean up content
