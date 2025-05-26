@@ -14,15 +14,16 @@ import (
 	"github.com/go-pkgz/lgr"
 	"github.com/jessevdk/go-flags"
 
+	"github.com/umputun/newscope/pkg/config"
+	"github.com/umputun/newscope/pkg/feed"
 	"github.com/umputun/newscope/server"
 )
 
 // Opts with all CLI options
 type Opts struct {
-	Listen  string `short:"l" long:"listen" env:"LISTEN" default:":8080" description:"listen address"`
-	Verbose bool   `short:"v" long:"verbose" description:"verbose mode"`
+	Config string `short:"c" long:"config" env:"CONFIG" default:"config.yml" description:"configuration file"`
 
-	// Common options
+	// common options
 	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
 	Version bool `short:"V" long:"version" description:"show version info"`
 	NoColor bool `long:"no-color" env:"NO_COLOR" description:"disable color output"`
@@ -49,6 +50,13 @@ func main() {
 
 	log.Printf("[INFO] starting newscope version %s", revision)
 
+	// load configuration
+	cfg, err := config.Load(opts.Config)
+	if err != nil {
+		log.Printf("[ERROR] failed to load config: %v", err)
+		os.Exit(1)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// handle termination signals
@@ -60,17 +68,13 @@ func main() {
 		cancel()
 	}()
 
-	// initialize and run server
-	srv := server.New(server.Config{
-		Listen:  opts.Listen,
-		Version: revision,
-		Debug:   opts.Debug,
-	})
+	// setup feed components
+	fetcher := feed.NewHTTPFetcher(cfg.Server.Timeout)
+	manager := feed.NewManager(cfg, fetcher)
 
-	err := srv.Run(ctx)
-	cancel()
-	
-	if err != nil {
+	// setup and run server
+	srv := server.New(cfg, manager, revision, opts.Debug)
+	if err := srv.Run(ctx); err != nil {
 		log.Printf("[ERROR] server failed: %v", err)
 		os.Exit(1)
 	}

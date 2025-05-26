@@ -1,0 +1,11 @@
+server:
+  listen: ":8080"
+  timeout: 30s
+
+feeds:
+  - url: https://news.ycombinator.com/rss
+    name: HackerNews
+    interval: 10m
+  - url: https://feeds.arstechnica.com/arstechnica/index
+    name: ArsTechnica
+    interval: 15m

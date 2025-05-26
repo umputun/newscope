@@ -14,24 +14,27 @@ import (
 	"github.com/go-pkgz/routegroup"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
+
+	"github.com/umputun/newscope/pkg/feed/types"
 )
 
-// Config defines server configuration parameters
-type Config struct {
-	Listen           string        // HTTP listen address
-	ReadTimeout      time.Duration // HTTP read timeout
-	WriteTimeout     time.Duration // HTTP write timeout
-	ShutdownTimeout  time.Duration // Graceful shutdown timeout
-	Version          string        // App version
-	Debug            bool          // Debug mode
-	BasicAuthEnabled bool          // Enable basic auth
-	BasicAuthUser    string        // Basic auth username
-	BasicAuthPass    string        // Basic auth password
+// FeedManager manages RSS feeds
+type FeedManager interface {
+	FetchAll(ctx context.Context) error
+	GetItems() []types.Item
+}
+
+// ConfigProvider provides server configuration
+type ConfigProvider interface {
+	GetServerConfig() (listen string, timeout time.Duration)
 }
 
 // Server represents HTTP server instance
 type Server struct {
-	Config
+	config      ConfigProvider
+	feedManager FeedManager
+	version     string
+	debug       bool
 
 	lock       sync.Mutex
 	httpServer *http.Server
@@ -39,21 +42,13 @@ type Server struct {
 }
 
 // New initializes a new server instance
-func New(config Config) *Server {
-	// set defaults
-	if config.ReadTimeout == 0 {
-		config.ReadTimeout = 30 * time.Second
-	}
-	if config.WriteTimeout == 0 {
-		config.WriteTimeout = 30 * time.Second
-	}
-	if config.ShutdownTimeout == 0 {
-		config.ShutdownTimeout = 10 * time.Second
-	}
-
+func New(cfg ConfigProvider, feedManager FeedManager, version string, debug bool) *Server {
 	s := &Server{
-		Config: config,
-		router: routegroup.New(http.NewServeMux()),
+		config:      cfg,
+		feedManager: feedManager,
+		version:     version,
+		debug:       debug,
+		router:      routegroup.New(http.NewServeMux()),
 	}
 
 	s.setupMiddleware()
@@ -64,21 +59,22 @@ func New(config Config) *Server {
 
 // Run starts the HTTP server and handles graceful shutdown
 func (s *Server) Run(ctx context.Context) error {
-	log.Printf("[INFO] starting server on %s", s.Listen)
+	listen, timeout := s.config.GetServerConfig()
+	log.Printf("[INFO] starting server on %s", listen)
 
 	s.lock.Lock()
 	s.httpServer = &http.Server{
-		Addr:         s.Listen,
+		Addr:         listen,
 		Handler:      s.router,
-		ReadTimeout:  s.ReadTimeout,
-		WriteTimeout: s.WriteTimeout,
+		ReadTimeout:  timeout,
+		WriteTimeout: timeout,
 	}
 	s.lock.Unlock()
 
 	go func() {
 		<-ctx.Done()
 		log.Printf("[INFO] shutting down server")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), s.ShutdownTimeout)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
@@ -95,20 +91,16 @@ func (s *Server) Run(ctx context.Context) error {
 
 // setupMiddleware configures standard middleware for the server
 func (s *Server) setupMiddleware() {
-	s.router.Use(rest.AppInfo("newscope", "umputun", s.Version))
+	s.router.Use(rest.AppInfo("newscope", "umputun", s.version))
 	s.router.Use(rest.Ping)
 	
-	if s.Debug {
+	if s.debug {
 		s.router.Use(logger.New(logger.Log(lgr.Default()), logger.Prefix("[DEBUG]")).Handler)
 	}
 	
 	s.router.Use(rest.Recoverer(lgr.Default()))
 	s.router.Use(rest.Throttle(100))
 	s.router.Use(rest.SizeLimit(1024 * 1024)) // 1MB
-
-	if s.BasicAuthEnabled {
-		s.router.Use(rest.BasicAuthWithPrompt(s.BasicAuthUser, s.BasicAuthPass))
-	}
 }
 
 // setupRoutes configures application routes
@@ -119,6 +111,9 @@ func (s *Server) setupRoutes() {
 		// add more API endpoints here
 	})
 
+	// RSS routes
+	s.router.HandleFunc("GET /rss/{topic}", s.rssFeedHandler)
+
 	// static files or UI routes can be added here
 }
 
@@ -126,10 +121,18 @@ func (s *Server) setupRoutes() {
 func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 	status := map[string]interface{}{
 		"status":  "ok",
-		"version": s.Version,
+		"version": s.version,
 		"time":    time.Now().UTC(),
 	}
 	RenderJSON(w, r, http.StatusOK, status)
+}
+
+// rssFeedHandler serves RSS feed for a specific topic
+func (s *Server) rssFeedHandler(w http.ResponseWriter, r *http.Request) {
+	topic := r.PathValue("topic")
+	
+	// TODO: implement actual RSS generation based on topic
+	fmt.Fprintf(w, "RSS feed for topic: %s", topic)
 }
 
 // RenderJSON sends JSON response
