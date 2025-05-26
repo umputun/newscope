@@ -1,0 +1,9 @@
+# Config
+.vscode
+
+# Binary
+/go-trafilatura
+
+# Test files in root dir
+/*.html
+/*.txt

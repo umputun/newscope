@@ -1,0 +1,268 @@
+# github.com/PuerkitoBio/goquery v1.10.3
+## explicit; go 1.23.0
+github.com/PuerkitoBio/goquery
+# github.com/RadhiFadlillah/whatlanggo v0.0.0-20240916001553-aac1f0f737fc
+## explicit; go 1.12
+github.com/RadhiFadlillah/whatlanggo
+# github.com/andybalholm/cascadia v1.3.3
+## explicit; go 1.16
+github.com/andybalholm/cascadia
+# github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
+## explicit; go 1.12
+github.com/araddon/dateparse
+# github.com/bahlo/generic-list-go v0.2.0
+## explicit; go 1.18
+github.com/bahlo/generic-list-go
+# github.com/buger/jsonparser v1.1.1
+## explicit; go 1.13
+github.com/buger/jsonparser
+# github.com/davecgh/go-spew v1.1.1
+## explicit
+github.com/davecgh/go-spew/spew
+# github.com/elliotchance/pie/v2 v2.9.0
+## explicit; go 1.18
+github.com/elliotchance/pie/v2
+# github.com/fatih/color v1.18.0
+## explicit; go 1.17
+github.com/fatih/color
+# github.com/forPelevin/gomoji v1.2.0
+## explicit; go 1.19
+github.com/forPelevin/gomoji
+# github.com/go-pkgz/lgr v0.12.0
+## explicit; go 1.21
+github.com/go-pkgz/lgr
+# github.com/go-pkgz/rest v1.20.3
+## explicit; go 1.21
+github.com/go-pkgz/rest
+github.com/go-pkgz/rest/logger
+github.com/go-pkgz/rest/realip
+# github.com/go-pkgz/routegroup v1.4.1
+## explicit; go 1.22
+github.com/go-pkgz/routegroup
+# github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c
+## explicit; go 1.20
+github.com/go-shiori/dom
+# github.com/go-shiori/go-readability v0.0.0-20241012063810-92284fa8a71f
+## explicit; go 1.20
+github.com/go-shiori/go-readability
+github.com/go-shiori/go-readability/internal/re2go
+# github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f
+## explicit
+github.com/gogs/chardet
+# github.com/hablullah/go-hijri v1.0.2
+## explicit; go 1.12
+github.com/hablullah/go-hijri
+# github.com/hablullah/go-juliandays v1.0.0
+## explicit; go 1.15
+github.com/hablullah/go-juliandays
+# github.com/invopop/jsonschema v0.13.0
+## explicit; go 1.18
+github.com/invopop/jsonschema
+# github.com/jalaali/go-jalaali v0.0.0-20210801064154-80525e88d958
+## explicit; go 1.13
+github.com/jalaali/go-jalaali
+# github.com/jessevdk/go-flags v1.6.1
+## explicit; go 1.20
+github.com/jessevdk/go-flags
+# github.com/json-iterator/go v1.1.12
+## explicit; go 1.12
+github.com/json-iterator/go
+# github.com/mailru/easyjson v0.7.7
+## explicit; go 1.12
+github.com/mailru/easyjson/buffer
+github.com/mailru/easyjson/jwriter
+# github.com/markusmobius/go-dateparser v1.2.3
+## explicit; go 1.20
+github.com/markusmobius/go-dateparser
+github.com/markusmobius/go-dateparser/date
+github.com/markusmobius/go-dateparser/internal/data
+github.com/markusmobius/go-dateparser/internal/dateutil
+github.com/markusmobius/go-dateparser/internal/digit
+github.com/markusmobius/go-dateparser/internal/language
+github.com/markusmobius/go-dateparser/internal/parser/absolute
+github.com/markusmobius/go-dateparser/internal/parser/common
+github.com/markusmobius/go-dateparser/internal/parser/formatted
+github.com/markusmobius/go-dateparser/internal/parser/hijri
+github.com/markusmobius/go-dateparser/internal/parser/jalali
+github.com/markusmobius/go-dateparser/internal/parser/nospace
+github.com/markusmobius/go-dateparser/internal/parser/relative
+github.com/markusmobius/go-dateparser/internal/parser/timestamp
+github.com/markusmobius/go-dateparser/internal/parser/tokenizer
+github.com/markusmobius/go-dateparser/internal/regexp
+github.com/markusmobius/go-dateparser/internal/setting
+github.com/markusmobius/go-dateparser/internal/strutil
+github.com/markusmobius/go-dateparser/internal/timezone
+# github.com/markusmobius/go-domdistiller v0.0.0-20240926050704-25b8d046ffb4
+## explicit; go 1.20
+github.com/markusmobius/go-domdistiller
+github.com/markusmobius/go-domdistiller/data
+github.com/markusmobius/go-domdistiller/internal/converter
+github.com/markusmobius/go-domdistiller/internal/domutil
+github.com/markusmobius/go-domdistiller/internal/extractor
+github.com/markusmobius/go-domdistiller/internal/extractor/embed
+github.com/markusmobius/go-domdistiller/internal/filter/docfilter
+github.com/markusmobius/go-domdistiller/internal/filter/docfilter/scorer
+github.com/markusmobius/go-domdistiller/internal/filter/english
+github.com/markusmobius/go-domdistiller/internal/filter/heuristic
+github.com/markusmobius/go-domdistiller/internal/filter/simple
+github.com/markusmobius/go-domdistiller/internal/label
+github.com/markusmobius/go-domdistiller/internal/logutil
+github.com/markusmobius/go-domdistiller/internal/markup
+github.com/markusmobius/go-domdistiller/internal/markup/iereader
+github.com/markusmobius/go-domdistiller/internal/markup/opengraph
+github.com/markusmobius/go-domdistiller/internal/markup/schemaorg
+github.com/markusmobius/go-domdistiller/internal/pagination
+github.com/markusmobius/go-domdistiller/internal/pagination/info
+github.com/markusmobius/go-domdistiller/internal/pagination/parser
+github.com/markusmobius/go-domdistiller/internal/pagination/pattern
+github.com/markusmobius/go-domdistiller/internal/re2go
+github.com/markusmobius/go-domdistiller/internal/stringutil
+github.com/markusmobius/go-domdistiller/internal/tableclass
+github.com/markusmobius/go-domdistiller/internal/webdoc
+# github.com/markusmobius/go-htmldate v1.9.1
+## explicit; go 1.22.0
+github.com/markusmobius/go-htmldate
+github.com/markusmobius/go-htmldate/internal/re2go
+github.com/markusmobius/go-htmldate/internal/selector
+# github.com/markusmobius/go-trafilatura v1.12.2
+## explicit; go 1.22.0
+github.com/markusmobius/go-trafilatura
+github.com/markusmobius/go-trafilatura/internal/etree
+github.com/markusmobius/go-trafilatura/internal/lru
+github.com/markusmobius/go-trafilatura/internal/re2go
+github.com/markusmobius/go-trafilatura/internal/selector
+# github.com/mattn/go-colorable v0.1.13
+## explicit; go 1.15
+github.com/mattn/go-colorable
+# github.com/mattn/go-isatty v0.0.20
+## explicit; go 1.15
+github.com/mattn/go-isatty
+# github.com/mmcdole/gofeed v1.3.0
+## explicit; go 1.19
+github.com/mmcdole/gofeed
+github.com/mmcdole/gofeed/atom
+github.com/mmcdole/gofeed/extensions
+github.com/mmcdole/gofeed/internal/shared
+github.com/mmcdole/gofeed/json
+github.com/mmcdole/gofeed/rss
+# github.com/mmcdole/goxpp v1.1.1
+## explicit; go 1.19
+github.com/mmcdole/goxpp
+# github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
+## explicit
+github.com/modern-go/concurrent
+# github.com/modern-go/reflect2 v1.0.2
+## explicit; go 1.12
+github.com/modern-go/reflect2
+# github.com/pmezard/go-difflib v1.0.0
+## explicit
+github.com/pmezard/go-difflib/difflib
+# github.com/rivo/uniseg v0.4.7
+## explicit; go 1.18
+github.com/rivo/uniseg
+# github.com/rs/zerolog v1.33.0
+## explicit; go 1.15
+github.com/rs/zerolog
+github.com/rs/zerolog/internal/cbor
+github.com/rs/zerolog/internal/json
+# github.com/stretchr/testify v1.10.0
+## explicit; go 1.17
+github.com/stretchr/testify/assert
+github.com/stretchr/testify/assert/yaml
+github.com/stretchr/testify/require
+# github.com/tetratelabs/wazero v1.8.1
+## explicit; go 1.21
+github.com/tetratelabs/wazero
+github.com/tetratelabs/wazero/api
+github.com/tetratelabs/wazero/experimental
+github.com/tetratelabs/wazero/experimental/sys
+github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1
+github.com/tetratelabs/wazero/internal/descriptor
+github.com/tetratelabs/wazero/internal/engine/interpreter
+github.com/tetratelabs/wazero/internal/engine/wazevo
+github.com/tetratelabs/wazero/internal/engine/wazevo/backend
+github.com/tetratelabs/wazero/internal/engine/wazevo/backend/isa/amd64
+github.com/tetratelabs/wazero/internal/engine/wazevo/backend/isa/arm64
+github.com/tetratelabs/wazero/internal/engine/wazevo/backend/regalloc
+github.com/tetratelabs/wazero/internal/engine/wazevo/frontend
+github.com/tetratelabs/wazero/internal/engine/wazevo/ssa
+github.com/tetratelabs/wazero/internal/engine/wazevo/wazevoapi
+github.com/tetratelabs/wazero/internal/expctxkeys
+github.com/tetratelabs/wazero/internal/filecache
+github.com/tetratelabs/wazero/internal/fsapi
+github.com/tetratelabs/wazero/internal/ieee754
+github.com/tetratelabs/wazero/internal/internalapi
+github.com/tetratelabs/wazero/internal/leb128
+github.com/tetratelabs/wazero/internal/moremath
+github.com/tetratelabs/wazero/internal/platform
+github.com/tetratelabs/wazero/internal/sock
+github.com/tetratelabs/wazero/internal/sys
+github.com/tetratelabs/wazero/internal/sysfs
+github.com/tetratelabs/wazero/internal/u32
+github.com/tetratelabs/wazero/internal/u64
+github.com/tetratelabs/wazero/internal/version
+github.com/tetratelabs/wazero/internal/wasip1
+github.com/tetratelabs/wazero/internal/wasm
+github.com/tetratelabs/wazero/internal/wasm/binary
+github.com/tetratelabs/wazero/internal/wasmdebug
+github.com/tetratelabs/wazero/internal/wasmruntime
+github.com/tetratelabs/wazero/sys
+# github.com/wasilibs/go-re2 v1.7.0
+## explicit; go 1.21
+github.com/wasilibs/go-re2
+github.com/wasilibs/go-re2/internal
+github.com/wasilibs/go-re2/internal/cre2
+# github.com/wasilibs/wazero-helpers v0.0.0-20240620070341-3dff1577cd52
+## explicit; go 1.20
+github.com/wasilibs/wazero-helpers/allocator
+# github.com/wk8/go-ordered-map/v2 v2.1.8
+## explicit; go 1.18
+github.com/wk8/go-ordered-map/v2
+# github.com/yosssi/gohtml v0.0.0-20201013000340-ee4748c638f4
+## explicit
+github.com/yosssi/gohtml
+# golang.org/x/crypto v0.38.0
+## explicit; go 1.23.0
+golang.org/x/crypto/argon2
+golang.org/x/crypto/bcrypt
+golang.org/x/crypto/blake2b
+golang.org/x/crypto/blowfish
+# golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
+## explicit; go 1.22.0
+golang.org/x/exp/constraints
+# golang.org/x/net v0.40.0
+## explicit; go 1.23.0
+golang.org/x/net/html
+golang.org/x/net/html/atom
+golang.org/x/net/html/charset
+# golang.org/x/sys v0.33.0
+## explicit; go 1.23.0
+golang.org/x/sys/cpu
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+# golang.org/x/text v0.25.0
+## explicit; go 1.23.0
+golang.org/x/text/cases
+golang.org/x/text/encoding
+golang.org/x/text/encoding/charmap
+golang.org/x/text/encoding/htmlindex
+golang.org/x/text/encoding/internal
+golang.org/x/text/encoding/internal/identifier
+golang.org/x/text/encoding/japanese
+golang.org/x/text/encoding/korean
+golang.org/x/text/encoding/simplifiedchinese
+golang.org/x/text/encoding/traditionalchinese
+golang.org/x/text/encoding/unicode
+golang.org/x/text/internal
+golang.org/x/text/internal/language
+golang.org/x/text/internal/language/compact
+golang.org/x/text/internal/tag
+golang.org/x/text/internal/utf8internal
+golang.org/x/text/language
+golang.org/x/text/runes
+golang.org/x/text/transform
+golang.org/x/text/unicode/norm
+golang.org/x/text/unicode/rangetable
+# gopkg.in/yaml.v3 v3.0.1
+## explicit
+gopkg.in/yaml.v3
