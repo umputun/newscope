@@ -47,19 +47,25 @@ Newscope is an intelligent RSS aggregator that learns from user preferences to c
 - **Error Handling**: Exponential backoff, circuit breaker pattern
 
 #### 2. Content Extractor
-- **Primary**: go-readability for main content extraction
-- **Fallbacks**: 
-  - OpenGraph/Twitter Card metadata
-  - JSON-LD structured data
-  - Custom extractors for popular sites
-- **Quality Checks**:
-  - Minimum content length
-  - Text-to-HTML ratio
-  - Language detection
+- **Primary**: go-trafilatura for main content extraction
+  - Better accuracy (F-Score 0.915 with fallbacks)
+  - Built-in metadata extraction (publish date, language)
+  - Automatic fallback to go-readability and go-domdistiller
+  - Thread-safe for concurrent processing
+- **Configuration**: 
+  - Precision mode for high-value feeds
+  - Recall mode for broad coverage
+  - Toggle images/links/tables/comments per feed
+- **Quality Signals**:
+  - Extracted metadata validation
+  - Content length thresholds
+  - Language filtering
+  - HTML structure analysis
 - **Performance**:
-  - Worker pool with per-domain rate limiting
+  - Concurrent worker pool (2-3 workers per CPU)
+  - Per-domain rate limiting
   - Response caching
-  - Timeout handling
+  - HTML and plain text storage
 
 #### 3. Classification Engine
 
@@ -128,15 +134,17 @@ CREATE TABLE articles (
     url TEXT NOT NULL,
     title TEXT NOT NULL,
     description TEXT,
-    content TEXT,
+    content TEXT,        -- Plain text version
+    content_html TEXT,   -- HTML version for structure
     content_hash TEXT,
     author TEXT,
-    published TIMESTAMP,
+    published TIMESTAMP, -- Extracted by trafilatura
     fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    language TEXT,
-    read_time INTEGER, -- estimated minutes
+    language TEXT,       -- Extracted by trafilatura
+    read_time INTEGER,   -- estimated minutes
     media_count INTEGER,
-    extraction_method TEXT,
+    extraction_method TEXT, -- trafilatura, fallback, etc
+    extraction_mode TEXT,   -- precision, balanced, recall
     UNIQUE(feed_id, guid)
 );
 
@@ -298,8 +306,22 @@ extractor:
   timeout: "30s"
   max_content_size: 5242880  # 5MB
   min_content_length: 100
-  quality_threshold: 0.3
+  workers_per_cpu: 2          # Concurrent workers
   cache_ttl: "24h"
+  
+  # Trafilatura-specific options
+  default_mode: "balanced"    # precision, balanced, or recall
+  include_images: false       # Extract images
+  include_links: true         # Keep links in content
+  include_tables: true        # Keep tables
+  include_comments: false     # Extract comments
+  
+  # Per-feed overrides (example)
+  feed_configs:
+    "Hacker News":
+      mode: "precision"       # Higher quality for HN
+    "Reddit":
+      include_comments: true  # Get Reddit comments
 
 classifier:
   # Weights for score combination (must sum to 1.0)
@@ -478,11 +500,12 @@ type LogisticRegression struct {
 - [ ] Logging and metrics
 
 ### Milestone 2: Content Pipeline (Week 2-3)
-- [ ] Content extraction with go-readability
-- [ ] Quality assessment
-- [ ] Deduplication logic
-- [ ] Error handling and retries
-- [ ] Performance optimization
+- [ ] Content extraction with go-trafilatura
+- [ ] Metadata extraction (date, language)
+- [ ] Precision/recall mode configuration
+- [ ] Concurrent extraction workers
+- [ ] Deduplication and quality assessment
+- [ ] Error handling with fallback chain
 
 ### Milestone 3: Classification (Week 3-4)
 - [ ] Rule-based classifier
@@ -517,8 +540,8 @@ type LogisticRegression struct {
 ### Core Dependencies
 ```go
 // Feed Processing
-"github.com/mmcdole/gofeed"           // RSS/Atom parsing
-"github.com/go-shiori/go-readability" // Content extraction
+"github.com/mmcdole/gofeed"              // RSS/Atom parsing
+"github.com/markusmobius/go-trafilatura" // Content extraction with metadata
 
 // Database
 "modernc.org/sqlite"                  // Pure Go SQLite
@@ -570,10 +593,14 @@ newscope_processing_duration_seconds{stage="fetch|extract|classify"}
 
 ### Performance Targets
 - Feed fetch: < 5s per feed (P95)
-- Content extraction: < 2s per article (P95)
+- Content extraction: < 5s per article (P95) - Using go-trafilatura
+  - Balanced mode: ~4-5s per article
+  - With concurrency: ~1-2s effective per article (with 3 workers)
 - Classification: < 100ms per article
 - RSS generation: < 200ms for 100 items
 - Web UI response: < 100ms (P95)
+
+Note: go-trafilatura is slower than go-readability (4.25s vs 2.87s) but provides better accuracy (F-Score 0.915 vs 0.881) and metadata extraction. The performance impact is mitigated through concurrent processing.
 
 ### Security Considerations
 1. **Input Sanitization**: 
