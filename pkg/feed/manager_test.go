@@ -25,18 +25,21 @@ func TestManager_FetchAll(t *testing.T) {
 					{URL: "https://feed2.com", Name: "Feed2", Interval: 10 * time.Minute},
 				}
 			},
+			GetExtractionConfigFunc: func() config.ExtractionConfig {
+				return config.ExtractionConfig{Enabled: false}
+			},
 		}
 
 		mockFetcher := &mocks.FetcherMock{
-			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.Item, error) {
+			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.FeedItem, error) {
 				switch feedURL {
 				case "https://feed1.com":
-					return []types.Item{
+					return []types.FeedItem{
 						{FeedName: "Feed1", Title: "Article 1", URL: "https://feed1.com/1"},
 						{FeedName: "Feed1", Title: "Article 2", URL: "https://feed1.com/2"},
 					}, nil
 				case "https://feed2.com":
-					return []types.Item{
+					return []types.FeedItem{
 						{FeedName: "Feed2", Title: "Article 3", URL: "https://feed2.com/3"},
 					}, nil
 				}
@@ -44,17 +47,17 @@ func TestManager_FetchAll(t *testing.T) {
 			},
 		}
 
-		manager := feed.NewManager(mockConfig, mockFetcher)
+		manager := feed.NewManager(mockConfig, mockFetcher, nil)
 		err := manager.FetchAll(context.Background())
 		require.NoError(t, err)
 
 		// verify all feeds were fetched
 		assert.Len(t, mockFetcher.FetchCalls(), 2)
-		
+
 		// check stored items
 		items := manager.GetItems()
 		assert.Len(t, items, 3)
-		
+
 		// verify items are from both feeds
 		feed1Count := 0
 		feed2Count := 0
@@ -78,12 +81,15 @@ func TestManager_FetchAll(t *testing.T) {
 					{URL: "https://feed2.com", Name: "Feed2", Interval: 10 * time.Minute},
 				}
 			},
+			GetExtractionConfigFunc: func() config.ExtractionConfig {
+				return config.ExtractionConfig{Enabled: false}
+			},
 		}
 
 		mockFetcher := &mocks.FetcherMock{
-			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.Item, error) {
+			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.FeedItem, error) {
 				if feedURL == "https://feed1.com" {
-					return []types.Item{
+					return []types.FeedItem{
 						{FeedName: "Feed1", Title: "Article 1", URL: "https://feed1.com/1"},
 					}, nil
 				}
@@ -91,7 +97,7 @@ func TestManager_FetchAll(t *testing.T) {
 			},
 		}
 
-		manager := feed.NewManager(mockConfig, mockFetcher)
+		manager := feed.NewManager(mockConfig, mockFetcher, nil)
 		err := manager.FetchAll(context.Background())
 		require.Error(t, err) // should return first error
 
@@ -106,11 +112,14 @@ func TestManager_FetchAll(t *testing.T) {
 			GetFeedsFunc: func() []config.Feed {
 				return []config.Feed{}
 			},
+			GetExtractionConfigFunc: func() config.ExtractionConfig {
+				return config.ExtractionConfig{Enabled: false}
+			},
 		}
 
 		mockFetcher := &mocks.FetcherMock{}
 
-		manager := feed.NewManager(mockConfig, mockFetcher)
+		manager := feed.NewManager(mockConfig, mockFetcher, nil)
 		err := manager.FetchAll(context.Background())
 		require.NoError(t, err)
 
@@ -126,21 +135,24 @@ func TestManager_FetchAll(t *testing.T) {
 					{URL: "https://feed1.com", Name: "Feed1", Interval: 5 * time.Minute},
 				}
 			},
+			GetExtractionConfigFunc: func() config.ExtractionConfig {
+				return config.ExtractionConfig{Enabled: false}
+			},
 		}
 
 		mockFetcher := &mocks.FetcherMock{
-			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.Item, error) {
+			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.FeedItem, error) {
 				select {
 				case <-ctx.Done():
 					return nil, ctx.Err()
 				case <-time.After(100 * time.Millisecond):
-					return []types.Item{{FeedName: "Feed1", Title: "Article 1"}}, nil
+					return []types.FeedItem{{FeedName: "Feed1", Title: "Article 1"}}, nil
 				}
 			},
 		}
 
-		manager := feed.NewManager(mockConfig, mockFetcher)
-		
+		manager := feed.NewManager(mockConfig, mockFetcher, nil)
+
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // cancel immediately
 
@@ -156,10 +168,13 @@ func TestManager_GetItems(t *testing.T) {
 			GetFeedsFunc: func() []config.Feed {
 				return []config.Feed{}
 			},
+			GetExtractionConfigFunc: func() config.ExtractionConfig {
+				return config.ExtractionConfig{Enabled: false}
+			},
 		}
 		mockFetcher := &mocks.FetcherMock{}
 
-		manager := feed.NewManager(mockConfig, mockFetcher)
+		manager := feed.NewManager(mockConfig, mockFetcher, nil)
 		items := manager.GetItems()
 		assert.NotNil(t, items)
 		assert.Empty(t, items)

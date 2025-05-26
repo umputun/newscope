@@ -15,6 +15,9 @@ import (
 //
 //		// make and configure a mocked feed.ConfigProvider
 //		mockedConfigProvider := &ConfigProviderMock{
+//			GetExtractionConfigFunc: func() config.ExtractionConfig {
+//				panic("mock out the GetExtractionConfig method")
+//			},
 //			GetFeedsFunc: func() []config.Feed {
 //				panic("mock out the GetFeeds method")
 //			},
@@ -25,16 +28,50 @@ import (
 //
 //	}
 type ConfigProviderMock struct {
+	// GetExtractionConfigFunc mocks the GetExtractionConfig method.
+	GetExtractionConfigFunc func() config.ExtractionConfig
+
 	// GetFeedsFunc mocks the GetFeeds method.
 	GetFeedsFunc func() []config.Feed
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// GetExtractionConfig holds details about calls to the GetExtractionConfig method.
+		GetExtractionConfig []struct {
+		}
 		// GetFeeds holds details about calls to the GetFeeds method.
 		GetFeeds []struct {
 		}
 	}
-	lockGetFeeds sync.RWMutex
+	lockGetExtractionConfig sync.RWMutex
+	lockGetFeeds            sync.RWMutex
+}
+
+// GetExtractionConfig calls GetExtractionConfigFunc.
+func (mock *ConfigProviderMock) GetExtractionConfig() config.ExtractionConfig {
+	if mock.GetExtractionConfigFunc == nil {
+		panic("ConfigProviderMock.GetExtractionConfigFunc: method is nil but ConfigProvider.GetExtractionConfig was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockGetExtractionConfig.Lock()
+	mock.calls.GetExtractionConfig = append(mock.calls.GetExtractionConfig, callInfo)
+	mock.lockGetExtractionConfig.Unlock()
+	return mock.GetExtractionConfigFunc()
+}
+
+// GetExtractionConfigCalls gets all the calls that were made to GetExtractionConfig.
+// Check the length with:
+//
+//	len(mockedConfigProvider.GetExtractionConfigCalls())
+func (mock *ConfigProviderMock) GetExtractionConfigCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockGetExtractionConfig.RLock()
+	calls = mock.calls.GetExtractionConfig
+	mock.lockGetExtractionConfig.RUnlock()
+	return calls
 }
 
 // GetFeeds calls GetFeedsFunc.

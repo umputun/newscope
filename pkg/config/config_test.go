@@ -112,8 +112,8 @@ func TestConfig_GetFeeds(t *testing.T) {
 func TestConfig_GetServerConfig(t *testing.T) {
 	cfg := &Config{
 		Server: struct {
-			Listen  string        `yaml:"listen"`
-			Timeout time.Duration `yaml:"timeout"`
+			Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+			Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 		}{
 			Listen:  ":9090",
 			Timeout: 45 * time.Second,

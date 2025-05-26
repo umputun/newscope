@@ -15,6 +15,7 @@ import (
 	"github.com/jessevdk/go-flags"
 
 	"github.com/umputun/newscope/pkg/config"
+	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/feed"
 	"github.com/umputun/newscope/server"
 )
@@ -70,7 +71,11 @@ func main() {
 
 	// setup feed components
 	fetcher := feed.NewHTTPFetcher(cfg.Server.Timeout)
-	manager := feed.NewManager(cfg, fetcher)
+	var extractor feed.Extractor
+	if cfg.Extraction.Enabled {
+		extractor = content.NewHTTPExtractor(cfg.Extraction.Timeout)
+	}
+	manager := feed.NewManager(cfg, fetcher, extractor)
 
 	// setup and run server
 	srv := server.New(cfg, manager, revision, opts.Debug)

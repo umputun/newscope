@@ -29,14 +29,14 @@ func (m *mockConfigProvider) GetServerConfig() (string, time.Duration) {
 // mockFeedManager implements FeedManager interface
 type mockFeedManager struct {
 	fetchAllErr error
-	items       []types.Item
+	items       []types.ExtractedItem
 }
 
 func (m *mockFeedManager) FetchAll(ctx context.Context) error {
 	return m.fetchAllErr
 }
 
-func (m *mockFeedManager) GetItems() []types.Item {
+func (m *mockFeedManager) GetItems() []types.ExtractedItem {
 	return m.items
 }
 
@@ -151,8 +151,8 @@ func TestServer_StatusHandler(t *testing.T) {
 
 func TestServer_RSSFeedHandler(t *testing.T) {
 	mgr := &mockFeedManager{
-		items: []types.Item{
-			{FeedName: "Test", Title: "Article 1", URL: "https://example.com/1"},
+		items: []types.ExtractedItem{
+			{FeedItem: types.FeedItem{FeedName: "Test", Title: "Article 1", URL: "https://example.com/1"}},
 		},
 	}
 

@@ -26,6 +26,8 @@
 - After important functionality added, update README.md accordingly
 - When merging master changes to an active branch, make sure both branches are pulled and up to date first
 - Don't add "Test plan" section to PRs
+- Always write unit tests instead of manual testing
+    - Don't manually test by running servers and using curl - write comprehensive unit tests instead
 
 ## Code Style Guidelines
 - Follow [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
@@ -44,6 +46,10 @@
 - Comment style: in-function comments should be lowercase sentences
 - Code width: keep lines under 130 characters when possible
 - Format: Use `gofmt`
+- Use existing structs from lower-level packages directly, don't duplicate them
+    - When a struct is already defined in a lower-level package, use it directly instead of creating a duplicate definition
+- Never add comments explaining what interface a struct implements - this is client-side concern
+    - Don't write comments like "implements the Fetcher interface" - the consumer of the interface decides what implements it, not the provider
 
 ### Error Handling
 - Use `fmt.Errorf("context: %w", err)` to wrap errors with context
@@ -96,3 +102,4 @@ git branch -D feature-branch-name
 - Apply middleware: `router.Use(rest.Recoverer(), rest.Throttle(), rest.BasicAuth())`
 - Define routes with groups: `router.Mount("/api").Route(func(r *routegroup.Bundle) {...})`
 - Start server: `srv := &http.Server{Addr: addr, Handler: router}; srv.ListenAndServe()`
+```

@@ -25,7 +25,7 @@ func NewHTTPFetcher(timeout time.Duration) *HTTPFetcher {
 }
 
 // Fetch retrieves and parses a feed from the given URL
-func (f *HTTPFetcher) Fetch(ctx context.Context, feedURL, feedName string) ([]types.Item, error) {
+func (f *HTTPFetcher) Fetch(ctx context.Context, feedURL, feedName string) ([]types.FeedItem, error) {
 	ctx, cancel := context.WithTimeout(ctx, f.timeout)
 	defer cancel()
 
@@ -34,9 +34,9 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, feedURL, feedName string) ([]ty
 		return nil, fmt.Errorf("parse feed %s: %w", feedURL, err)
 	}
 
-	items := make([]types.Item, 0, len(feed.Items))
+	items := make([]types.FeedItem, 0, len(feed.Items))
 	for _, item := range feed.Items {
-		parsed := types.Item{
+		parsed := types.FeedItem{
 			FeedName:    feedName,
 			Title:       item.Title,
 			URL:         item.Link,

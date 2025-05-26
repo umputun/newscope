@@ -47,3 +47,6 @@ profile.cov
 
 # Claude config
 .claude/
+
+# Generated files
+pkg/config/schema.json

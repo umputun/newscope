@@ -16,7 +16,7 @@ import (
 //
 //		// make and configure a mocked feed.Fetcher
 //		mockedFetcher := &FetcherMock{
-//			FetchFunc: func(ctx context.Context, feedURL string, feedName string) ([]types.Item, error) {
+//			FetchFunc: func(ctx context.Context, feedURL string, feedName string) ([]types.FeedItem, error) {
 //				panic("mock out the Fetch method")
 //			},
 //		}
@@ -27,7 +27,7 @@ import (
 //	}
 type FetcherMock struct {
 	// FetchFunc mocks the Fetch method.
-	FetchFunc func(ctx context.Context, feedURL string, feedName string) ([]types.Item, error)
+	FetchFunc func(ctx context.Context, feedURL string, feedName string) ([]types.FeedItem, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -45,7 +45,7 @@ type FetcherMock struct {
 }
 
 // Fetch calls FetchFunc.
-func (mock *FetcherMock) Fetch(ctx context.Context, feedURL string, feedName string) ([]types.Item, error) {
+func (mock *FetcherMock) Fetch(ctx context.Context, feedURL string, feedName string) ([]types.FeedItem, error) {
 	if mock.FetchFunc == nil {
 		panic("FetcherMock.FetchFunc: method is nil but Fetcher.Fetch was just called")
 	}

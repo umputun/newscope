@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/go-pkgz/lgr"
-	"github.com/go-pkgz/routegroup"
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
+	"github.com/go-pkgz/routegroup"
 
 	"github.com/umputun/newscope/pkg/feed/types"
 )
@@ -21,7 +21,7 @@ import (
 // FeedManager manages RSS feeds
 type FeedManager interface {
 	FetchAll(ctx context.Context) error
-	GetItems() []types.Item
+	GetItems() []types.ExtractedItem
 }
 
 // ConfigProvider provides server configuration
@@ -93,11 +93,11 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) setupMiddleware() {
 	s.router.Use(rest.AppInfo("newscope", "umputun", s.version))
 	s.router.Use(rest.Ping)
-	
+
 	if s.debug {
 		s.router.Use(logger.New(logger.Log(lgr.Default()), logger.Prefix("[DEBUG]")).Handler)
 	}
-	
+
 	s.router.Use(rest.Recoverer(lgr.Default()))
 	s.router.Use(rest.Throttle(100))
 	s.router.Use(rest.SizeLimit(1024 * 1024)) // 1MB
@@ -130,7 +130,7 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 // rssFeedHandler serves RSS feed for a specific topic
 func (s *Server) rssFeedHandler(w http.ResponseWriter, r *http.Request) {
 	topic := r.PathValue("topic")
-	
+
 	// TODO: implement actual RSS generation based on topic
 	fmt.Fprintf(w, "RSS feed for topic: %s", topic)
 }
