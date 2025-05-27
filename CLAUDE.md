@@ -50,6 +50,10 @@
     - When a struct is already defined in a lower-level package, use it directly instead of creating a duplicate definition
 - Never add comments explaining what interface a struct implements - this is client-side concern
     - Don't write comments like "implements the Fetcher interface" - the consumer of the interface decides what implements it, not the provider
+- In any file with structs and methods, order should be:
+    1. Structs with methods first
+    2. Interfaces after
+    3. Data structs after
 
 ### Error Handling
 - Use `fmt.Errorf("context: %w", err)` to wrap errors with context
@@ -102,4 +106,3 @@ git branch -D feature-branch-name
 - Apply middleware: `router.Use(rest.Recoverer(), rest.Throttle(), rest.BasicAuth())`
 - Define routes with groups: `router.Mount("/api").Route(func(r *routegroup.Bundle) {...})`
 - Start server: `srv := &http.Server{Addr: addr, Handler: router}; srv.ListenAndServe()`
-```

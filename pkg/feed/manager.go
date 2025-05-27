@@ -14,6 +14,15 @@ import (
 //go:generate moq -out mocks/fetcher.go -pkg mocks -skip-ensure -fmt goimports . Fetcher
 //go:generate moq -out mocks/extractor.go -pkg mocks -skip-ensure -fmt goimports . Extractor
 
+// Manager coordinates feed fetching and content extraction
+type Manager struct {
+	config    ConfigProvider
+	fetcher   Fetcher
+	extractor Extractor
+	items     []types.ItemWithContent
+	mu        sync.RWMutex
+}
+
 // ConfigProvider provides feed configuration
 type ConfigProvider interface {
 	GetFeeds() []config.Feed
@@ -28,15 +37,6 @@ type Fetcher interface {
 // Extractor extracts full content from article URLs
 type Extractor interface {
 	Extract(ctx context.Context, url string) (string, error)
-}
-
-// Manager coordinates feed fetching and content extraction
-type Manager struct {
-	config    ConfigProvider
-	fetcher   Fetcher
-	extractor Extractor
-	items     []types.ItemWithContent
-	mu        sync.RWMutex
 }
 
 // NewManager creates a new feed manager

@@ -18,6 +18,23 @@ import (
 	"github.com/umputun/newscope/pkg/feed/types"
 )
 
+//go:generate moq -out mocks/config.go -pkg mocks -skip-ensure -fmt goimports . ConfigProvider
+//go:generate moq -out mocks/database.go -pkg mocks -skip-ensure -fmt goimports . Database
+//go:generate moq -out mocks/scheduler.go -pkg mocks -skip-ensure -fmt goimports . Scheduler
+
+// Server represents HTTP server instance
+type Server struct {
+	config    ConfigProvider
+	db        Database
+	scheduler Scheduler
+	version   string
+	debug     bool
+
+	lock       sync.Mutex
+	httpServer *http.Server
+	router     *routegroup.Bundle
+}
+
 // Database interface for server operations
 type Database interface {
 	GetFeeds(ctx context.Context) ([]types.Feed, error)
@@ -36,19 +53,6 @@ type Scheduler interface {
 // ConfigProvider provides server configuration
 type ConfigProvider interface {
 	GetServerConfig() (listen string, timeout time.Duration)
-}
-
-// Server represents HTTP server instance
-type Server struct {
-	config    ConfigProvider
-	db        Database
-	scheduler Scheduler
-	version   string
-	debug     bool
-
-	lock       sync.Mutex
-	httpServer *http.Server
-	router     *routegroup.Bundle
 }
 
 // New initializes a new server instance

@@ -11,10 +11,6 @@ import (
 	"github.com/umputun/newscope/pkg/feed/types"
 )
 
-// TestDBAdapter tests the DBAdapter's conversion logic
-// Since DBAdapter embeds db.DB and we can't easily mock it,
-// we test the conversion logic separately
-
 func TestDBAdapter_ConvertFeeds(t *testing.T) {
 	// test data
 	dbFeeds := []db.Feed{
@@ -43,7 +39,7 @@ func TestDBAdapter_ConvertFeeds(t *testing.T) {
 	}
 
 	require.Len(t, feeds, 2)
-	
+
 	assert.Equal(t, "Test Feed 1", feeds[0].Title)
 	assert.Equal(t, "Description 1", feeds[0].Description)
 	assert.Equal(t, "http://example.com/feed1", feeds[0].Link)
@@ -55,7 +51,7 @@ func TestDBAdapter_ConvertFeeds(t *testing.T) {
 
 func TestDBAdapter_ConvertItems(t *testing.T) {
 	publishTime := time.Now()
-	
+
 	// test data
 	dbItems := []db.Item{
 		{
@@ -94,7 +90,7 @@ func TestDBAdapter_ConvertItems(t *testing.T) {
 	}
 
 	require.Len(t, items, 2)
-	
+
 	assert.Equal(t, "guid1", items[0].GUID)
 	assert.Equal(t, "Item 1", items[0].Title)
 	assert.Equal(t, "http://example.com/item1", items[0].Link)
@@ -111,7 +107,7 @@ func TestDBAdapter_ConvertItems(t *testing.T) {
 
 func TestDBAdapter_ConvertItemsWithContent(t *testing.T) {
 	publishTime := time.Now()
-	
+
 	// test data
 	dbItems := []db.ItemWithContent{
 		{
@@ -127,10 +123,10 @@ func TestDBAdapter_ConvertItemsWithContent(t *testing.T) {
 		},
 		{
 			Item: db.Item{
-				ID:          2,
-				GUID:        "guid2",
-				Title:       "Item without content",
-				Link:        "http://example.com/2",
+				ID:    2,
+				GUID:  "guid2",
+				Title: "Item without content",
+				Link:  "http://example.com/2",
 			},
 			FullContent: db.NullString{Valid: false},
 		},
@@ -158,10 +154,10 @@ func TestDBAdapter_ConvertItemsWithContent(t *testing.T) {
 	}
 
 	require.Len(t, items, 2)
-	
+
 	assert.Equal(t, "Item with content", items[0].Title)
 	assert.Equal(t, "This is the full extracted content", items[0].ExtractedContent)
-	
+
 	assert.Equal(t, "Item without content", items[1].Title)
 	assert.Empty(t, items[1].ExtractedContent)
 }

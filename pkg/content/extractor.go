@@ -11,14 +11,6 @@ import (
 	"github.com/markusmobius/go-trafilatura"
 )
 
-// ExtractResult contains the result of content extraction
-type ExtractResult struct {
-	Content string    // extracted content
-	Title   string    // article title if available
-	URL     string    // original URL
-	Date    time.Time // publication date if available
-}
-
 // HTTPExtractor extracts article content from URLs using trafilatura
 type HTTPExtractor struct {
 	timeout       time.Duration
@@ -28,6 +20,14 @@ type HTTPExtractor struct {
 	includeImages bool
 	includeLinks  bool
 	client        *http.Client
+}
+
+// ExtractResult contains the result of content extraction
+type ExtractResult struct {
+	Content string    // extracted content
+	Title   string    // article title if available
+	URL     string    // original URL
+	Date    time.Time // publication date if available
 }
 
 // NewHTTPExtractor creates a new content extractor

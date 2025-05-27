@@ -19,10 +19,6 @@ import (
 	"github.com/umputun/newscope/server/mocks"
 )
 
-//go:generate moq -out mocks/config.go -pkg mocks -skip-ensure -fmt goimports . ConfigProvider
-//go:generate moq -out mocks/database.go -pkg mocks -skip-ensure -fmt goimports . Database
-//go:generate moq -out mocks/scheduler.go -pkg mocks -skip-ensure -fmt goimports . Scheduler
-
 func TestServer_New(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) {
@@ -205,4 +201,3 @@ func TestRenderError(t *testing.T) {
 		})
 	}
 }
-
