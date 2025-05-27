@@ -37,20 +37,24 @@ type Config struct {
 	Feeds []Feed `yaml:"feeds" json:"feeds" jsonschema:"required,minItems=1,description=RSS/Atom feed sources"`
 }
 
+// ClassificationConfig holds classification-specific settings
+type ClassificationConfig struct {
+	ScoreThreshold   float64 `yaml:"score_threshold" json:"score_threshold" jsonschema:"default=5.0,minimum=0,maximum=10,description=Minimum relevance score to include articles"`
+	FeedbackExamples int     `yaml:"feedback_examples" json:"feedback_examples" jsonschema:"default=10,description=Number of recent feedback examples to include in prompt"`
+	BatchSize        int     `yaml:"batch_size" json:"batch_size" jsonschema:"default=5,minimum=1,description=Number of articles to classify in one request"`
+	UseJSONMode      bool    `yaml:"use_json_mode" json:"use_json_mode" jsonschema:"default=false,description=Use JSON response format (not all models support this)"`
+}
+
 // LLMConfig holds LLM configuration for article classification
 type LLMConfig struct {
-	Endpoint    string        `yaml:"endpoint" json:"endpoint" jsonschema:"required,description=OpenAI-compatible API endpoint"`
-	APIKey      string        `yaml:"api_key" json:"api_key" jsonschema:"description=API key (can use environment variable)"`
-	Model       string        `yaml:"model" json:"model" jsonschema:"required,description=Model name (e.g. gpt-4o-mini or llama3)"`
-	Temperature float64       `yaml:"temperature" json:"temperature" jsonschema:"default=0.3,description=Temperature for response generation"`
-	MaxTokens   int           `yaml:"max_tokens" json:"max_tokens" jsonschema:"default=500,description=Maximum tokens in response"`
-	Timeout     time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=Request timeout"`
-
-	Classification struct {
-		ScoreThreshold   float64 `yaml:"score_threshold" json:"score_threshold" jsonschema:"default=5.0,minimum=0,maximum=10,description=Minimum relevance score to include articles"`
-		FeedbackExamples int     `yaml:"feedback_examples" json:"feedback_examples" jsonschema:"default=10,description=Number of recent feedback examples to include in prompt"`
-		BatchSize        int     `yaml:"batch_size" json:"batch_size" jsonschema:"default=5,minimum=1,description=Number of articles to classify in one request"`
-	} `yaml:"classification" json:"classification" jsonschema:"description=Classification-specific settings"`
+	Endpoint       string               `yaml:"endpoint" json:"endpoint" jsonschema:"required,description=OpenAI-compatible API endpoint"`
+	APIKey         string               `yaml:"api_key" json:"api_key" jsonschema:"description=API key (can use environment variable)"`
+	Model          string               `yaml:"model" json:"model" jsonschema:"required,description=Model name (e.g. gpt-4o-mini or llama3)"`
+	Temperature    float64              `yaml:"temperature" json:"temperature" jsonschema:"default=0.3,description=Temperature for response generation"`
+	MaxTokens      int                  `yaml:"max_tokens" json:"max_tokens" jsonschema:"default=500,description=Maximum tokens in response"`
+	Timeout        time.Duration        `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=Request timeout"`
+	SystemPrompt   string               `yaml:"system_prompt" json:"system_prompt" jsonschema:"description=System prompt for the LLM (optional)"`
+	Classification ClassificationConfig `yaml:"classification" json:"classification" jsonschema:"description=Classification-specific settings"`
 }
 
 // ExtractionConfig holds content extraction settings

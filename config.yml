@@ -28,6 +28,21 @@ llm:
   max_tokens: 500
   timeout: "30s"
   
+  # Optional: Custom system prompt for classification
+  # system_prompt: |
+  #   You are a tech news curator. Rate articles from 0-10 based on:
+  #   - Relevance to software development and technology
+  #   - Innovation and emerging technologies
+  #   - Practical applications and tutorials
+  #   
+  #   Respond with JSON array containing for each article:
+  #   {
+  #     "guid": "article GUID",
+  #     "score": 0-10,
+  #     "explanation": "brief reason (max 100 chars)",
+  #     "topics": ["topic1", "topic2", "topic3"]
+  #   }
+  
   classification:
     score_threshold: 5.0       # Minimum score to include
     feedback_examples: 10      # Recent examples to include
