@@ -64,49 +64,20 @@ SQLite-based persistence using pure Go driver (modernc.org/sqlite) with sqlx for
    - content (TEXT) - Original content from feed
    - author (TEXT) - Author name
    - published (DATETIME) - Publication date
-   - image_url (TEXT) - Featured image
-   - content_hash (TEXT) - Hash for duplicate detection
-   - language (TEXT) - Detected language code
-   - content_extracted (BOOLEAN DEFAULT 0)
+   - extracted_content (TEXT) - Full extracted article text
+   - extracted_at (DATETIME) - When content was extracted
+   - extraction_error (TEXT) - Any extraction error
+   - relevance_score (REAL DEFAULT 0) - LLM score (0-10)
+   - explanation (TEXT) - LLM explanation for score
+   - topics (JSON) - Topics identified by LLM
+   - classified_at (DATETIME) - When classified
+   - user_feedback (TEXT) - 'like', 'dislike', 'spam'
+   - feedback_at (DATETIME) - When feedback given
    - created_at, updated_at (DATETIME)
    - UNIQUE(feed_id, guid) - Prevent duplicates
    ```
 
-3. **content** - Extracted full-text content
-   ```sql
-   - id (INTEGER PRIMARY KEY)
-   - item_id (INTEGER UNIQUE, FK → items.id)
-   - content (TEXT NOT NULL) - Extracted full text
-   - text_content (TEXT) - Plain text version
-   - language (TEXT) - Detected language
-   - extracted_at (DATETIME) - Extraction timestamp
-   - extractor (TEXT) - Extraction method used
-   - error (TEXT) - Extraction error if any
-   ```
-
-4. **classifications** - LLM-based article classifications
-   ```sql
-   - id (INTEGER PRIMARY KEY)
-   - guid (TEXT NOT NULL) - Article GUID
-   - score (REAL NOT NULL) - Relevance score (0-10)
-   - explanation (TEXT) - Brief explanation of score
-   - topics (JSON) - Array of relevant topics
-   - classified_at (DATETIME) - Classification timestamp
-   - model_name (TEXT) - LLM model used
-   - UNIQUE(guid) - One classification per article
-   ```
-
-5. **feedback** - User feedback for training
-   ```sql
-   - id (INTEGER PRIMARY KEY)
-   - guid (TEXT NOT NULL) - Article GUID
-   - title (TEXT NOT NULL) - Article title for reference
-   - feedback (TEXT NOT NULL) - 'like' or 'dislike'
-   - topics (JSON) - User-provided topics
-   - created_at (DATETIME) - Feedback timestamp
-   ```
-
-6. **settings** - Key-value configuration store
+3. **settings** - Key-value configuration store
    ```sql
    - key (TEXT PRIMARY KEY)
    - value (TEXT NOT NULL)
@@ -117,24 +88,10 @@ SQLite-based persistence using pure Go driver (modernc.org/sqlite) with sqlx for
 
 **Strategic Indexes:**
 ```sql
-- idx_feeds_next_fetch ON feeds(next_fetch) - Scheduler queries
-- idx_items_feed_id ON items(feed_id) - Feed-item lookups
-- idx_items_published ON items(published DESC) - Chronological queries
-- idx_items_content_extracted ON items(content_extracted) - Extraction queue
-- idx_classifications_score ON classifications(score DESC) - High-scoring articles
-- idx_feedback_created ON feedback(created_at DESC) - Recent feedback
-```
-
-**Full-Text Search:**
-```sql
-CREATE VIRTUAL TABLE items_fts USING fts5(
-    title, description, content
-);
-
--- Triggers to maintain FTS index
-CREATE TRIGGER items_fts_insert AFTER INSERT ON items
-CREATE TRIGGER items_fts_update AFTER UPDATE ON items  
-CREATE TRIGGER items_fts_delete AFTER DELETE ON items
+- idx_items_feed_published ON items(feed_id, published DESC)
+- idx_items_classification ON items(classified_at, relevance_score DESC)
+- idx_items_feedback ON items(feedback_at DESC)
+- idx_items_extraction ON items(extracted_at)
 ```
 
 ### 3. Feed System (`pkg/feed`)
@@ -212,6 +169,7 @@ Manages periodic feed updates, content extraction, and classification with worke
 - Rate limiting support
 - Graceful shutdown with context cancellation
 - LLM classification integration
+- On-demand operations (UpdateFeedNow, ExtractContentNow, ClassifyNow)
 
 **Workflow:**
 1. **Feed Updates**: Fetch new articles from RSS feeds
@@ -219,27 +177,65 @@ Manages periodic feed updates, content extraction, and classification with worke
 3. **Classification**: Send articles to LLM for scoring
 4. **Storage**: Save classifications to database
 
+**Interfaces** (defined by consumers):
+```go
+type Database interface {
+    GetFeedsToFetch(ctx context.Context, limit int) ([]db.Feed, error)
+    GetItemsNeedingExtraction(ctx context.Context, limit int) ([]db.Item, error)
+    GetUnclassifiedItems(ctx context.Context, limit int) ([]db.Item, error)
+    GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
+    UpdateClassifications(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error
+    // ... and more
+}
+
+type Classifier interface {
+    ClassifyArticles(ctx context.Context, items []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error)
+}
+```
+
 ### 7. Server (`server/`)
 
-HTTP server providing REST API and web UI.
+HTTP server providing REST API and web UI with server-side rendering.
 
 **Components:**
 - **Server**: Main HTTP server using routegroup
   - Middleware support (recovery, throttling, auth)
   - JSON API endpoints
   - HTMX-based web UI with Go templates
+  - Server-side rendering with no JavaScript required
   
 - **DBAdapter**: Adapts database types to domain types
   - Converts SQL null types to Go types
   - Implements server's Database interface
+  - Joins with feeds table for enriched data
+  - Supports filtering by score and topic
+
+**Web UI Features:**
+- **Articles Page**: Main view showing classified articles
+  - Score visualization with progress bars
+  - Topic tags and filtering
+  - Real-time score filtering with range slider
+  - Like/dislike feedback buttons
+  - Extracted content display
+  - HTMX for dynamic updates without page reload
 
 **Current Endpoints:**
-- `GET /` - Web UI home page
-- `GET /api/v1/items` - List classified items with scores
-- `GET /api/v1/feeds` - List configured feeds
-- `POST /api/v1/feedback` - Submit user feedback
-- `GET /api/v1/config` - Get current configuration
-- `POST /api/v1/config` - Update configuration
+- `GET /` - Articles page (redirects to /articles)
+- `GET /articles` - Main articles view with filtering
+- `GET /feeds` - Feed management (planned)
+- `GET /settings` - Settings page (planned)
+
+**API Endpoints:**
+- `GET /api/v1/status` - Server status
+- `POST /api/v1/feedback/{id}/{action}` - Submit user feedback (like/dislike)
+- `POST /api/v1/extract/{id}` - Trigger content extraction for an item
+- `POST /api/v1/classify-now` - Trigger immediate classification
+- `GET /api/v1/articles/{id}/content` - Get extracted content for display
+
+**Templates:**
+- `base.html` - Base layout with navigation
+- `articles.html` - Articles listing with filters
+- `article-card.html` - Reusable article card component
 
 ### 8. Main Application (`cmd/newscope`)
 
@@ -262,35 +258,51 @@ Entry point that wires all components together.
 ```
 1. Scheduler triggers feed update
    └─> Parser fetches RSS feeds
-       └─> New items saved to database
+       └─> New items saved to items table
 
 2. Content extraction (if enabled)
    └─> Extractor fetches article full text
-       └─> Content saved to database
+       └─> Updates items.extracted_content field
 
 3. LLM Classification
-   └─> Batch articles for classification
-   └─> Include recent feedback examples
-   └─> Send to LLM API
-   └─> Parse scores and topics
-   └─> Save classifications
+   └─> Batch unclassified articles
+   └─> Include recent user feedback as examples
+   └─> Send to LLM API (with JSON mode if supported)
+   └─> Parse scores, explanations, and topics
+   └─> Update items table with classification data
 
-4. User Interface
-   └─> Display articles sorted by score
-   └─> Show explanation and topics
-   └─> Collect user feedback
+4. Web UI Display
+   └─> Query items with JOIN on feeds for feed names
+   └─> Filter by minimum score and topics
+   └─> Display with HTMX for dynamic updates
+   └─> Collect user feedback (like/dislike)
+```
+
+### User Interaction Flow:
+
+```
+User browses articles → Adjusts score filter → HTMX updates list
+                    ↓
+           Clicks "Show Content" → AJAX loads extracted text
+                    ↓
+           Provides feedback → Updates item → Re-renders card
+                    ↓
+      Feedback used in future classifications
 ```
 
 ### Classification Process:
 
 ```
-Articles → Build Prompt with:
-  - Article title, description, content
-  - Previous user feedback examples
-  - System prompt instructions
-→ LLM API Call
-→ Response: Score (0-10), Explanation, Topics
-→ Store in classifications table
+Unclassified Items → Build Batch Prompt:
+  - System prompt with instructions
+  - Recent user feedback examples (likes/dislikes)
+  - Article data (title, description, extracted content)
+→ LLM API Call (JSON mode if available)
+→ Parse Response:
+  - Score (0-10)
+  - Brief explanation
+  - List of topics
+→ Update items table directly
 ```
 
 ## Design Principles

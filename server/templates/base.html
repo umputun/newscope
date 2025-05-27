@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{block "title" .}}Newscope{{end}}</title>
+    
+    <!-- HTMX v2 -->
+    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    
+    <!-- Simple CSS Reset and Base Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="container">
+                <h1><a href="/">Newscope</a></h1>
+                <div class="nav-links">
+                    <a href="/" class="{{if eq .ActivePage "home"}}active{{end}}">Articles</a>
+                    <a href="/feeds" class="{{if eq .ActivePage "feeds"}}active{{end}}">Feeds</a>
+                    <a href="/settings" class="{{if eq .ActivePage "settings"}}active{{end}}">Settings</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container">
+        {{block "content" .}}{{end}}
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>Newscope &copy; 2024 Umputun. AI-powered RSS news classificator.</p>
+        </div>
+    </footer>
+</body>
+</html>

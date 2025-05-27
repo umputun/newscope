@@ -201,3 +201,202 @@ func TestRenderError(t *testing.T) {
 		})
 	}
 }
+
+func TestServer_articlesHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	now := time.Now()
+	classifiedAt := now
+	
+	db := &mocks.DatabaseMock{
+		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+			return []types.ItemWithClassification{
+				{
+					Item: types.Item{
+						GUID:        "guid-1",
+						Title:       "Test Article",
+						Link:        "https://example.com/article",
+						Description: "A test article",
+						Published:   now,
+					},
+					ID:             1,
+					FeedName:       "Test Feed",
+					RelevanceScore: 8.5,
+					Explanation:    "Very relevant",
+					Topics:         []string{"tech", "ai"},
+					ClassifiedAt:   &classifiedAt,
+				},
+			}, nil
+		},
+		GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+			return []string{"tech", "ai", "science"}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := New(cfg, db, scheduler, "1.0.0", false)
+
+	// test request
+	req := httptest.NewRequest("GET", "/articles?score=5.0&topic=tech", http.NoBody)
+	w := httptest.NewRecorder()
+
+	srv.articlesHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Test Article")
+	assert.Contains(t, w.Body.String(), "Test Feed")
+	assert.Contains(t, w.Body.String(), "Score: 8.5/10")
+}
+
+func TestServer_feedbackHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	feedbackCalled := false
+	db := &mocks.DatabaseMock{
+		UpdateItemFeedbackFunc: func(ctx context.Context, itemID int64, feedback string) error {
+			feedbackCalled = true
+			assert.Equal(t, int64(123), itemID)
+			assert.Equal(t, "like", feedback)
+			return nil
+		},
+		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
+			return &types.ItemWithClassification{
+				Item: types.Item{
+					Title:     "Test Article",
+					Link:      "https://example.com",
+					Published: time.Now(),
+				},
+				ID:             itemID,
+				FeedName:       "Test Feed",
+				RelevanceScore: 7.5,
+				UserFeedback:   "like",
+			}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := New(cfg, db, scheduler, "1.0.0", false)
+
+	// test like action
+	req := httptest.NewRequest("POST", "/api/v1/feedback/123/like", http.NoBody)
+	req.SetPathValue("id", "123")
+	req.SetPathValue("action", "like")
+	w := httptest.NewRecorder()
+
+	srv.feedbackHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, feedbackCalled)
+	assert.Contains(t, w.Body.String(), "Test Article")
+	assert.Contains(t, w.Body.String(), "btn-like active") // button should be active
+}
+
+func TestServer_extractHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	extractCalled := false
+	scheduler := &mocks.SchedulerMock{
+		ExtractContentNowFunc: func(ctx context.Context, itemID int64) error {
+			extractCalled = true
+			assert.Equal(t, int64(456), itemID)
+			return nil
+		},
+	}
+
+	db := &mocks.DatabaseMock{
+		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
+			return &types.ItemWithClassification{
+				Item: types.Item{
+					Title:     "Test Article",
+					Link:      "https://example.com",
+					Published: time.Now(),
+				},
+				ID:               itemID,
+				FeedName:         "Test Feed",
+				ExtractedContent: "Full article content here",
+			}, nil
+		},
+	}
+
+	srv := New(cfg, db, scheduler, "1.0.0", false)
+
+	req := httptest.NewRequest("POST", "/api/v1/extract/456", http.NoBody)
+	req.SetPathValue("id", "456")
+	w := httptest.NewRecorder()
+
+	srv.extractHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, extractCalled)
+	assert.Contains(t, w.Body.String(), "Show Content") // button should change
+}
+
+func TestServer_classifyNowHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	classifyCalled := false
+	scheduler := &mocks.SchedulerMock{
+		ClassifyNowFunc: func(ctx context.Context) error {
+			classifyCalled = true
+			return nil
+		},
+	}
+
+	db := &mocks.DatabaseMock{}
+	srv := New(cfg, db, scheduler, "1.0.0", false)
+
+	req := httptest.NewRequest("POST", "/api/v1/classify-now", http.NoBody)
+	w := httptest.NewRecorder()
+
+	srv.classifyNowHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, classifyCalled)
+}
+
+func TestServer_articleContentHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	db := &mocks.DatabaseMock{
+		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
+			assert.Equal(t, int64(789), itemID)
+			return &types.ItemWithClassification{
+				ExtractedContent: "This is the full article content.",
+			}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := New(cfg, db, scheduler, "1.0.0", false)
+
+	req := httptest.NewRequest("GET", "/api/v1/articles/789/content", http.NoBody)
+	req.SetPathValue("id", "789")
+	w := httptest.NewRecorder()
+
+	srv.articleContentHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Full Article")
+	assert.Contains(t, w.Body.String(), "This is the full article content.")
+	assert.Contains(t, w.Body.String(), "Close")
+}

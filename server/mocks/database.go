@@ -16,11 +16,23 @@ import (
 //
 //		// make and configure a mocked server.Database
 //		mockedDatabase := &DatabaseMock{
+//			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
+//				panic("mock out the GetClassifiedItem method")
+//			},
+//			GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+//				panic("mock out the GetClassifiedItems method")
+//			},
 //			GetFeedsFunc: func(ctx context.Context) ([]types.Feed, error) {
 //				panic("mock out the GetFeeds method")
 //			},
 //			GetItemsFunc: func(ctx context.Context, limit int, offset int) ([]types.Item, error) {
 //				panic("mock out the GetItems method")
+//			},
+//			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+//				panic("mock out the GetTopics method")
+//			},
+//			UpdateItemFeedbackFunc: func(ctx context.Context, itemID int64, feedback string) error {
+//				panic("mock out the UpdateItemFeedback method")
 //			},
 //		}
 //
@@ -29,14 +41,44 @@ import (
 //
 //	}
 type DatabaseMock struct {
+	// GetClassifiedItemFunc mocks the GetClassifiedItem method.
+	GetClassifiedItemFunc func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error)
+
+	// GetClassifiedItemsFunc mocks the GetClassifiedItems method.
+	GetClassifiedItemsFunc func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error)
+
 	// GetFeedsFunc mocks the GetFeeds method.
 	GetFeedsFunc func(ctx context.Context) ([]types.Feed, error)
 
 	// GetItemsFunc mocks the GetItems method.
 	GetItemsFunc func(ctx context.Context, limit int, offset int) ([]types.Item, error)
 
+	// GetTopicsFunc mocks the GetTopics method.
+	GetTopicsFunc func(ctx context.Context) ([]string, error)
+
+	// UpdateItemFeedbackFunc mocks the UpdateItemFeedback method.
+	UpdateItemFeedbackFunc func(ctx context.Context, itemID int64, feedback string) error
+
 	// calls tracks calls to the methods.
 	calls struct {
+		// GetClassifiedItem holds details about calls to the GetClassifiedItem method.
+		GetClassifiedItem []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// ItemID is the itemID argument value.
+			ItemID int64
+		}
+		// GetClassifiedItems holds details about calls to the GetClassifiedItems method.
+		GetClassifiedItems []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// MinScore is the minScore argument value.
+			MinScore float64
+			// Topic is the topic argument value.
+			Topic string
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// GetFeeds holds details about calls to the GetFeeds method.
 		GetFeeds []struct {
 			// Ctx is the ctx argument value.
@@ -51,9 +93,107 @@ type DatabaseMock struct {
 			// Offset is the offset argument value.
 			Offset int
 		}
+		// GetTopics holds details about calls to the GetTopics method.
+		GetTopics []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
+		// UpdateItemFeedback holds details about calls to the UpdateItemFeedback method.
+		UpdateItemFeedback []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// ItemID is the itemID argument value.
+			ItemID int64
+			// Feedback is the feedback argument value.
+			Feedback string
+		}
 	}
-	lockGetFeeds sync.RWMutex
-	lockGetItems sync.RWMutex
+	lockGetClassifiedItem  sync.RWMutex
+	lockGetClassifiedItems sync.RWMutex
+	lockGetFeeds           sync.RWMutex
+	lockGetItems           sync.RWMutex
+	lockGetTopics          sync.RWMutex
+	lockUpdateItemFeedback sync.RWMutex
+}
+
+// GetClassifiedItem calls GetClassifiedItemFunc.
+func (mock *DatabaseMock) GetClassifiedItem(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
+	if mock.GetClassifiedItemFunc == nil {
+		panic("DatabaseMock.GetClassifiedItemFunc: method is nil but Database.GetClassifiedItem was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		ItemID int64
+	}{
+		Ctx:    ctx,
+		ItemID: itemID,
+	}
+	mock.lockGetClassifiedItem.Lock()
+	mock.calls.GetClassifiedItem = append(mock.calls.GetClassifiedItem, callInfo)
+	mock.lockGetClassifiedItem.Unlock()
+	return mock.GetClassifiedItemFunc(ctx, itemID)
+}
+
+// GetClassifiedItemCalls gets all the calls that were made to GetClassifiedItem.
+// Check the length with:
+//
+//	len(mockedDatabase.GetClassifiedItemCalls())
+func (mock *DatabaseMock) GetClassifiedItemCalls() []struct {
+	Ctx    context.Context
+	ItemID int64
+} {
+	var calls []struct {
+		Ctx    context.Context
+		ItemID int64
+	}
+	mock.lockGetClassifiedItem.RLock()
+	calls = mock.calls.GetClassifiedItem
+	mock.lockGetClassifiedItem.RUnlock()
+	return calls
+}
+
+// GetClassifiedItems calls GetClassifiedItemsFunc.
+func (mock *DatabaseMock) GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+	if mock.GetClassifiedItemsFunc == nil {
+		panic("DatabaseMock.GetClassifiedItemsFunc: method is nil but Database.GetClassifiedItems was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		MinScore float64
+		Topic    string
+		Limit    int
+	}{
+		Ctx:      ctx,
+		MinScore: minScore,
+		Topic:    topic,
+		Limit:    limit,
+	}
+	mock.lockGetClassifiedItems.Lock()
+	mock.calls.GetClassifiedItems = append(mock.calls.GetClassifiedItems, callInfo)
+	mock.lockGetClassifiedItems.Unlock()
+	return mock.GetClassifiedItemsFunc(ctx, minScore, topic, limit)
+}
+
+// GetClassifiedItemsCalls gets all the calls that were made to GetClassifiedItems.
+// Check the length with:
+//
+//	len(mockedDatabase.GetClassifiedItemsCalls())
+func (mock *DatabaseMock) GetClassifiedItemsCalls() []struct {
+	Ctx      context.Context
+	MinScore float64
+	Topic    string
+	Limit    int
+} {
+	var calls []struct {
+		Ctx      context.Context
+		MinScore float64
+		Topic    string
+		Limit    int
+	}
+	mock.lockGetClassifiedItems.RLock()
+	calls = mock.calls.GetClassifiedItems
+	mock.lockGetClassifiedItems.RUnlock()
+	return calls
 }
 
 // GetFeeds calls GetFeedsFunc.
@@ -125,5 +265,77 @@ func (mock *DatabaseMock) GetItemsCalls() []struct {
 	mock.lockGetItems.RLock()
 	calls = mock.calls.GetItems
 	mock.lockGetItems.RUnlock()
+	return calls
+}
+
+// GetTopics calls GetTopicsFunc.
+func (mock *DatabaseMock) GetTopics(ctx context.Context) ([]string, error) {
+	if mock.GetTopicsFunc == nil {
+		panic("DatabaseMock.GetTopicsFunc: method is nil but Database.GetTopics was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockGetTopics.Lock()
+	mock.calls.GetTopics = append(mock.calls.GetTopics, callInfo)
+	mock.lockGetTopics.Unlock()
+	return mock.GetTopicsFunc(ctx)
+}
+
+// GetTopicsCalls gets all the calls that were made to GetTopics.
+// Check the length with:
+//
+//	len(mockedDatabase.GetTopicsCalls())
+func (mock *DatabaseMock) GetTopicsCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockGetTopics.RLock()
+	calls = mock.calls.GetTopics
+	mock.lockGetTopics.RUnlock()
+	return calls
+}
+
+// UpdateItemFeedback calls UpdateItemFeedbackFunc.
+func (mock *DatabaseMock) UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error {
+	if mock.UpdateItemFeedbackFunc == nil {
+		panic("DatabaseMock.UpdateItemFeedbackFunc: method is nil but Database.UpdateItemFeedback was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		ItemID   int64
+		Feedback string
+	}{
+		Ctx:      ctx,
+		ItemID:   itemID,
+		Feedback: feedback,
+	}
+	mock.lockUpdateItemFeedback.Lock()
+	mock.calls.UpdateItemFeedback = append(mock.calls.UpdateItemFeedback, callInfo)
+	mock.lockUpdateItemFeedback.Unlock()
+	return mock.UpdateItemFeedbackFunc(ctx, itemID, feedback)
+}
+
+// UpdateItemFeedbackCalls gets all the calls that were made to UpdateItemFeedback.
+// Check the length with:
+//
+//	len(mockedDatabase.UpdateItemFeedbackCalls())
+func (mock *DatabaseMock) UpdateItemFeedbackCalls() []struct {
+	Ctx      context.Context
+	ItemID   int64
+	Feedback string
+} {
+	var calls []struct {
+		Ctx      context.Context
+		ItemID   int64
+		Feedback string
+	}
+	mock.lockUpdateItemFeedback.RLock()
+	calls = mock.calls.UpdateItemFeedback
+	mock.lockUpdateItemFeedback.RUnlock()
 	return calls
 }

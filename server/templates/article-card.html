@@ -1,0 +1,66 @@
+<article class="article-card" data-score="{{.RelevanceScore}}">
+    <div class="article-header">
+        <h3><a href="{{.Link}}" target="_blank" rel="noopener">{{.Title}}</a></h3>
+        <div class="article-meta">
+            <span class="feed-name">{{.FeedName}}</span>
+            <time datetime="{{.Published.Format "2006-01-02T15:04:05Z07:00"}}">
+                {{.Published.Format "Jan 2, 2006"}}
+            </time>
+        </div>
+    </div>
+    
+    {{if .Description}}
+    <p class="article-description">{{.Description}}</p>
+    {{end}}
+    
+    <div class="classification">
+        <div class="score-bar">
+            <div class="score-fill" style="width: {{printf "%.0f" (mul .RelevanceScore 10)}}%"></div>
+            <span class="score-text">Score: {{printf "%.1f" .RelevanceScore}}/10</span>
+        </div>
+        
+        {{if .Explanation}}
+        <p class="explanation">{{.Explanation}}</p>
+        {{end}}
+        
+        {{if .Topics}}
+        <div class="topics">
+            {{range .Topics}}
+            <span class="topic-tag">{{.}}</span>
+            {{end}}
+        </div>
+        {{end}}
+    </div>
+    
+    <div class="article-actions">
+        <button class="btn-feedback btn-like {{if eq .UserFeedback "like"}}active{{end}}"
+                hx-post="/api/v1/feedback/{{.ID}}/like"
+                hx-swap="outerHTML"
+                hx-target="closest .article-card">
+            👍 Like
+        </button>
+        <button class="btn-feedback btn-dislike {{if eq .UserFeedback "dislike"}}active{{end}}"
+                hx-post="/api/v1/feedback/{{.ID}}/dislike"
+                hx-swap="outerHTML"
+                hx-target="closest .article-card">
+            👎 Dislike
+        </button>
+        {{if .ExtractedContent}}
+        <button class="btn-content"
+                hx-get="/api/v1/articles/{{.ID}}/content"
+                hx-target="#content-{{.ID}}"
+                hx-swap="innerHTML">
+            Show Content
+        </button>
+        {{else if not .ExtractionError}}
+        <button class="btn-extract"
+                hx-post="/api/v1/extract/{{.ID}}"
+                hx-swap="outerHTML"
+                hx-target="closest .article-card">
+            Extract Content
+        </button>
+        {{end}}
+    </div>
+    
+    <div id="content-{{.ID}}" class="article-content"></div>
+</article>

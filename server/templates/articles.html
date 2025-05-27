@@ -1,0 +1,57 @@
+{{template "base.html" .}}
+
+{{define "title"}}Articles - Newscope{{end}}
+
+{{define "content"}}
+<div class="articles-header">
+    <h2>Articles</h2>
+    
+    <!-- Score filter -->
+    <div class="filters">
+        <label for="score-filter">Min Score:</label>
+        <input type="range" id="score-filter" name="score" min="0" max="10" value="{{.MinScore}}" step="0.5"
+               hx-get="/articles"
+               hx-trigger="change"
+               hx-target="#articles-list"
+               hx-include="#topic-filter">
+        <span id="score-value">{{.MinScore}}</span>
+        
+        <!-- Topic filter -->
+        <label for="topic-filter">Topic:</label>
+        <select id="topic-filter" name="topic"
+                hx-get="/articles"
+                hx-trigger="change"
+                hx-target="#articles-list"
+                hx-include="#score-filter">
+            <option value="">All Topics</option>
+            {{range .Topics}}
+            <option value="{{.}}" {{if eq $.SelectedTopic .}}selected{{end}}>{{.}}</option>
+            {{end}}
+        </select>
+        
+        <!-- Refresh button -->
+        <button hx-post="/api/v1/classify-now" 
+                hx-swap="none"
+                hx-indicator="#loading"
+                class="btn-refresh">
+            Classify New Articles
+        </button>
+        <span id="loading" class="htmx-indicator">Processing...</span>
+    </div>
+</div>
+
+<div id="articles-list">
+    {{range .Articles}}
+    {{template "article-card.html" .}}
+    {{else}}
+    <p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>
+    {{end}}
+</div>
+
+<!-- Auto-update score display -->
+<script>
+document.getElementById('score-filter').addEventListener('input', function(e) {
+    document.getElementById('score-value').textContent = e.target.value;
+});
+</script>
+{{end}}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -231,4 +232,233 @@ func setupTestDB(t *testing.T) (testDB *db.DB, cleanup func()) {
 	}
 
 	return testDB, cleanup
+}
+
+func TestDBAdapter_GetClassifiedItems(t *testing.T) {
+	// create test DB
+	testDB, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// create a feed first
+	feed := &db.Feed{
+		URL:     "http://example.com/feed",
+		Title:   "Test Feed",
+		Enabled: true,
+	}
+	err := testDB.CreateFeed(ctx, feed)
+	require.NoError(t, err)
+
+	// insert test items with classification
+	now := time.Now()
+	item1 := &db.Item{
+		FeedID:         feed.ID,
+		GUID:           "guid1",
+		Title:          "Tech Article",
+		Link:           "http://example.com/item1",
+		Description:    "About AI",
+		Published:      now,
+		RelevanceScore: 8.5,
+		Explanation:    "Very relevant to AI",
+		Topics:         db.Topics{"ai", "tech"},
+	}
+	err = testDB.CreateItem(ctx, item1)
+	require.NoError(t, err)
+	// mark as classified
+	err = testDB.UpdateItemClassification(ctx, item1.ID, 8.5, "Very relevant to AI", []string{"ai", "tech"})
+	require.NoError(t, err)
+
+	item2 := &db.Item{
+		FeedID:         feed.ID,
+		GUID:           "guid2",
+		Title:          "Science Article",
+		Link:           "http://example.com/item2",
+		Description:    "About biology",
+		Published:      now.Add(-1 * time.Hour),
+		RelevanceScore: 3.0,
+		Explanation:    "Not very relevant",
+		Topics:         db.Topics{"science", "biology"},
+	}
+	err = testDB.CreateItem(ctx, item2)
+	require.NoError(t, err)
+	err = testDB.UpdateItemClassification(ctx, item2.ID, 3.0, "Not very relevant", []string{"science", "biology"})
+	require.NoError(t, err)
+
+	// create adapter and test GetClassifiedItems
+	adapter := &DBAdapter{DB: testDB}
+	
+	// test with min score filter
+	items, err := adapter.GetClassifiedItems(ctx, 5.0, "", 10)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "Tech Article", items[0].Title)
+	assert.Equal(t, "Test Feed", items[0].FeedName)
+	assert.InEpsilon(t, 8.5, items[0].RelevanceScore, 0.01)
+	
+	// test with topic filter
+	items, err = adapter.GetClassifiedItems(ctx, 0.0, "science", 10)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "Science Article", items[0].Title)
+	
+	// test with both filters
+	items, err = adapter.GetClassifiedItems(ctx, 5.0, "ai", 10)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "Tech Article", items[0].Title)
+}
+
+func TestDBAdapter_GetClassifiedItem(t *testing.T) {
+	// create test DB
+	testDB, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// create a feed
+	feed := &db.Feed{
+		URL:     "http://example.com/feed",
+		Title:   "Test Feed",
+		Enabled: true,
+	}
+	err := testDB.CreateFeed(ctx, feed)
+	require.NoError(t, err)
+
+	// insert test item
+	now := time.Now()
+	item := &db.Item{
+		FeedID:      feed.ID,
+		GUID:        "guid1",
+		Title:       "Test Article",
+		Link:        "http://example.com/item1",
+		Description: "Test description",
+		Published:   now,
+	}
+	err = testDB.CreateItem(ctx, item)
+	require.NoError(t, err)
+	
+	// add extracted content
+	err = testDB.UpdateItemExtraction(ctx, item.ID, "Full article content", nil)
+	require.NoError(t, err)
+	
+	// classify it
+	err = testDB.UpdateItemClassification(ctx, item.ID, 7.5, "Relevant article", []string{"test", "demo"})
+	require.NoError(t, err)
+
+	// create adapter and test GetClassifiedItem
+	adapter := &DBAdapter{DB: testDB}
+	
+	result, err := adapter.GetClassifiedItem(ctx, item.ID)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	
+	assert.Equal(t, item.ID, result.ID)
+	assert.Equal(t, "Test Article", result.Title)
+	assert.Equal(t, "Test Feed", result.FeedName)
+	assert.InEpsilon(t, 7.5, result.RelevanceScore, 0.01)
+	assert.Equal(t, "Relevant article", result.Explanation)
+	assert.Equal(t, []string{"test", "demo"}, result.Topics)
+	assert.Equal(t, "Full article content", result.ExtractedContent)
+}
+
+func TestDBAdapter_UpdateItemFeedback(t *testing.T) {
+	// create test DB
+	testDB, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// create a feed and item
+	feed := &db.Feed{
+		URL:     "http://example.com/feed",
+		Title:   "Test Feed",
+		Enabled: true,
+	}
+	err := testDB.CreateFeed(ctx, feed)
+	require.NoError(t, err)
+
+	item := &db.Item{
+		FeedID:    feed.ID,
+		GUID:      "guid1",
+		Title:     "Test Article",
+		Link:      "http://example.com/item1",
+		Published: time.Now(),
+	}
+	err = testDB.CreateItem(ctx, item)
+	require.NoError(t, err)
+
+	// create adapter and test UpdateItemFeedback
+	adapter := &DBAdapter{DB: testDB}
+	
+	err = adapter.UpdateItemFeedback(ctx, item.ID, "like")
+	require.NoError(t, err)
+	
+	// verify feedback was updated
+	updatedItem, err := testDB.GetItem(ctx, item.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "like", updatedItem.UserFeedback)
+	assert.NotNil(t, updatedItem.FeedbackAt)
+}
+
+func TestDBAdapter_GetTopics(t *testing.T) {
+	// create test DB
+	testDB, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// create a feed
+	feed := &db.Feed{
+		URL:     "http://example.com/feed",
+		Title:   "Test Feed",
+		Enabled: true,
+	}
+	err := testDB.CreateFeed(ctx, feed)
+	require.NoError(t, err)
+
+	// create items with various topics
+	// note: we need to classify items for topics to be populated properly
+	for i, data := range []struct {
+		title  string
+		topics []string
+	}{
+		{"Item 1", []string{"tech", "ai"}},
+		{"Item 2", []string{"science", "ai"}},
+		{"Item 3", []string{"tech", "web"}},
+	} {
+		item := &db.Item{
+			FeedID:    feed.ID,
+			GUID:      fmt.Sprintf("guid%d", i),
+			Title:     data.title,
+			Link:      fmt.Sprintf("http://example.com/item%d", i),
+			Published: time.Now(),
+		}
+		err = testDB.CreateItem(ctx, item)
+		require.NoError(t, err)
+		
+		// classify to set topics
+		err = testDB.UpdateItemClassification(ctx, item.ID, 5.0, "test", data.topics)
+		require.NoError(t, err)
+	}
+
+	// create adapter and test GetTopics
+	adapter := &DBAdapter{DB: testDB}
+	
+	topics, err := adapter.GetTopics(ctx)
+	require.NoError(t, err)
+	
+	// should have unique topics
+	assert.Len(t, topics, 4) // tech, ai, science, web
+	
+	// verify all expected topics are present
+	topicMap := make(map[string]bool)
+	for _, topic := range topics {
+		topicMap[topic] = true
+	}
+	
+	assert.True(t, topicMap["tech"])
+	assert.True(t, topicMap["ai"])
+	assert.True(t, topicMap["science"])
+	assert.True(t, topicMap["web"])
 }

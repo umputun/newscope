@@ -428,3 +428,13 @@ func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
 	s.extractItemContent(ctx, *item)
 	return nil
 }
+
+// ClassifyNow triggers immediate classification of pending items
+func (s *Scheduler) ClassifyNow(ctx context.Context) error {
+	lgr.Printf("[INFO] triggered immediate classification")
+	
+	// run classification once
+	s.classifyPendingItems(ctx)
+	
+	return nil
+}

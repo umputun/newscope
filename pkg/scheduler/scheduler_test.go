@@ -564,3 +564,52 @@ func TestScheduler_classifyPendingItems(t *testing.T) {
 	assert.Len(t, mockClassifier.ClassifyArticlesCalls(), 1)
 	assert.Len(t, mockDB.UpdateClassificationsCalls(), 1)
 }
+
+func TestScheduler_ClassifyNow(t *testing.T) {
+	ctx := context.Background()
+	mockDB := &mocks.DatabaseMock{}
+	mockParser := &mocks.ParserMock{}
+	mockExtractor := &mocks.ExtractorMock{}
+	mockClassifier := &mocks.ClassifierMock{}
+
+	// set up expectations
+	mockDB.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error) {
+		return []db.FeedbackExample{}, nil
+	}
+
+	mockDB.GetUnclassifiedItemsFunc = func(ctx context.Context, limit int) ([]db.Item, error) {
+		return []db.Item{
+			{
+				ID:    1,
+				GUID:  "guid1",
+				Title: "Test Article",
+			},
+		}, nil
+	}
+
+	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, items []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+		return []db.Classification{
+			{
+				GUID:        "guid1",
+				Score:       7.5,
+				Explanation: "Relevant",
+				Topics:      []string{"tech"},
+			},
+		}, nil
+	}
+
+	mockDB.UpdateClassificationsFunc = func(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error {
+		return nil
+	}
+
+	s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+	
+	// test ClassifyNow
+	err := s.ClassifyNow(ctx)
+	require.NoError(t, err)
+	
+	// verify classification was triggered
+	assert.Len(t, mockDB.GetUnclassifiedItemsCalls(), 1)
+	assert.Len(t, mockClassifier.ClassifyArticlesCalls(), 1)
+	assert.Len(t, mockDB.UpdateClassificationsCalls(), 1)
+}
