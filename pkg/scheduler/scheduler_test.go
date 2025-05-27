@@ -3,6 +3,7 @@ package scheduler
 //go:generate moq -out mocks/db.go -pkg mocks -skip-ensure -fmt goimports . Database
 //go:generate moq -out mocks/parser.go -pkg mocks -skip-ensure -fmt goimports . Parser
 //go:generate moq -out mocks/extractor.go -pkg mocks -skip-ensure -fmt goimports . Extractor
+//go:generate moq -out mocks/classifier.go -pkg mocks -skip-ensure -fmt goimports . Classifier
 
 import (
 	"context"
@@ -24,26 +25,30 @@ func TestNewScheduler(t *testing.T) {
 	mockDB := &mocks.DatabaseMock{}
 	mockParser := &mocks.ParserMock{}
 	mockExtractor := &mocks.ExtractorMock{}
+	mockClassifier := &mocks.ClassifierMock{}
 
 	t.Run("with defaults", func(t *testing.T) {
 		cfg := Config{}
-		s := NewScheduler(mockDB, mockParser, mockExtractor, cfg)
+		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, cfg)
 
 		assert.Equal(t, 30*time.Minute, s.updateInterval)
 		assert.Equal(t, 5*time.Minute, s.extractInterval)
+		assert.Equal(t, 10*time.Minute, s.classifyInterval)
 		assert.Equal(t, 5, s.maxWorkers)
 	})
 
 	t.Run("with custom config", func(t *testing.T) {
 		cfg := Config{
-			UpdateInterval:  1 * time.Hour,
-			ExtractInterval: 10 * time.Minute,
-			MaxWorkers:      10,
+			UpdateInterval:   1 * time.Hour,
+			ExtractInterval:  10 * time.Minute,
+			ClassifyInterval: 15 * time.Minute,
+			MaxWorkers:       10,
 		}
-		s := NewScheduler(mockDB, mockParser, mockExtractor, cfg)
+		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, cfg)
 
 		assert.Equal(t, 1*time.Hour, s.updateInterval)
 		assert.Equal(t, 10*time.Minute, s.extractInterval)
+		assert.Equal(t, 15*time.Minute, s.classifyInterval)
 		assert.Equal(t, 10, s.maxWorkers)
 	})
 }
@@ -106,7 +111,7 @@ func TestScheduler_UpdateFeed(t *testing.T) {
 			return nil
 		}
 
-		s := NewScheduler(mockDB, mockParser, mockExtractor, Config{})
+		s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
 		s.updateFeed(ctx, testFeed)
 
 		assert.Equal(t, 2, createItemCount)
@@ -136,7 +141,7 @@ func TestScheduler_UpdateFeed(t *testing.T) {
 			return nil
 		}
 
-		s := NewScheduler(mockDB, mockParser, mockExtractor, Config{})
+		s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
 		s.updateFeed(ctx, testFeed)
 
 		assert.True(t, errorUpdated)
@@ -177,7 +182,7 @@ func TestScheduler_ExtractItemContent(t *testing.T) {
 			return nil
 		}
 
-		s := NewScheduler(mockDB, mockParser, mockExtractor, Config{})
+		s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
 		s.extractItemContent(ctx, testItem)
 
 		assert.True(t, contentUpdated)
@@ -207,7 +212,7 @@ func TestScheduler_ExtractItemContent(t *testing.T) {
 			return nil
 		}
 
-		s := NewScheduler(mockDB, mockParser, mockExtractor, Config{})
+		s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
 		s.extractItemContent(ctx, testItem)
 
 		assert.True(t, errorStored)
@@ -254,7 +259,7 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		return nil
 	}
 
-	s := NewScheduler(mockDB, mockParser, mockExtractor, Config{})
+	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
 	err := s.UpdateFeedNow(ctx, 1)
 	require.NoError(t, err)
 }
@@ -290,7 +295,7 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		return nil
 	}
 
-	s := NewScheduler(mockDB, mockParser, mockExtractor, Config{})
+	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
 	err := s.ExtractContentNow(ctx, 1)
 	require.NoError(t, err)
 }
@@ -312,7 +317,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		UpdateInterval:  100 * time.Millisecond,
 		ExtractInterval: 100 * time.Millisecond,
 	}
-	s := NewScheduler(mockDB, mockParser, mockExtractor, cfg)
+	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, cfg)
 
 	ctx := context.Background()
 	s.Start(ctx)
@@ -384,7 +389,7 @@ func TestScheduler_extractPendingContent(t *testing.T) {
 		return nil
 	}
 
-	s := NewScheduler(mockDB, mockParser, mockExtractor, Config{})
+	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
 	s.extractPendingContent(ctx)
 
 	assert.Len(t, mockExtractor.ExtractCalls(), 2)
@@ -453,7 +458,7 @@ func TestScheduler_updateAllFeeds(t *testing.T) {
 		return nil
 	}
 
-	s := NewScheduler(mockDB, mockParser, mockExtractor, Config{MaxWorkers: 2})
+	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{MaxWorkers: 2})
 	s.updateAllFeeds(ctx)
 
 	assert.Len(t, mockParser.ParseCalls(), 2)
@@ -471,7 +476,7 @@ func TestScheduler_periodicUpdates(t *testing.T) {
 		return []db.Feed{}, nil
 	}
 
-	s := NewScheduler(mockDB, mockParser, mockExtractor, Config{
+	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{
 		UpdateInterval:  50 * time.Millisecond,
 		ExtractInterval: 1 * time.Hour, // don't run extraction
 	})
@@ -487,4 +492,75 @@ func TestScheduler_periodicUpdates(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	assert.GreaterOrEqual(t, len(mockDB.GetFeedsCalls()), 2)
+}
+
+func TestScheduler_classifyPendingItems(t *testing.T) {
+	ctx := context.Background()
+	mockDB := &mocks.DatabaseMock{}
+	mockParser := &mocks.ParserMock{}
+	mockExtractor := &mocks.ExtractorMock{}
+	mockClassifier := &mocks.ClassifierMock{}
+
+	testItems := []db.Item{
+		{
+			ID:   1,
+			GUID: "guid1",
+			Title: "Article 1",
+			ExtractedContent: "Content 1",
+		},
+		{
+			ID:   2,
+			GUID: "guid2", 
+			Title: "Article 2",
+			ExtractedContent: "Content 2",
+		},
+	}
+
+	mockDB.GetUnclassifiedItemsFunc = func(ctx context.Context, limit int) ([]db.Item, error) {
+		return testItems, nil
+	}
+
+	mockDB.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error) {
+		return []db.FeedbackExample{
+			{
+				Title:    "Previous Article",
+				Feedback: "like",
+				Topics:   []string{"tech"},
+			},
+		}, nil
+	}
+
+	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+		assert.Len(t, articles, 2)
+		assert.Len(t, feedbacks, 1)
+		
+		return []db.Classification{
+			{
+				GUID:        "guid1",
+				Score:       8.5,
+				Explanation: "Relevant article",
+				Topics:      []string{"tech", "programming"},
+			},
+			{
+				GUID:        "guid2",
+				Score:       3.0,
+				Explanation: "Not relevant",
+				Topics:      []string{"sports"},
+			},
+		}, nil
+	}
+
+	mockDB.UpdateClassificationsFunc = func(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error {
+		assert.Len(t, classifications, 2)
+		assert.Len(t, itemsByGUID, 2)
+		assert.Equal(t, int64(1), itemsByGUID["guid1"])
+		assert.Equal(t, int64(2), itemsByGUID["guid2"])
+		return nil
+	}
+
+	s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+	s.classifyPendingItems(ctx)
+
+	assert.Len(t, mockClassifier.ClassifyArticlesCalls(), 1)
+	assert.Len(t, mockDB.UpdateClassificationsCalls(), 1)
 }

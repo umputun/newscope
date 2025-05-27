@@ -106,3 +106,6 @@ git branch -D feature-branch-name
 - Apply middleware: `router.Use(rest.Recoverer(), rest.Throttle(), rest.BasicAuth())`
 - Define routes with groups: `router.Mount("/api").Route(func(r *routegroup.Bundle) {...})`
 - Start server: `srv := &http.Server{Addr: addr, Handler: router}; srv.ListenAndServe()`
+
+## Commit Guidelines
+- For commit comment use lower case, always

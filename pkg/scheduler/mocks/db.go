@@ -35,8 +35,17 @@ import (
 //			GetItemsNeedingExtractionFunc: func(ctx context.Context, limit int) ([]db.Item, error) {
 //				panic("mock out the GetItemsNeedingExtraction method")
 //			},
+//			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error) {
+//				panic("mock out the GetRecentFeedback method")
+//			},
+//			GetUnclassifiedItemsFunc: func(ctx context.Context, limit int) ([]db.Item, error) {
+//				panic("mock out the GetUnclassifiedItems method")
+//			},
 //			ItemExistsFunc: func(ctx context.Context, feedID int64, guid string) (bool, error) {
 //				panic("mock out the ItemExists method")
+//			},
+//			UpdateClassificationsFunc: func(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error {
+//				panic("mock out the UpdateClassifications method")
 //			},
 //			UpdateFeedErrorFunc: func(ctx context.Context, feedID int64, errMsg string) error {
 //				panic("mock out the UpdateFeedError method")
@@ -72,8 +81,17 @@ type DatabaseMock struct {
 	// GetItemsNeedingExtractionFunc mocks the GetItemsNeedingExtraction method.
 	GetItemsNeedingExtractionFunc func(ctx context.Context, limit int) ([]db.Item, error)
 
+	// GetRecentFeedbackFunc mocks the GetRecentFeedback method.
+	GetRecentFeedbackFunc func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
+
+	// GetUnclassifiedItemsFunc mocks the GetUnclassifiedItems method.
+	GetUnclassifiedItemsFunc func(ctx context.Context, limit int) ([]db.Item, error)
+
 	// ItemExistsFunc mocks the ItemExists method.
 	ItemExistsFunc func(ctx context.Context, feedID int64, guid string) (bool, error)
+
+	// UpdateClassificationsFunc mocks the UpdateClassifications method.
+	UpdateClassificationsFunc func(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error
 
 	// UpdateFeedErrorFunc mocks the UpdateFeedError method.
 	UpdateFeedErrorFunc func(ctx context.Context, feedID int64, errMsg string) error
@@ -128,6 +146,22 @@ type DatabaseMock struct {
 			// Limit is the limit argument value.
 			Limit int
 		}
+		// GetRecentFeedback holds details about calls to the GetRecentFeedback method.
+		GetRecentFeedback []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// FeedbackType is the feedbackType argument value.
+			FeedbackType string
+			// Limit is the limit argument value.
+			Limit int
+		}
+		// GetUnclassifiedItems holds details about calls to the GetUnclassifiedItems method.
+		GetUnclassifiedItems []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// ItemExists holds details about calls to the ItemExists method.
 		ItemExists []struct {
 			// Ctx is the ctx argument value.
@@ -136,6 +170,15 @@ type DatabaseMock struct {
 			FeedID int64
 			// GUID is the guid argument value.
 			GUID string
+		}
+		// UpdateClassifications holds details about calls to the UpdateClassifications method.
+		UpdateClassifications []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Classifications is the classifications argument value.
+			Classifications []db.Classification
+			// ItemsByGUID is the itemsByGUID argument value.
+			ItemsByGUID map[string]int64
 		}
 		// UpdateFeedError holds details about calls to the UpdateFeedError method.
 		UpdateFeedError []struct {
@@ -173,7 +216,10 @@ type DatabaseMock struct {
 	lockGetFeedsToFetch           sync.RWMutex
 	lockGetItem                   sync.RWMutex
 	lockGetItemsNeedingExtraction sync.RWMutex
+	lockGetRecentFeedback         sync.RWMutex
+	lockGetUnclassifiedItems      sync.RWMutex
 	lockItemExists                sync.RWMutex
+	lockUpdateClassifications     sync.RWMutex
 	lockUpdateFeedError           sync.RWMutex
 	lockUpdateFeedFetched         sync.RWMutex
 	lockUpdateItemExtraction      sync.RWMutex
@@ -395,6 +441,82 @@ func (mock *DatabaseMock) GetItemsNeedingExtractionCalls() []struct {
 	return calls
 }
 
+// GetRecentFeedback calls GetRecentFeedbackFunc.
+func (mock *DatabaseMock) GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error) {
+	if mock.GetRecentFeedbackFunc == nil {
+		panic("DatabaseMock.GetRecentFeedbackFunc: method is nil but Database.GetRecentFeedback was just called")
+	}
+	callInfo := struct {
+		Ctx          context.Context
+		FeedbackType string
+		Limit        int
+	}{
+		Ctx:          ctx,
+		FeedbackType: feedbackType,
+		Limit:        limit,
+	}
+	mock.lockGetRecentFeedback.Lock()
+	mock.calls.GetRecentFeedback = append(mock.calls.GetRecentFeedback, callInfo)
+	mock.lockGetRecentFeedback.Unlock()
+	return mock.GetRecentFeedbackFunc(ctx, feedbackType, limit)
+}
+
+// GetRecentFeedbackCalls gets all the calls that were made to GetRecentFeedback.
+// Check the length with:
+//
+//	len(mockedDatabase.GetRecentFeedbackCalls())
+func (mock *DatabaseMock) GetRecentFeedbackCalls() []struct {
+	Ctx          context.Context
+	FeedbackType string
+	Limit        int
+} {
+	var calls []struct {
+		Ctx          context.Context
+		FeedbackType string
+		Limit        int
+	}
+	mock.lockGetRecentFeedback.RLock()
+	calls = mock.calls.GetRecentFeedback
+	mock.lockGetRecentFeedback.RUnlock()
+	return calls
+}
+
+// GetUnclassifiedItems calls GetUnclassifiedItemsFunc.
+func (mock *DatabaseMock) GetUnclassifiedItems(ctx context.Context, limit int) ([]db.Item, error) {
+	if mock.GetUnclassifiedItemsFunc == nil {
+		panic("DatabaseMock.GetUnclassifiedItemsFunc: method is nil but Database.GetUnclassifiedItems was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Limit int
+	}{
+		Ctx:   ctx,
+		Limit: limit,
+	}
+	mock.lockGetUnclassifiedItems.Lock()
+	mock.calls.GetUnclassifiedItems = append(mock.calls.GetUnclassifiedItems, callInfo)
+	mock.lockGetUnclassifiedItems.Unlock()
+	return mock.GetUnclassifiedItemsFunc(ctx, limit)
+}
+
+// GetUnclassifiedItemsCalls gets all the calls that were made to GetUnclassifiedItems.
+// Check the length with:
+//
+//	len(mockedDatabase.GetUnclassifiedItemsCalls())
+func (mock *DatabaseMock) GetUnclassifiedItemsCalls() []struct {
+	Ctx   context.Context
+	Limit int
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Limit int
+	}
+	mock.lockGetUnclassifiedItems.RLock()
+	calls = mock.calls.GetUnclassifiedItems
+	mock.lockGetUnclassifiedItems.RUnlock()
+	return calls
+}
+
 // ItemExists calls ItemExistsFunc.
 func (mock *DatabaseMock) ItemExists(ctx context.Context, feedID int64, guid string) (bool, error) {
 	if mock.ItemExistsFunc == nil {
@@ -432,6 +554,46 @@ func (mock *DatabaseMock) ItemExistsCalls() []struct {
 	mock.lockItemExists.RLock()
 	calls = mock.calls.ItemExists
 	mock.lockItemExists.RUnlock()
+	return calls
+}
+
+// UpdateClassifications calls UpdateClassificationsFunc.
+func (mock *DatabaseMock) UpdateClassifications(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error {
+	if mock.UpdateClassificationsFunc == nil {
+		panic("DatabaseMock.UpdateClassificationsFunc: method is nil but Database.UpdateClassifications was just called")
+	}
+	callInfo := struct {
+		Ctx             context.Context
+		Classifications []db.Classification
+		ItemsByGUID     map[string]int64
+	}{
+		Ctx:             ctx,
+		Classifications: classifications,
+		ItemsByGUID:     itemsByGUID,
+	}
+	mock.lockUpdateClassifications.Lock()
+	mock.calls.UpdateClassifications = append(mock.calls.UpdateClassifications, callInfo)
+	mock.lockUpdateClassifications.Unlock()
+	return mock.UpdateClassificationsFunc(ctx, classifications, itemsByGUID)
+}
+
+// UpdateClassificationsCalls gets all the calls that were made to UpdateClassifications.
+// Check the length with:
+//
+//	len(mockedDatabase.UpdateClassificationsCalls())
+func (mock *DatabaseMock) UpdateClassificationsCalls() []struct {
+	Ctx             context.Context
+	Classifications []db.Classification
+	ItemsByGUID     map[string]int64
+} {
+	var calls []struct {
+		Ctx             context.Context
+		Classifications []db.Classification
+		ItemsByGUID     map[string]int64
+	}
+	mock.lockUpdateClassifications.RLock()
+	calls = mock.calls.UpdateClassifications
+	mock.lockUpdateClassifications.RUnlock()
 	return calls
 }
 

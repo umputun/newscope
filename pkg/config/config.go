@@ -25,9 +25,10 @@ type Config struct {
 	} `yaml:"database" json:"database" jsonschema:"description=Database configuration"`
 
 	Schedule struct {
-		UpdateInterval  int `yaml:"update_interval" json:"update_interval" jsonschema:"default=30,description=Feed update interval in minutes"`
-		ExtractInterval int `yaml:"extract_interval" json:"extract_interval" jsonschema:"default=5,description=Content extraction interval in minutes"`
-		MaxWorkers      int `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
+		UpdateInterval     int `yaml:"update_interval" json:"update_interval" jsonschema:"default=30,description=Feed update interval in minutes"`
+		ExtractInterval    int `yaml:"extract_interval" json:"extract_interval" jsonschema:"default=5,description=Content extraction interval in minutes"`
+		ClassifyInterval   int `yaml:"classify_interval" json:"classify_interval" jsonschema:"default=10,description=Classification interval in minutes"`
+		MaxWorkers         int `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
 	} `yaml:"schedule" json:"schedule" jsonschema:"description=Scheduler configuration"`
 
 	LLM LLMConfig `yaml:"llm" json:"llm" jsonschema:"description=LLM configuration for article classification"`

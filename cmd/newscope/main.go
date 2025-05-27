@@ -20,6 +20,7 @@ import (
 	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed"
+	"github.com/umputun/newscope/pkg/llm"
 	"github.com/umputun/newscope/pkg/scheduler"
 	"github.com/umputun/newscope/server"
 )
@@ -100,13 +101,23 @@ func main() {
 		contentExtractor.SetOptions(cfg.Extraction.MinTextLength, cfg.Extraction.IncludeImages, cfg.Extraction.IncludeLinks)
 	}
 
+	// setup LLM classifier
+	var classifier *llm.Classifier
+	if cfg.LLM.Endpoint != "" && cfg.LLM.APIKey != "" {
+		classifier = llm.NewClassifier(cfg.LLM)
+		log.Printf("[INFO] LLM classifier enabled with model: %s", cfg.LLM.Model)
+	} else {
+		log.Printf("[WARN] LLM classifier disabled - no endpoint or API key configured")
+	}
+
 	// setup and start scheduler
 	schedulerCfg := scheduler.Config{
-		UpdateInterval:  time.Duration(cfg.Schedule.UpdateInterval) * time.Minute,
-		ExtractInterval: time.Duration(cfg.Schedule.ExtractInterval) * time.Minute,
-		MaxWorkers:      cfg.Schedule.MaxWorkers,
+		UpdateInterval:   time.Duration(cfg.Schedule.UpdateInterval) * time.Minute,
+		ExtractInterval:  time.Duration(cfg.Schedule.ExtractInterval) * time.Minute,
+		ClassifyInterval: time.Duration(cfg.Schedule.ClassifyInterval) * time.Minute,
+		MaxWorkers:       cfg.Schedule.MaxWorkers,
 	}
-	sched := scheduler.NewScheduler(dbConn, feedParser, contentExtractor, schedulerCfg)
+	sched := scheduler.NewScheduler(dbConn, feedParser, contentExtractor, classifier, schedulerCfg)
 	sched.Start(ctx)
 	defer sched.Stop()
 

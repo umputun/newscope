@@ -13,6 +13,20 @@ import (
 	"github.com/umputun/newscope/pkg/feed/types"
 )
 
+// Scheduler manages periodic feed updates, content extraction, and classification
+type Scheduler struct {
+	db               Database
+	parser           Parser
+	extractor        Extractor
+	classifier       Classifier
+	updateInterval   time.Duration
+	extractInterval  time.Duration
+	classifyInterval time.Duration
+	maxWorkers       int
+	wg               sync.WaitGroup
+	cancel           context.CancelFunc
+}
+
 // Database interface for scheduler operations
 type Database interface {
 	GetFeed(ctx context.Context, id int64) (*db.Feed, error)
@@ -26,6 +40,10 @@ type Database interface {
 	ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
 	GetItemsNeedingExtraction(ctx context.Context, limit int) ([]db.Item, error)
 	UpdateItemExtraction(ctx context.Context, itemID int64, content string, err error) error
+	
+	GetUnclassifiedItems(ctx context.Context, limit int) ([]db.Item, error)
+	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
+	UpdateClassifications(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error
 }
 
 // Parser interface for feed parsing
@@ -38,44 +56,43 @@ type Extractor interface {
 	Extract(ctx context.Context, url string) (*content.ExtractResult, error)
 }
 
-// Scheduler manages periodic feed updates and content extraction
-type Scheduler struct {
-	db              Database
-	parser          Parser
-	extractor       Extractor
-	updateInterval  time.Duration
-	extractInterval time.Duration
-	maxWorkers      int
-	wg              sync.WaitGroup
-	cancel          context.CancelFunc
+// Classifier interface for LLM classification
+type Classifier interface {
+	ClassifyArticles(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error)
 }
 
 // Config holds scheduler configuration
 type Config struct {
-	UpdateInterval  time.Duration
-	ExtractInterval time.Duration
-	MaxWorkers      int
+	UpdateInterval   time.Duration
+	ExtractInterval  time.Duration
+	ClassifyInterval time.Duration
+	MaxWorkers       int
 }
 
 // NewScheduler creates a new scheduler instance
-func NewScheduler(database Database, parser Parser, extractor Extractor, cfg Config) *Scheduler {
+func NewScheduler(database Database, parser Parser, extractor Extractor, classifier Classifier, cfg Config) *Scheduler {
 	if cfg.UpdateInterval == 0 {
 		cfg.UpdateInterval = 30 * time.Minute
 	}
 	if cfg.ExtractInterval == 0 {
 		cfg.ExtractInterval = 5 * time.Minute
 	}
+	if cfg.ClassifyInterval == 0 {
+		cfg.ClassifyInterval = 10 * time.Minute
+	}
 	if cfg.MaxWorkers == 0 {
 		cfg.MaxWorkers = 5
 	}
 
 	return &Scheduler{
-		db:              database,
-		parser:          parser,
-		extractor:       extractor,
-		updateInterval:  cfg.UpdateInterval,
-		extractInterval: cfg.ExtractInterval,
-		maxWorkers:      cfg.MaxWorkers,
+		db:               database,
+		parser:           parser,
+		extractor:        extractor,
+		classifier:       classifier,
+		updateInterval:   cfg.UpdateInterval,
+		extractInterval:  cfg.ExtractInterval,
+		classifyInterval: cfg.ClassifyInterval,
+		maxWorkers:       cfg.MaxWorkers,
 	}
 }
 
@@ -91,7 +108,14 @@ func (s *Scheduler) Start(ctx context.Context) {
 	s.wg.Add(1)
 	go s.contentExtractionWorker(ctx)
 
-	lgr.Printf("[INFO] scheduler started with update interval %v and extract interval %v", s.updateInterval, s.extractInterval)
+	// start classification worker if classifier is provided
+	if s.classifier != nil {
+		s.wg.Add(1)
+		go s.classificationWorker(ctx)
+	}
+
+	lgr.Printf("[INFO] scheduler started with update interval %v, extract interval %v, classify interval %v", 
+		s.updateInterval, s.extractInterval, s.classifyInterval)
 }
 
 // Stop gracefully stops the scheduler
@@ -293,6 +317,94 @@ func (s *Scheduler) extractItemContent(ctx context.Context, item db.Item) {
 	}
 
 	lgr.Printf("[DEBUG] extracted %d characters from: %s", len(extracted.Content), item.Title)
+}
+
+// classificationWorker periodically classifies articles using LLM
+func (s *Scheduler) classificationWorker(ctx context.Context) {
+	defer s.wg.Done()
+
+	ticker := time.NewTicker(s.classifyInterval)
+	defer ticker.Stop()
+
+	// run classification after a short delay to allow content extraction
+	time.Sleep(30 * time.Second)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.classifyPendingItems(ctx)
+		}
+	}
+}
+
+// classifyPendingItems classifies items that haven't been classified yet
+func (s *Scheduler) classifyPendingItems(ctx context.Context) {
+	if s.classifier == nil {
+		return
+	}
+
+	batchSize := 5 // matches the default batch_size in config
+
+	// get unclassified items
+	items, err := s.db.GetUnclassifiedItems(ctx, batchSize*s.maxWorkers)
+	if err != nil {
+		lgr.Printf("[ERROR] failed to get unclassified items: %v", err)
+		return
+	}
+
+	if len(items) == 0 {
+		return
+	}
+
+	lgr.Printf("[INFO] classifying %d items", len(items))
+
+	// get recent feedback for context
+	feedbackLimit := 10 // could be configurable
+	feedbacks, err := s.db.GetRecentFeedback(ctx, "", feedbackLimit)
+	if err != nil {
+		lgr.Printf("[ERROR] failed to get feedback examples: %v", err)
+		// continue without feedback
+		feedbacks = []db.FeedbackExample{}
+	}
+
+	// process items in batches
+	for i := 0; i < len(items); i += batchSize {
+		end := i + batchSize
+		if end > len(items) {
+			end = len(items)
+		}
+
+		batch := items[i:end]
+		s.classifyBatch(ctx, batch, feedbacks)
+	}
+
+	lgr.Printf("[INFO] classification completed")
+}
+
+// classifyBatch processes a batch of items through the LLM classifier
+func (s *Scheduler) classifyBatch(ctx context.Context, items []db.Item, feedbacks []db.FeedbackExample) {
+	// call LLM classifier
+	classifications, err := s.classifier.ClassifyArticles(ctx, items, feedbacks)
+	if err != nil {
+		lgr.Printf("[ERROR] failed to classify batch: %v", err)
+		return
+	}
+
+	// build a map of GUID to item ID for updating
+	itemsByGUID := make(map[string]int64)
+	for _, item := range items {
+		itemsByGUID[item.GUID] = item.ID
+	}
+
+	// update classifications in database
+	if err := s.db.UpdateClassifications(ctx, classifications, itemsByGUID); err != nil {
+		lgr.Printf("[ERROR] failed to update classifications: %v", err)
+		return
+	}
+
+	lgr.Printf("[DEBUG] classified %d items", len(classifications))
 }
 
 // UpdateFeedNow triggers immediate update of a specific feed
