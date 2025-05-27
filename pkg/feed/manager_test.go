@@ -31,16 +31,16 @@ func TestManager_FetchAll(t *testing.T) {
 		}
 
 		mockFetcher := &mocks.FetcherMock{
-			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.FeedItem, error) {
+			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.Item, error) {
 				switch feedURL {
 				case "https://feed1.com":
-					return []types.FeedItem{
-						{FeedName: "Feed1", Title: "Article 1", URL: "https://feed1.com/1"},
-						{FeedName: "Feed1", Title: "Article 2", URL: "https://feed1.com/2"},
+					return []types.Item{
+						{FeedName: "Feed1", Title: "Article 1", Link: "https://feed1.com/1"},
+						{FeedName: "Feed1", Title: "Article 2", Link: "https://feed1.com/2"},
 					}, nil
 				case "https://feed2.com":
-					return []types.FeedItem{
-						{FeedName: "Feed2", Title: "Article 3", URL: "https://feed2.com/3"},
+					return []types.Item{
+						{FeedName: "Feed2", Title: "Article 3", Link: "https://feed2.com/3"},
 					}, nil
 				}
 				return nil, errors.New("unexpected feed URL")
@@ -87,10 +87,10 @@ func TestManager_FetchAll(t *testing.T) {
 		}
 
 		mockFetcher := &mocks.FetcherMock{
-			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.FeedItem, error) {
+			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.Item, error) {
 				if feedURL == "https://feed1.com" {
-					return []types.FeedItem{
-						{FeedName: "Feed1", Title: "Article 1", URL: "https://feed1.com/1"},
+					return []types.Item{
+						{FeedName: "Feed1", Title: "Article 1", Link: "https://feed1.com/1"},
 					}, nil
 				}
 				return nil, errors.New("fetch failed")
@@ -141,12 +141,12 @@ func TestManager_FetchAll(t *testing.T) {
 		}
 
 		mockFetcher := &mocks.FetcherMock{
-			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.FeedItem, error) {
+			FetchFunc: func(ctx context.Context, feedURL, feedName string) ([]types.Item, error) {
 				select {
 				case <-ctx.Done():
 					return nil, ctx.Err()
 				case <-time.After(100 * time.Millisecond):
-					return []types.FeedItem{{FeedName: "Feed1", Title: "Article 1"}}, nil
+					return []types.Item{{FeedName: "Feed1", Title: "Article 1"}}, nil
 				}
 			},
 		}

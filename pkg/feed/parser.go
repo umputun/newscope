@@ -1,0 +1,114 @@
+package feed
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/mmcdole/gofeed"
+
+	"github.com/umputun/newscope/pkg/feed/types"
+)
+
+// Parser parses RSS/Atom feeds
+type Parser struct {
+	client *http.Client
+}
+
+// NewParser creates a new feed parser
+func NewParser(timeout time.Duration) *Parser {
+	return &Parser{
+		client: &http.Client{
+			Timeout: timeout,
+			Transport: &http.Transport{
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
+			},
+		},
+	}
+}
+
+// Parse fetches and parses a feed from the given URL
+func (p *Parser) Parse(ctx context.Context, url string) (*types.Feed, error) {
+	// fetch feed content
+	body, err := p.fetch(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("fetch feed: %w", err)
+	}
+	defer body.Close()
+
+	// parse feed
+	parser := gofeed.NewParser()
+	feed, err := parser.Parse(body)
+	if err != nil {
+		return nil, fmt.Errorf("parse feed: %w", err)
+	}
+
+	// convert to our types
+	result := &types.Feed{
+		Title:       feed.Title,
+		Description: feed.Description,
+		Link:        feed.Link,
+		Items:       make([]types.Item, 0, len(feed.Items)),
+	}
+
+	for _, item := range feed.Items {
+		parsedItem := types.Item{
+			Title:       item.Title,
+			Link:        item.Link,
+			Description: item.Description,
+			Content:     item.Content,
+		}
+
+		// set GUID
+		if item.GUID != "" {
+			parsedItem.GUID = item.GUID
+		} else if item.Link != "" {
+			parsedItem.GUID = item.Link
+		} else {
+			parsedItem.GUID = fmt.Sprintf("%s-%s", feed.Title, item.Title)
+		}
+
+		// set author
+		if item.Author != nil {
+			parsedItem.Author = item.Author.Name
+		}
+
+		// set published time
+		if item.PublishedParsed != nil {
+			parsedItem.Published = *item.PublishedParsed
+		} else if item.UpdatedParsed != nil {
+			parsedItem.Published = *item.UpdatedParsed
+		}
+
+		result.Items = append(result.Items, parsedItem)
+	}
+
+	return result, nil
+}
+
+// fetch retrieves content from a URL
+func (p *Parser) fetch(ctx context.Context, url string) (io.ReadCloser, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Newscope/1.0")
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch URL: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	return resp.Body, nil
+}
+

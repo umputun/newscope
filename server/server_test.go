@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -14,134 +16,106 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/newscope/pkg/feed/types"
+	"github.com/umputun/newscope/server/mocks"
 )
 
-// mockConfigProvider implements ConfigProvider interface
-type mockConfigProvider struct {
-	listen  string
-	timeout time.Duration
-}
-
-func (m *mockConfigProvider) GetServerConfig() (string, time.Duration) {
-	return m.listen, m.timeout
-}
-
-// mockFeedManager implements FeedManager interface
-type mockFeedManager struct {
-	fetchAllErr error
-	items       []types.ExtractedItem
-}
-
-func (m *mockFeedManager) FetchAll(ctx context.Context) error {
-	return m.fetchAllErr
-}
-
-func (m *mockFeedManager) GetItems() []types.ExtractedItem {
-	return m.items
-}
+//go:generate moq -out mocks/config.go -pkg mocks -skip-ensure -fmt goimports . ConfigProvider
+//go:generate moq -out mocks/database.go -pkg mocks -skip-ensure -fmt goimports . Database
+//go:generate moq -out mocks/scheduler.go -pkg mocks -skip-ensure -fmt goimports . Scheduler
 
 func TestServer_New(t *testing.T) {
-	cfg := &mockConfigProvider{
-		listen:  ":8080",
-		timeout: 30 * time.Second,
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
 	}
-	mgr := &mockFeedManager{}
+	db := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
 
-	srv := New(cfg, mgr, "1.0.0", false)
+	srv := New(cfg, db, scheduler, "1.0.0", false)
 	assert.NotNil(t, srv)
-	assert.Equal(t, cfg, srv.config)
-	assert.Equal(t, mgr, srv.feedManager)
 	assert.Equal(t, "1.0.0", srv.version)
 	assert.False(t, srv.debug)
-	assert.NotNil(t, srv.router)
 }
 
 func TestServer_Run(t *testing.T) {
-	t.Run("successful run and shutdown", func(t *testing.T) {
-		cfg := &mockConfigProvider{
-			listen:  ":0", // use random port
-			timeout: 30 * time.Second,
-		}
-		mgr := &mockFeedManager{}
-
-		srv := New(cfg, mgr, "1.0.0", false)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		errCh := make(chan error, 1)
-		go func() {
-			errCh <- srv.Run(ctx)
-		}()
-
-		// wait for server to start
-		time.Sleep(100 * time.Millisecond)
-
-		// trigger shutdown
-		cancel()
-
-		// wait for shutdown
-		select {
-		case err := <-errCh:
-			require.NoError(t, err)
-		case <-time.After(2 * time.Second):
-			t.Fatal("server did not shut down in time")
-		}
-	})
-}
-
-// getTestServer starts a test server on a random port and returns the base URL
-func getTestServer(t *testing.T, cfg ConfigProvider, mgr FeedManager, version string, debug bool) (baseURL string, cleanup func()) {
-	// find a free port
+	// find free port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
+	err = listener.Close()
+	require.NoError(t, err)
 
-	// update config to use the free port
-	testCfg := &mockConfigProvider{
-		listen:  fmt.Sprintf("127.0.0.1:%d", port),
-		timeout: 30 * time.Second,
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return fmt.Sprintf("127.0.0.1:%d", port), 30 * time.Second
+		},
 	}
 
-	srv := New(testCfg, mgr, version, debug)
+	db := &mocks.DatabaseMock{
+		GetFeedsFunc: func(ctx context.Context) ([]types.Feed, error) {
+			return []types.Feed{}, nil
+		},
+		GetItemsFunc: func(ctx context.Context, limit, offset int) ([]types.Item, error) {
+			return []types.Item{}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+
+	srv := New(cfg, db, scheduler, "1.0.0", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
+	// start server in background
 	go func() {
-		if err := srv.Run(ctx); err != nil {
-			t.Logf("server run error: %v", err)
-		}
+		_ = srv.Run(ctx)
 	}()
 
 	// wait for server to start
-	baseURL = fmt.Sprintf("http://127.0.0.1:%d", port)
-	for i := 0; i < 50; i++ {
-		if _, err := http.Get(baseURL + "/api/v1/status"); err == nil {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	time.Sleep(100 * time.Millisecond)
 
-	cleanup = cancel
-	return baseURL, cleanup
-}
-
-func TestServer_StatusHandler(t *testing.T) {
-	mgr := &mockFeedManager{}
-	baseURL, cleanup := getTestServer(t, nil, mgr, "1.2.3", false)
-	defer cleanup()
-
-	// test status endpoint
-	resp, err := http.Get(baseURL + "/api/v1/status")
+	// make test request
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/ping", port))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "pong", string(body))
 
+	// shutdown server
+	cancel()
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestServer_statusHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+	db := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+
+	srv := New(cfg, db, scheduler, "1.2.3", false)
+
+	// create test request
+	req := httptest.NewRequest("GET", "/status", http.NoBody)
+	w := httptest.NewRecorder()
+
+	// call handler directly
+	srv.statusHandler(w, req)
+
+	// check response
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	// check response body
 	var status map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&status)
+	err := json.Unmarshal(w.Body.Bytes(), &status)
 	require.NoError(t, err)
 
 	assert.Equal(t, "ok", status["status"])
@@ -149,95 +123,86 @@ func TestServer_StatusHandler(t *testing.T) {
 	assert.NotEmpty(t, status["time"])
 }
 
-func TestServer_RSSFeedHandler(t *testing.T) {
-	mgr := &mockFeedManager{
-		items: []types.ExtractedItem{
-			{FeedItem: types.FeedItem{FeedName: "Test", Title: "Article 1", URL: "https://example.com/1"}},
+func TestServer_rssFeedHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
 		},
 	}
+	db := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
 
-	baseURL, cleanup := getTestServer(t, nil, mgr, "1.0.0", false)
-	defer cleanup()
+	srv := New(cfg, db, scheduler, "1.0.0", false)
 
-	// test RSS endpoint
-	resp, err := http.Get(baseURL + "/rss/technology")
-	require.NoError(t, err)
-	defer resp.Body.Close()
+	// create test request with path parameter
+	req := httptest.NewRequest("GET", "/feed/technology", http.NoBody)
+	req.SetPathValue("topic", "technology")
+	w := httptest.NewRecorder()
 
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	// call handler directly
+	srv.rssFeedHandler(w, req)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.Contains(t, string(body), "RSS feed for topic: technology")
+	// check response
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "RSS feed for topic: technology")
 }
 
 func TestRenderJSON(t *testing.T) {
-	t.Run("successful render", func(t *testing.T) {
-		w := &mockResponseWriter{
-			headers: make(http.Header),
-			body:    []byte{},
-		}
+	data := map[string]string{
+		"message": "test",
+		"status":  "ok",
+	}
 
-		data := map[string]string{"message": "hello"}
-		RenderJSON(w, nil, http.StatusOK, data)
+	req := httptest.NewRequest("GET", "/test", http.NoBody)
+	w := httptest.NewRecorder()
 
-		assert.Equal(t, http.StatusOK, w.statusCode)
-		assert.Equal(t, "application/json", w.headers.Get("Content-Type"))
+	RenderJSON(w, req, http.StatusOK, data)
 
-		var result map[string]string
-		err := json.Unmarshal(w.body, &result)
-		require.NoError(t, err)
-		assert.Equal(t, "hello", result["message"])
-	})
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	t.Run("nil data", func(t *testing.T) {
-		w := &mockResponseWriter{
-			headers: make(http.Header),
-			body:    []byte{},
-		}
-
-		RenderJSON(w, nil, http.StatusNoContent, nil)
-
-		assert.Equal(t, http.StatusNoContent, w.statusCode)
-		assert.Equal(t, "application/json", w.headers.Get("Content-Type"))
-		assert.Empty(t, w.body)
-	})
+	var result map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &result)
+	require.NoError(t, err)
+	assert.Equal(t, data, result)
 }
 
 func TestRenderError(t *testing.T) {
-	w := &mockResponseWriter{
-		headers: make(http.Header),
-		body:    []byte{},
+	tests := []struct {
+		name         string
+		err          error
+		expectedCode int
+		expectedMsg  string
+	}{
+		{
+			name:         "generic error",
+			err:          errors.New("something went wrong"),
+			expectedCode: http.StatusInternalServerError,
+			expectedMsg:  "something went wrong",
+		},
+		{
+			name:         "nil error",
+			err:          nil,
+			expectedCode: http.StatusInternalServerError,
+			expectedMsg:  "unknown error",
+		},
 	}
 
-	err := assert.AnError
-	RenderError(w, nil, err, http.StatusInternalServerError)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/test", http.NoBody)
+			w := httptest.NewRecorder()
 
-	assert.Equal(t, http.StatusInternalServerError, w.statusCode)
-	assert.Equal(t, "application/json", w.headers.Get("Content-Type"))
+			RenderError(w, req, tt.err, tt.expectedCode)
 
-	var result map[string]string
-	jsonErr := json.Unmarshal(w.body, &result)
-	require.NoError(t, jsonErr)
-	assert.Equal(t, err.Error(), result["error"])
+			assert.Equal(t, tt.expectedCode, w.Code)
+			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+			var result map[string]interface{}
+			err := json.Unmarshal(w.Body.Bytes(), &result)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedMsg, result["error"])
+		})
+	}
 }
 
-// mockResponseWriter implements http.ResponseWriter for testing
-type mockResponseWriter struct {
-	headers    http.Header
-	body       []byte
-	statusCode int
-}
-
-func (m *mockResponseWriter) Header() http.Header {
-	return m.headers
-}
-
-func (m *mockResponseWriter) Write(data []byte) (int, error) {
-	m.body = append(m.body, data...)
-	return len(data), nil
-}
-
-func (m *mockResponseWriter) WriteHeader(statusCode int) {
-	m.statusCode = statusCode
-}

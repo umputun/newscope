@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/go-pkgz/lgr"
@@ -17,7 +18,9 @@ import (
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/content"
+	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed"
+	"github.com/umputun/newscope/pkg/scheduler"
 	"github.com/umputun/newscope/server"
 )
 
@@ -60,6 +63,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	// setup database
+	dbCfg := db.Config{
+		DSN:             cfg.Database.DSN,
+		MaxOpenConns:    cfg.Database.MaxOpenConns,
+		MaxIdleConns:    cfg.Database.MaxIdleConns,
+		ConnMaxLifetime: time.Duration(cfg.Database.ConnMaxLifetime) * time.Second,
+	}
+	dbConn, err := db.New(dbCfg)
+	if err != nil {
+		log.Printf("[ERROR] failed to initialize database: %v", err)
+		os.Exit(1)
+	}
+	defer dbConn.Close()
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// handle termination signals
@@ -71,19 +88,34 @@ func main() {
 		cancel()
 	}()
 
-	// setup feed components
-	fetcher := feed.NewHTTPFetcher(cfg.Server.Timeout)
-	var extractor feed.Extractor
-	if cfg.Extraction.Enabled {
-		extractor = content.NewHTTPExtractor(cfg.Extraction.Timeout)
-	}
-	manager := feed.NewManager(cfg, fetcher, extractor)
+	// setup feed parser and content extractor
+	feedParser := feed.NewParser(cfg.Server.Timeout)
 
-	// setup and run server
-	srv := server.New(cfg, manager, revision, opts.Debug)
+	var contentExtractor *content.HTTPExtractor
+	if cfg.Extraction.Enabled {
+		contentExtractor = content.NewHTTPExtractor(cfg.Extraction.Timeout, cfg.Extraction.UserAgent)
+		if cfg.Extraction.FallbackURL != "" {
+			contentExtractor.SetFallbackURL(cfg.Extraction.FallbackURL)
+		}
+		contentExtractor.SetOptions(cfg.Extraction.MinTextLength, cfg.Extraction.IncludeImages, cfg.Extraction.IncludeLinks)
+	}
+
+	// setup and start scheduler
+	schedulerCfg := scheduler.Config{
+		UpdateInterval:  time.Duration(cfg.Schedule.UpdateInterval) * time.Minute,
+		ExtractInterval: time.Duration(cfg.Schedule.ExtractInterval) * time.Minute,
+		MaxWorkers:      cfg.Schedule.MaxWorkers,
+	}
+	sched := scheduler.NewScheduler(dbConn, feedParser, contentExtractor, schedulerCfg)
+	sched.Start(ctx)
+	defer sched.Stop()
+
+	// setup and run server with database adapter
+	dbAdapter := &server.DBAdapter{DB: dbConn}
+	srv := server.New(cfg, dbAdapter, sched, revision, opts.Debug)
 	if err := srv.Run(ctx); err != nil {
 		log.Printf("[ERROR] server failed: %v", err)
-		os.Exit(1)
+		return
 	}
 
 	log.Print("[INFO] shutdown complete")

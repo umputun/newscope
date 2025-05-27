@@ -109,6 +109,9 @@ func validateRequiredFields(cfg *Config) error {
 		if cfg.Extraction.RateLimit == 0 {
 			return fmt.Errorf("extraction.rate_limit is required when extraction is enabled")
 		}
+		if cfg.Extraction.MinTextLength < 0 {
+			return fmt.Errorf("extraction.min_text_length must be non-negative")
+		}
 	}
 
 	return nil

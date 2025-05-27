@@ -17,6 +17,19 @@ type Config struct {
 		Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 	} `yaml:"server" json:"server" jsonschema:"description=Server configuration"`
 
+	Database struct {
+		DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
+		MaxOpenConns    int    `yaml:"max_open_conns" json:"max_open_conns" jsonschema:"default=10,description=Maximum number of open connections"`
+		MaxIdleConns    int    `yaml:"max_idle_conns" json:"max_idle_conns" jsonschema:"default=5,description=Maximum number of idle connections"`
+		ConnMaxLifetime int    `yaml:"conn_max_lifetime" json:"conn_max_lifetime" jsonschema:"default=3600,description=Connection maximum lifetime in seconds"`
+	} `yaml:"database" json:"database" jsonschema:"description=Database configuration"`
+
+	Schedule struct {
+		UpdateInterval  int `yaml:"update_interval" json:"update_interval" jsonschema:"default=30,description=Feed update interval in minutes"`
+		ExtractInterval int `yaml:"extract_interval" json:"extract_interval" jsonschema:"default=5,description=Content extraction interval in minutes"`
+		MaxWorkers      int `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
+	} `yaml:"schedule" json:"schedule" jsonschema:"description=Scheduler configuration"`
+
 	Extraction ExtractionConfig `yaml:"extraction" json:"extraction" jsonschema:"description=Content extraction configuration"`
 
 	Feeds []Feed `yaml:"feeds" json:"feeds" jsonschema:"required,minItems=1,description=RSS/Atom feed sources"`
@@ -26,8 +39,13 @@ type Config struct {
 type ExtractionConfig struct {
 	Enabled       bool          `yaml:"enabled" json:"enabled" jsonschema:"default=false,description=Enable content extraction"`
 	Timeout       time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=Extraction timeout per article"`
-	MaxConcurrent int           `yaml:"max_concurrent" json:"max_concurrent" jsonschema:"default=5,minimum=1,maximum=20,description=Maximum concurrent extractions"`
-	RateLimit     time.Duration `yaml:"rate_limit" json:"rate_limit" jsonschema:"default=100ms,description=Minimum time between extractions"`
+	MaxConcurrent int           `yaml:"max_concurrent" json:"max_concurrent" jsonschema:"default=5,description=Maximum concurrent extractions"`
+	RateLimit     time.Duration `yaml:"rate_limit" json:"rate_limit" jsonschema:"default=1s,description=Rate limit between extractions"`
+	UserAgent     string        `yaml:"user_agent" json:"user_agent" jsonschema:"default=Newscope/1.0,description=User agent for HTTP requests"`
+	FallbackURL   string        `yaml:"fallback_url" json:"fallback_url" jsonschema:"description=Fallback trafilatura API URL"`
+	MinTextLength int           `yaml:"min_text_length" json:"min_text_length" jsonschema:"default=100,description=Minimum text length to consider valid"`
+	IncludeImages bool          `yaml:"include_images" json:"include_images" jsonschema:"default=false,description=Include images in extraction"`
+	IncludeLinks  bool          `yaml:"include_links" json:"include_links" jsonschema:"default=false,description=Include links in extraction"`
 }
 
 // Feed represents a single RSS/Atom feed
@@ -57,6 +75,31 @@ func Load(path string) (*Config, error) {
 		cfg.Server.Timeout = 30 * time.Second
 	}
 
+	// set defaults for database
+	if cfg.Database.DSN == "" {
+		cfg.Database.DSN = "file:newscope.db?cache=shared&mode=rwc"
+	}
+	if cfg.Database.MaxOpenConns == 0 {
+		cfg.Database.MaxOpenConns = 10
+	}
+	if cfg.Database.MaxIdleConns == 0 {
+		cfg.Database.MaxIdleConns = 5
+	}
+	if cfg.Database.ConnMaxLifetime == 0 {
+		cfg.Database.ConnMaxLifetime = 3600
+	}
+
+	// set defaults for schedule
+	if cfg.Schedule.UpdateInterval == 0 {
+		cfg.Schedule.UpdateInterval = 30
+	}
+	if cfg.Schedule.ExtractInterval == 0 {
+		cfg.Schedule.ExtractInterval = 5
+	}
+	if cfg.Schedule.MaxWorkers == 0 {
+		cfg.Schedule.MaxWorkers = 5
+	}
+
 	// set defaults for extraction
 	if cfg.Extraction.Timeout == 0 {
 		cfg.Extraction.Timeout = 30 * time.Second
@@ -65,7 +108,13 @@ func Load(path string) (*Config, error) {
 		cfg.Extraction.MaxConcurrent = 5
 	}
 	if cfg.Extraction.RateLimit == 0 {
-		cfg.Extraction.RateLimit = 100 * time.Millisecond
+		cfg.Extraction.RateLimit = 1 * time.Second
+	}
+	if cfg.Extraction.UserAgent == "" {
+		cfg.Extraction.UserAgent = "Newscope/1.0"
+	}
+	if cfg.Extraction.MinTextLength == 0 {
+		cfg.Extraction.MinTextLength = 100
 	}
 
 	// set defaults for feeds
@@ -110,14 +159,11 @@ func validate(cfg *Config) error {
 
 	// validate extraction config
 	if cfg.Extraction.Enabled {
-		if cfg.Extraction.MaxConcurrent < 1 || cfg.Extraction.MaxConcurrent > 20 {
-			return fmt.Errorf("extraction max_concurrent must be between 1 and 20")
-		}
 		if cfg.Extraction.Timeout < time.Second {
 			return fmt.Errorf("extraction timeout must be at least 1 second")
 		}
-		if cfg.Extraction.RateLimit < 10*time.Millisecond {
-			return fmt.Errorf("extraction rate_limit must be at least 10ms")
+		if cfg.Extraction.MinTextLength < 0 {
+			return fmt.Errorf("extraction min_text_length must be non-negative")
 		}
 	}
 

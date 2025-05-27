@@ -11,55 +11,82 @@ import (
 	"github.com/markusmobius/go-trafilatura"
 )
 
+// ExtractResult contains the result of content extraction
+type ExtractResult struct {
+	Content string    // extracted content
+	Title   string    // article title if available
+	URL     string    // original URL
+	Date    time.Time // publication date if available
+}
+
 // HTTPExtractor extracts article content from URLs using trafilatura
 type HTTPExtractor struct {
-	timeout time.Duration
-	client  *http.Client
+	timeout       time.Duration
+	userAgent     string
+	fallbackURL   string
+	minTextLength int
+	includeImages bool
+	includeLinks  bool
+	client        *http.Client
 }
 
 // NewHTTPExtractor creates a new content extractor
-func NewHTTPExtractor(timeout time.Duration) *HTTPExtractor {
+func NewHTTPExtractor(timeout time.Duration, userAgent string) *HTTPExtractor {
 	return &HTTPExtractor{
-		timeout: timeout,
+		timeout:       timeout,
+		userAgent:     userAgent,
+		minTextLength: 100,
 		client: &http.Client{
 			Timeout: timeout,
 		},
 	}
 }
 
+// SetFallbackURL sets the fallback trafilatura API URL
+func (e *HTTPExtractor) SetFallbackURL(fallbackURL string) {
+	e.fallbackURL = fallbackURL
+}
+
+// SetOptions configures extraction options
+func (e *HTTPExtractor) SetOptions(minTextLength int, includeImages, includeLinks bool) {
+	e.minTextLength = minTextLength
+	e.includeImages = includeImages
+	e.includeLinks = includeLinks
+}
+
 // Extract retrieves and extracts text content from the given URL
-func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (string, error) {
+func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (*ExtractResult, error) {
 	// validate URL
 	if urlStr == "" {
-		return "", fmt.Errorf("empty URL")
+		return nil, fmt.Errorf("empty URL")
 	}
 
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
-		return "", fmt.Errorf("parse URL: %w", err)
+		return nil, fmt.Errorf("parse URL: %w", err)
 	}
 	if parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return "", fmt.Errorf("invalid URL: %s", urlStr)
+		return nil, fmt.Errorf("invalid URL: %s", urlStr)
 	}
 
 	// create request with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
 	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	// set user agent
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Newscope/1.0)")
+	req.Header.Set("User-Agent", e.userAgent)
 
 	// fetch content
 	resp, err := e.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("fetch URL %s: %w", urlStr, err)
+		return nil, fmt.Errorf("fetch URL %s: %w", urlStr, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	// configure trafilatura options
@@ -67,8 +94,8 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (string, err
 		EnableFallback:  true,
 		ExcludeComments: true,
 		ExcludeTables:   false,
-		IncludeImages:   false,
-		IncludeLinks:    false,
+		IncludeImages:   e.includeImages,
+		IncludeLinks:    e.includeLinks,
 		Deduplicate:     true,
 		OriginalURL:     parsedURL,
 	}
@@ -76,21 +103,38 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (string, err
 	// extract content
 	result, err := trafilatura.Extract(resp.Body, opts)
 	if err != nil {
-		return "", fmt.Errorf("extract content from %s: %w", urlStr, err)
+		return nil, fmt.Errorf("extract content from %s: %w", urlStr, err)
 	}
 
 	if result == nil {
-		return "", fmt.Errorf("no content extracted")
+		return nil, fmt.Errorf("no content extracted")
 	}
 
 	// get main content
 	content := result.ContentText
 	if content == "" {
-		return "", fmt.Errorf("no content extracted")
+		return nil, fmt.Errorf("no content extracted")
 	}
 
 	// clean up content
 	content = strings.TrimSpace(content)
 
-	return content, nil
+	// check minimum text length
+	if len(content) < e.minTextLength {
+		return nil, fmt.Errorf("content too short: %d chars (minimum %d)", len(content), e.minTextLength)
+	}
+
+	// build result
+	extractResult := &ExtractResult{
+		Content: content,
+		Title:   result.Metadata.Title,
+		URL:     urlStr,
+	}
+
+	// use metadata date if available
+	if !result.Metadata.Date.IsZero() {
+		extractResult.Date = result.Metadata.Date
+	}
+
+	return extractResult, nil
 }

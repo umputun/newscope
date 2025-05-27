@@ -22,7 +22,7 @@ type ConfigProvider interface {
 
 // Fetcher retrieves and parses RSS/Atom feeds
 type Fetcher interface {
-	Fetch(ctx context.Context, feedURL, feedName string) ([]types.FeedItem, error)
+	Fetch(ctx context.Context, feedURL, feedName string) ([]types.Item, error)
 }
 
 // Extractor extracts full content from article URLs
@@ -35,7 +35,7 @@ type Manager struct {
 	config    ConfigProvider
 	fetcher   Fetcher
 	extractor Extractor
-	items     []types.ExtractedItem
+	items     []types.ItemWithContent
 	mu        sync.RWMutex
 }
 
@@ -45,7 +45,7 @@ func NewManager(cfg ConfigProvider, fetcher Fetcher, extractor Extractor) *Manag
 		config:    cfg,
 		fetcher:   fetcher,
 		extractor: extractor,
-		items:     make([]types.ExtractedItem, 0),
+		items:     make([]types.ItemWithContent, 0),
 	}
 }
 
@@ -53,7 +53,7 @@ func NewManager(cfg ConfigProvider, fetcher Fetcher, extractor Extractor) *Manag
 func (m *Manager) FetchAll(ctx context.Context) error {
 	feeds := m.config.GetFeeds()
 	var wg sync.WaitGroup
-	itemsChan := make(chan []types.FeedItem, len(feeds))
+	itemsChan := make(chan []types.Item, len(feeds))
 	errChan := make(chan error, len(feeds))
 
 	// fetch all feeds concurrently
@@ -83,7 +83,7 @@ func (m *Manager) FetchAll(ctx context.Context) error {
 	}()
 
 	// collect feed items
-	allItems := make([]types.FeedItem, 0)
+	allItems := make([]types.Item, 0)
 	for items := range itemsChan {
 		allItems = append(allItems, items...)
 	}
@@ -109,27 +109,27 @@ func (m *Manager) FetchAll(ctx context.Context) error {
 }
 
 // GetItems returns all fetched and extracted items
-func (m *Manager) GetItems() []types.ExtractedItem {
+func (m *Manager) GetItems() []types.ItemWithContent {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	// return a copy to avoid race conditions
-	items := make([]types.ExtractedItem, len(m.items))
+	items := make([]types.ItemWithContent, len(m.items))
 	copy(items, m.items)
 	return items
 }
 
 // extractContent extracts full content from feed items
-func (m *Manager) extractContent(ctx context.Context, feedItems []types.FeedItem) []types.ExtractedItem {
+func (m *Manager) extractContent(ctx context.Context, feedItems []types.Item) []types.ItemWithContent {
 	extractCfg := m.config.GetExtractionConfig()
 
 	// convert to extracted items without extraction if disabled
 	if !extractCfg.Enabled || m.extractor == nil {
 		log.Printf("[INFO] content extraction disabled")
-		extracted := make([]types.ExtractedItem, len(feedItems))
+		extracted := make([]types.ItemWithContent, len(feedItems))
 		for i, item := range feedItems {
-			extracted[i] = types.ExtractedItem{
-				FeedItem:         item,
+			extracted[i] = types.ItemWithContent{
+				Item:             item,
 				ContentExtracted: false,
 			}
 		}
@@ -145,12 +145,12 @@ func (m *Manager) extractContent(ctx context.Context, feedItems []types.FeedItem
 	rateLimiter := time.NewTicker(extractCfg.RateLimit)
 	defer rateLimiter.Stop()
 
-	extracted := make([]types.ExtractedItem, len(feedItems))
+	extracted := make([]types.ItemWithContent, len(feedItems))
 	var wg sync.WaitGroup
 
 	for i, item := range feedItems {
 		wg.Add(1)
-		go func(idx int, feedItem types.FeedItem) {
+		go func(idx int, feedItem types.Item) {
 			defer wg.Done()
 
 			// acquire semaphore
@@ -160,18 +160,18 @@ func (m *Manager) extractContent(ctx context.Context, feedItems []types.FeedItem
 			// wait for rate limit
 			<-rateLimiter.C
 
-			extractedItem := types.ExtractedItem{
-				FeedItem:    feedItem,
+			extractedItem := types.ItemWithContent{
+				Item:        feedItem,
 				ExtractedAt: time.Now(),
 			}
 
 			// extract content
-			content, err := m.extractor.Extract(ctx, feedItem.URL)
+			content, err := m.extractor.Extract(ctx, feedItem.Link)
 			if err != nil {
-				log.Printf("[WARN] failed to extract content from %s: %v", feedItem.URL, err)
+				log.Printf("[WARN] failed to extract content from %s: %v", feedItem.Link, err)
 				extractedItem.ContentExtracted = false
 			} else {
-				extractedItem.FullContent = content
+				extractedItem.ExtractedContent = content
 				extractedItem.ContentExtracted = true
 			}
 

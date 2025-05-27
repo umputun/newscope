@@ -18,10 +18,19 @@ import (
 	"github.com/umputun/newscope/pkg/feed/types"
 )
 
-// FeedManager manages RSS feeds
-type FeedManager interface {
-	FetchAll(ctx context.Context) error
-	GetItems() []types.ExtractedItem
+// Database interface for server operations
+type Database interface {
+	GetFeeds(ctx context.Context) ([]types.Feed, error)
+	GetItems(ctx context.Context, limit, offset int) ([]types.Item, error)
+	GetItemsByFeed(ctx context.Context, feedID int64, limit, offset int) ([]types.Item, error)
+	GetItemsWithContent(ctx context.Context, limit, offset int) ([]types.ItemWithContent, error)
+	SearchItems(ctx context.Context, query string, limit, offset int) ([]types.Item, error)
+}
+
+// Scheduler interface for on-demand operations
+type Scheduler interface {
+	UpdateFeedNow(ctx context.Context, feedID int64) error
+	ExtractContentNow(ctx context.Context, itemID int64) error
 }
 
 // ConfigProvider provides server configuration
@@ -31,10 +40,11 @@ type ConfigProvider interface {
 
 // Server represents HTTP server instance
 type Server struct {
-	config      ConfigProvider
-	feedManager FeedManager
-	version     string
-	debug       bool
+	config    ConfigProvider
+	db        Database
+	scheduler Scheduler
+	version   string
+	debug     bool
 
 	lock       sync.Mutex
 	httpServer *http.Server
@@ -42,13 +52,14 @@ type Server struct {
 }
 
 // New initializes a new server instance
-func New(cfg ConfigProvider, feedManager FeedManager, version string, debug bool) *Server {
+func New(cfg ConfigProvider, db Database, scheduler Scheduler, version string, debug bool) *Server {
 	s := &Server{
-		config:      cfg,
-		feedManager: feedManager,
-		version:     version,
-		debug:       debug,
-		router:      routegroup.New(http.NewServeMux()),
+		config:    cfg,
+		db:        db,
+		scheduler: scheduler,
+		version:   version,
+		debug:     debug,
+		router:    routegroup.New(http.NewServeMux()),
 	}
 
 	s.setupMiddleware()
@@ -148,5 +159,9 @@ func RenderJSON(w http.ResponseWriter, _ *http.Request, code int, data interface
 
 // RenderError sends error response as JSON
 func RenderError(w http.ResponseWriter, r *http.Request, err error, code int) {
-	RenderJSON(w, r, code, map[string]string{"error": err.Error()})
+	errMsg := "unknown error"
+	if err != nil {
+		errMsg = err.Error()
+	}
+	RenderJSON(w, r, code, map[string]string{"error": errMsg})
 }

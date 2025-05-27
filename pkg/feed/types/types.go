@@ -2,21 +2,30 @@ package types
 
 import "time"
 
-// FeedItem represents a single article from an RSS/Atom feed
-type FeedItem struct {
-	FeedName    string
+// Feed represents an RSS/Atom feed
+type Feed struct {
 	Title       string
-	URL         string
 	Description string
-	Content     string // content from RSS feed
-	Published   time.Time
-	GUID        string
+	Link        string
+	Items       []Item
 }
 
-// ExtractedItem represents a feed item with extracted full content
-type ExtractedItem struct {
-	FeedItem
-	FullContent      string    // extracted full article content
-	ContentExtracted bool      // whether content extraction was attempted
+// Item represents a single article from an RSS/Atom feed
+type Item struct {
+	FeedName    string    // name of the feed this item belongs to (optional)
+	GUID        string
+	Title       string
+	Link        string
+	Description string
+	Content     string // content from RSS feed (if available)
+	Author      string
+	Published   time.Time
+}
+
+// ItemWithContent represents an item with extracted full content
+type ItemWithContent struct {
+	Item
+	ExtractedContent string    // extracted full article content
+	ContentExtracted bool      // whether content extraction was successful
 	ExtractedAt      time.Time // when extraction occurred
 }

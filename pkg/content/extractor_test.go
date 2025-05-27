@@ -122,39 +122,40 @@ func TestHTTPExtractor_Extract_RealArticles(t *testing.T) {
 	}))
 	defer server.Close()
 
-	extractor := NewHTTPExtractor(30 * time.Second)
+	extractor := NewHTTPExtractor(30*time.Second, "Newscope/1.0")
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			url := server.URL + "/" + tt.htmlFile
 
-			content, err := extractor.Extract(ctx, url)
+			result, err := extractor.Extract(ctx, url)
 			require.NoError(t, err)
-			require.NotEmpty(t, content)
-			t.Logf("Extracted content (%d chars): %s", len(content), content)
+			require.NotNil(t, result)
+			require.NotEmpty(t, result.Content)
+			t.Logf("Extracted content (%d chars): %s", len(result.Content), result.Content)
 
 			// check minimum length
-			assert.GreaterOrEqual(t, len(content), tt.minLength,
+			assert.GreaterOrEqual(t, len(result.Content), tt.minLength,
 				"extracted content is too short: got %d chars, expected at least %d",
-				len(content), tt.minLength)
+				len(result.Content), tt.minLength)
 
 			// check expected content is present
 			for _, expected := range tt.expectedContent {
-				assert.Contains(t, content, expected,
+				assert.Contains(t, result.Content, expected,
 					"expected content '%s' not found in extracted text", expected)
 			}
 
 			// check unwanted content is filtered out
 			for _, unexpected := range tt.unexpectedContent {
-				assert.NotContains(t, content, unexpected,
+				assert.NotContains(t, result.Content, unexpected,
 					"unexpected content '%s' found in extracted text", unexpected)
 			}
 
 			// additional checks
-			assert.NotContains(t, content, "<script", "HTML tags should be removed")
-			assert.NotContains(t, content, "<style", "CSS should be removed")
-			assert.NotContains(t, content, "<!DOCTYPE", "DOCTYPE should be removed")
+			assert.NotContains(t, result.Content, "<script", "HTML tags should be removed")
+			assert.NotContains(t, result.Content, "<style", "CSS should be removed")
+			assert.NotContains(t, result.Content, "<!DOCTYPE", "DOCTYPE should be removed")
 		})
 	}
 }
@@ -169,7 +170,7 @@ func TestHTTPExtractor_Extract_Timeout(t *testing.T) {
 	defer server.Close()
 
 	// create extractor with short timeout
-	extractor := NewHTTPExtractor(100 * time.Millisecond)
+	extractor := NewHTTPExtractor(100*time.Millisecond, "Newscope/1.0")
 
 	ctx := context.Background()
 	_, err := extractor.Extract(ctx, server.URL)
@@ -178,7 +179,7 @@ func TestHTTPExtractor_Extract_Timeout(t *testing.T) {
 }
 
 func TestHTTPExtractor_Extract_InvalidURL(t *testing.T) {
-	extractor := NewHTTPExtractor(time.Second)
+	extractor := NewHTTPExtractor(time.Second, "Newscope/1.0")
 
 	tests := []struct {
 		name string
@@ -220,7 +221,7 @@ func TestHTTPExtractor_Extract_ContextCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	extractor := NewHTTPExtractor(5 * time.Second)
+	extractor := NewHTTPExtractor(5*time.Second, "Newscope/1.0")
 
 	// create context and cancel it immediately
 	ctx, cancel := context.WithCancel(context.Background())
@@ -232,7 +233,7 @@ func TestHTTPExtractor_Extract_ContextCancellation(t *testing.T) {
 }
 
 func TestHTTPExtractor_Extract_ErrorCases(t *testing.T) {
-	extractor := NewHTTPExtractor(1 * time.Second)
+	extractor := NewHTTPExtractor(1*time.Second, "Newscope/1.0")
 
 	tests := []struct {
 		name        string
@@ -319,16 +320,17 @@ func TestHTTPExtractor_Extract_LargeContent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	extractor := NewHTTPExtractor(30 * time.Second)
+	extractor := NewHTTPExtractor(30*time.Second, "Newscope/1.0")
 
 	ctx := context.Background()
-	content, err := extractor.Extract(ctx, server.URL)
+	result, err := extractor.Extract(ctx, server.URL)
 	require.NoError(t, err)
-	require.NotEmpty(t, content)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Content)
 
 	// check that content was extracted
-	assert.Contains(t, content, "paragraph")
-	assert.Contains(t, content, "content")
+	assert.Contains(t, result.Content, "paragraph")
+	assert.Contains(t, result.Content, "content")
 }
 
 func TestHTTPExtractor_Extract_Encoding(t *testing.T) {
@@ -360,12 +362,13 @@ func TestHTTPExtractor_Extract_Encoding(t *testing.T) {
 			}))
 			defer server.Close()
 
-			extractor := NewHTTPExtractor(5 * time.Second)
+			extractor := NewHTTPExtractor(5*time.Second, "Newscope/1.0")
+			extractor.SetOptions(10, false, false) // set lower min text length for test
 
 			ctx := context.Background()
-			content, err := extractor.Extract(ctx, server.URL)
+			result, err := extractor.Extract(ctx, server.URL)
 			require.NoError(t, err)
-			assert.Contains(t, content, tt.expected)
+			assert.Contains(t, result.Content, tt.expected)
 		})
 	}
 }
@@ -382,7 +385,7 @@ func BenchmarkHTTPExtractor_Extract(b *testing.B) {
 	}))
 	defer server.Close()
 
-	extractor := NewHTTPExtractor(30 * time.Second)
+	extractor := NewHTTPExtractor(30*time.Second, "Newscope/1.0")
 
 	ctx := context.Background()
 

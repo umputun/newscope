@@ -5,6 +5,17 @@ import (
 	"time"
 )
 
+type (
+	// NullString is a type alias for sql.NullString
+	NullString = sql.NullString
+	// NullTime is a type alias for sql.NullTime
+	NullTime = sql.NullTime
+	// NullInt64 is a type alias for sql.NullInt64
+	NullInt64 = sql.NullInt64
+	// NullBool is a type alias for sql.NullBool
+	NullBool = sql.NullBool
+)
+
 // Feed represents an RSS feed source
 type Feed struct {
 	ID          int64          `db:"id"`

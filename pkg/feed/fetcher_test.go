@@ -51,7 +51,7 @@ func TestHTTPFetcher_Fetch(t *testing.T) {
 		// check first item
 		assert.Equal(t, "TestFeed", items[0].FeedName)
 		assert.Equal(t, "Test Article 1", items[0].Title)
-		assert.Equal(t, "https://example.com/article1", items[0].URL)
+		assert.Equal(t, "https://example.com/article1", items[0].Link)
 		assert.Equal(t, "Article 1 description", items[0].Description)
 		assert.Equal(t, "article1", items[0].GUID)
 		assert.False(t, items[0].Published.IsZero())
@@ -59,7 +59,7 @@ func TestHTTPFetcher_Fetch(t *testing.T) {
 		// check second item
 		assert.Equal(t, "TestFeed", items[1].FeedName)
 		assert.Equal(t, "Test Article 2", items[1].Title)
-		assert.Equal(t, "https://example.com/article2", items[1].URL)
+		assert.Equal(t, "https://example.com/article2", items[1].Link)
 		assert.Equal(t, "Article 2 description", items[1].Description)
 		assert.Equal(t, "<p>Article 2 content</p>", items[1].Content)
 		assert.Equal(t, "article2", items[1].GUID)
@@ -94,7 +94,7 @@ func TestHTTPFetcher_Fetch(t *testing.T) {
 
 		assert.Equal(t, "AtomFeed", items[0].FeedName)
 		assert.Equal(t, "Atom Entry 1", items[0].Title)
-		assert.Equal(t, "https://example.com/entry1", items[0].URL)
+		assert.Equal(t, "https://example.com/entry1", items[0].Link)
 		assert.Equal(t, "Entry 1 summary", items[0].Description)
 		assert.Equal(t, "entry1", items[0].GUID)
 		assert.False(t, items[0].Published.IsZero())
