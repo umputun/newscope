@@ -17,6 +17,10 @@ server:
   listen: ":9090"
   timeout: 45s
 
+llm:
+  endpoint: http://localhost:11434/v1
+  model: llama3
+
 feeds:
   - url: https://example.com/feed1.xml
     name: Feed1
@@ -49,6 +53,10 @@ feeds:
 
 	t.Run("defaults", func(t *testing.T) {
 		configContent := `
+llm:
+  endpoint: http://localhost:11434/v1
+  model: llama3
+
 feeds:
   - url: https://example.com/feed.xml
 `

@@ -14,7 +14,7 @@ type DBAdapter struct {
 
 // GetFeeds adapts db.GetFeeds to return types.Feed
 func (d *DBAdapter) GetFeeds(ctx context.Context) ([]types.Feed, error) {
-	dbFeeds, err := d.DB.GetFeeds(ctx)
+	dbFeeds, err := d.DB.GetFeeds(ctx, false) // get all feeds
 	if err != nil {
 		return nil, err
 	}
@@ -23,7 +23,7 @@ func (d *DBAdapter) GetFeeds(ctx context.Context) ([]types.Feed, error) {
 	for i, f := range dbFeeds {
 		feeds[i] = types.Feed{
 			Title:       f.Title,
-			Description: f.Description.String,
+			Description: f.Description,
 			Link:        f.URL,
 		}
 	}
@@ -31,8 +31,10 @@ func (d *DBAdapter) GetFeeds(ctx context.Context) ([]types.Feed, error) {
 }
 
 // GetItems adapts db.GetItems to return types.Item
-func (d *DBAdapter) GetItems(ctx context.Context, limit, offset int) ([]types.Item, error) {
-	dbItems, err := d.DB.GetItems(ctx, limit, offset)
+func (d *DBAdapter) GetItems(ctx context.Context, limit, _ int) ([]types.Item, error) {
+	// our simplified DB uses minScore instead of offset
+	// for now, return all items with score >= 0
+	dbItems, err := d.DB.GetItems(ctx, limit, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -43,80 +45,9 @@ func (d *DBAdapter) GetItems(ctx context.Context, limit, offset int) ([]types.It
 			GUID:        item.GUID,
 			Title:       item.Title,
 			Link:        item.Link,
-			Description: item.Description.String,
-			Author:      item.Author.String,
-			Published:   item.Published.Time,
-		}
-	}
-	return items, nil
-}
-
-// GetItemsByFeed adapts db.GetItemsByFeed to return types.Item
-func (d *DBAdapter) GetItemsByFeed(ctx context.Context, feedID int64, limit, offset int) ([]types.Item, error) {
-	dbItems, err := d.DB.GetItemsByFeed(ctx, feedID, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]types.Item, len(dbItems))
-	for i, item := range dbItems {
-		items[i] = types.Item{
-			GUID:        item.GUID,
-			Title:       item.Title,
-			Link:        item.Link,
-			Description: item.Description.String,
-			Author:      item.Author.String,
-			Published:   item.Published.Time,
-		}
-	}
-	return items, nil
-}
-
-// GetItemsWithContent adapts db methods to return types.ItemWithContent
-func (d *DBAdapter) GetItemsWithContent(ctx context.Context, limit, offset int) ([]types.ItemWithContent, error) {
-	dbItems, err := d.DB.GetItemsWithContent(ctx, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]types.ItemWithContent, len(dbItems))
-	for i, item := range dbItems {
-		content := ""
-		if item.FullContent.Valid {
-			content = item.FullContent.String
-		}
-
-		items[i] = types.ItemWithContent{
-			Item: types.Item{
-				GUID:        item.GUID,
-				Title:       item.Title,
-				Link:        item.Link,
-				Description: item.Description.String,
-				Author:      item.Author.String,
-				Published:   item.Published.Time,
-			},
-			ExtractedContent: content,
-		}
-	}
-	return items, nil
-}
-
-// SearchItems adapts db.SearchItems
-func (d *DBAdapter) SearchItems(ctx context.Context, query string, limit, offset int) ([]types.Item, error) {
-	dbItems, err := d.DB.SearchItems(ctx, query, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]types.Item, len(dbItems))
-	for i, item := range dbItems {
-		items[i] = types.Item{
-			GUID:        item.GUID,
-			Title:       item.Title,
-			Link:        item.Link,
-			Description: item.Description.String,
-			Author:      item.Author.String,
-			Published:   item.Published.Time,
+			Description: item.Description,
+			Author:      item.Author,
+			Published:   item.Published,
 		}
 	}
 	return items, nil

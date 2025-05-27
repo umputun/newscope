@@ -1,11 +1,57 @@
+app:
+  name: "Newscope"
+  version: "2.0.0"
+  
 server:
   listen: ":8080"
-  timeout: 30s
+  timeout: "30s"
+
+database:
+  dsn: "./data/newscope.db"
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime: 3600
+
+schedule:
+  update_interval: 30    # minutes
+  extract_interval: 5    # minutes  
+  max_workers: 5
+
+llm:
+  # OpenAI-compatible endpoint (OpenAI, Ollama, etc)
+  endpoint: "http://localhost:11434/v1"  # Ollama example
+  # endpoint: "https://api.openai.com/v1" # OpenAI example
+  
+  api_key: "${OPENAI_API_KEY}"  # From environment
+  model: "llama3"                # or "gpt-4o-mini"
+  temperature: 0.3               # Lower = more consistent
+  max_tokens: 500
+  timeout: "30s"
+  
+  classification:
+    score_threshold: 5.0       # Minimum score to include
+    feedback_examples: 10      # Recent examples to include
+    batch_size: 5             # Articles to classify at once
+
+extraction:
+  enabled: true
+  timeout: "30s"
+  max_concurrent: 5
+  rate_limit: "1s"
+  user_agent: "Newscope/2.0"
+  min_text_length: 100
+  include_images: false
+  include_links: false
 
 feeds:
-  - url: https://news.ycombinator.com/rss
-    name: HackerNews
-    interval: 10m
-  - url: https://feeds.arstechnica.com/arstechnica/index
-    name: ArsTechnica
-    interval: 15m
+  - url: "https://news.ycombinator.com/rss"
+    name: "Hacker News"
+    interval: "30m"
+    
+  - url: "https://lobste.rs/rss"
+    name: "Lobsters"  
+    interval: "1h"
+    
+  - url: "https://feeds.feedburner.com/codinghorror"
+    name: "Coding Horror"
+    interval: "2h"

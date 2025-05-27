@@ -30,9 +30,27 @@ type Config struct {
 		MaxWorkers      int `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
 	} `yaml:"schedule" json:"schedule" jsonschema:"description=Scheduler configuration"`
 
+	LLM LLMConfig `yaml:"llm" json:"llm" jsonschema:"description=LLM configuration for article classification"`
+
 	Extraction ExtractionConfig `yaml:"extraction" json:"extraction" jsonschema:"description=Content extraction configuration"`
 
 	Feeds []Feed `yaml:"feeds" json:"feeds" jsonschema:"required,minItems=1,description=RSS/Atom feed sources"`
+}
+
+// LLMConfig holds LLM configuration for article classification
+type LLMConfig struct {
+	Endpoint    string        `yaml:"endpoint" json:"endpoint" jsonschema:"required,description=OpenAI-compatible API endpoint"`
+	APIKey      string        `yaml:"api_key" json:"api_key" jsonschema:"description=API key (can use environment variable)"`
+	Model       string        `yaml:"model" json:"model" jsonschema:"required,description=Model name (e.g. gpt-4o-mini or llama3)"`
+	Temperature float64       `yaml:"temperature" json:"temperature" jsonschema:"default=0.3,description=Temperature for response generation"`
+	MaxTokens   int           `yaml:"max_tokens" json:"max_tokens" jsonschema:"default=500,description=Maximum tokens in response"`
+	Timeout     time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=Request timeout"`
+
+	Classification struct {
+		ScoreThreshold   float64 `yaml:"score_threshold" json:"score_threshold" jsonschema:"default=5.0,minimum=0,maximum=10,description=Minimum relevance score to include articles"`
+		FeedbackExamples int     `yaml:"feedback_examples" json:"feedback_examples" jsonschema:"default=10,description=Number of recent feedback examples to include in prompt"`
+		BatchSize        int     `yaml:"batch_size" json:"batch_size" jsonschema:"default=5,minimum=1,description=Number of articles to classify in one request"`
+	} `yaml:"classification" json:"classification" jsonschema:"description=Classification-specific settings"`
 }
 
 // ExtractionConfig holds content extraction settings
@@ -62,8 +80,11 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
 
+	// expand environment variables
+	expanded := os.ExpandEnv(string(data))
+
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
@@ -98,6 +119,26 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Schedule.MaxWorkers == 0 {
 		cfg.Schedule.MaxWorkers = 5
+	}
+
+	// set defaults for LLM
+	if cfg.LLM.Temperature == 0 {
+		cfg.LLM.Temperature = 0.3
+	}
+	if cfg.LLM.MaxTokens == 0 {
+		cfg.LLM.MaxTokens = 500
+	}
+	if cfg.LLM.Timeout == 0 {
+		cfg.LLM.Timeout = 30 * time.Second
+	}
+	if cfg.LLM.Classification.ScoreThreshold == 0 {
+		cfg.LLM.Classification.ScoreThreshold = 5.0
+	}
+	if cfg.LLM.Classification.FeedbackExamples == 0 {
+		cfg.LLM.Classification.FeedbackExamples = 10
+	}
+	if cfg.LLM.Classification.BatchSize == 0 {
+		cfg.LLM.Classification.BatchSize = 5
 	}
 
 	// set defaults for extraction
@@ -157,6 +198,23 @@ func validate(cfg *Config) error {
 		}
 	}
 
+	// validate LLM config
+	if cfg.LLM.Endpoint == "" {
+		return fmt.Errorf("llm.endpoint is required")
+	}
+	if cfg.LLM.Model == "" {
+		return fmt.Errorf("llm.model is required")
+	}
+	if cfg.LLM.Temperature < 0 || cfg.LLM.Temperature > 2 {
+		return fmt.Errorf("llm.temperature must be between 0 and 2")
+	}
+	if cfg.LLM.Classification.ScoreThreshold < 0 || cfg.LLM.Classification.ScoreThreshold > 10 {
+		return fmt.Errorf("llm.classification.score_threshold must be between 0 and 10")
+	}
+	if cfg.LLM.Classification.BatchSize < 1 {
+		return fmt.Errorf("llm.classification.batch_size must be at least 1")
+	}
+
 	// validate extraction config
 	if cfg.Extraction.Enabled {
 		if cfg.Extraction.Timeout < time.Second {
@@ -188,4 +246,9 @@ func (c *Config) GetServerConfig() (listen string, timeout time.Duration) {
 // GetExtractionConfig returns content extraction configuration
 func (c *Config) GetExtractionConfig() ExtractionConfig {
 	return c.Extraction
+}
+
+// GetLLMConfig returns LLM configuration
+func (c *Config) GetLLMConfig() LLMConfig {
+	return c.LLM
 }

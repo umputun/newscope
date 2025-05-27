@@ -39,9 +39,6 @@ type Server struct {
 type Database interface {
 	GetFeeds(ctx context.Context) ([]types.Feed, error)
 	GetItems(ctx context.Context, limit, offset int) ([]types.Item, error)
-	GetItemsByFeed(ctx context.Context, feedID int64, limit, offset int) ([]types.Item, error)
-	GetItemsWithContent(ctx context.Context, limit, offset int) ([]types.ItemWithContent, error)
-	SearchItems(ctx context.Context, query string, limit, offset int) ([]types.Item, error)
 }
 
 // Scheduler interface for on-demand operations

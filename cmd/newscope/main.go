@@ -70,7 +70,7 @@ func main() {
 		MaxIdleConns:    cfg.Database.MaxIdleConns,
 		ConnMaxLifetime: time.Duration(cfg.Database.ConnMaxLifetime) * time.Second,
 	}
-	dbConn, err := db.New(dbCfg)
+	dbConn, err := db.New(context.Background(), dbCfg)
 	if err != nil {
 		log.Printf("[ERROR] failed to initialize database: %v", err)
 		os.Exit(1)

@@ -22,15 +22,6 @@ import (
 //			GetItemsFunc: func(ctx context.Context, limit int, offset int) ([]types.Item, error) {
 //				panic("mock out the GetItems method")
 //			},
-//			GetItemsByFeedFunc: func(ctx context.Context, feedID int64, limit int, offset int) ([]types.Item, error) {
-//				panic("mock out the GetItemsByFeed method")
-//			},
-//			GetItemsWithContentFunc: func(ctx context.Context, limit int, offset int) ([]types.ItemWithContent, error) {
-//				panic("mock out the GetItemsWithContent method")
-//			},
-//			SearchItemsFunc: func(ctx context.Context, query string, limit int, offset int) ([]types.Item, error) {
-//				panic("mock out the SearchItems method")
-//			},
 //		}
 //
 //		// use mockedDatabase in code that requires server.Database
@@ -43,15 +34,6 @@ type DatabaseMock struct {
 
 	// GetItemsFunc mocks the GetItems method.
 	GetItemsFunc func(ctx context.Context, limit int, offset int) ([]types.Item, error)
-
-	// GetItemsByFeedFunc mocks the GetItemsByFeed method.
-	GetItemsByFeedFunc func(ctx context.Context, feedID int64, limit int, offset int) ([]types.Item, error)
-
-	// GetItemsWithContentFunc mocks the GetItemsWithContent method.
-	GetItemsWithContentFunc func(ctx context.Context, limit int, offset int) ([]types.ItemWithContent, error)
-
-	// SearchItemsFunc mocks the SearchItems method.
-	SearchItemsFunc func(ctx context.Context, query string, limit int, offset int) ([]types.Item, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -69,43 +51,9 @@ type DatabaseMock struct {
 			// Offset is the offset argument value.
 			Offset int
 		}
-		// GetItemsByFeed holds details about calls to the GetItemsByFeed method.
-		GetItemsByFeed []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// FeedID is the feedID argument value.
-			FeedID int64
-			// Limit is the limit argument value.
-			Limit int
-			// Offset is the offset argument value.
-			Offset int
-		}
-		// GetItemsWithContent holds details about calls to the GetItemsWithContent method.
-		GetItemsWithContent []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// Limit is the limit argument value.
-			Limit int
-			// Offset is the offset argument value.
-			Offset int
-		}
-		// SearchItems holds details about calls to the SearchItems method.
-		SearchItems []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// Query is the query argument value.
-			Query string
-			// Limit is the limit argument value.
-			Limit int
-			// Offset is the offset argument value.
-			Offset int
-		}
 	}
-	lockGetFeeds            sync.RWMutex
-	lockGetItems            sync.RWMutex
-	lockGetItemsByFeed      sync.RWMutex
-	lockGetItemsWithContent sync.RWMutex
-	lockSearchItems         sync.RWMutex
+	lockGetFeeds sync.RWMutex
+	lockGetItems sync.RWMutex
 }
 
 // GetFeeds calls GetFeedsFunc.
@@ -177,133 +125,5 @@ func (mock *DatabaseMock) GetItemsCalls() []struct {
 	mock.lockGetItems.RLock()
 	calls = mock.calls.GetItems
 	mock.lockGetItems.RUnlock()
-	return calls
-}
-
-// GetItemsByFeed calls GetItemsByFeedFunc.
-func (mock *DatabaseMock) GetItemsByFeed(ctx context.Context, feedID int64, limit int, offset int) ([]types.Item, error) {
-	if mock.GetItemsByFeedFunc == nil {
-		panic("DatabaseMock.GetItemsByFeedFunc: method is nil but Database.GetItemsByFeed was just called")
-	}
-	callInfo := struct {
-		Ctx    context.Context
-		FeedID int64
-		Limit  int
-		Offset int
-	}{
-		Ctx:    ctx,
-		FeedID: feedID,
-		Limit:  limit,
-		Offset: offset,
-	}
-	mock.lockGetItemsByFeed.Lock()
-	mock.calls.GetItemsByFeed = append(mock.calls.GetItemsByFeed, callInfo)
-	mock.lockGetItemsByFeed.Unlock()
-	return mock.GetItemsByFeedFunc(ctx, feedID, limit, offset)
-}
-
-// GetItemsByFeedCalls gets all the calls that were made to GetItemsByFeed.
-// Check the length with:
-//
-//	len(mockedDatabase.GetItemsByFeedCalls())
-func (mock *DatabaseMock) GetItemsByFeedCalls() []struct {
-	Ctx    context.Context
-	FeedID int64
-	Limit  int
-	Offset int
-} {
-	var calls []struct {
-		Ctx    context.Context
-		FeedID int64
-		Limit  int
-		Offset int
-	}
-	mock.lockGetItemsByFeed.RLock()
-	calls = mock.calls.GetItemsByFeed
-	mock.lockGetItemsByFeed.RUnlock()
-	return calls
-}
-
-// GetItemsWithContent calls GetItemsWithContentFunc.
-func (mock *DatabaseMock) GetItemsWithContent(ctx context.Context, limit int, offset int) ([]types.ItemWithContent, error) {
-	if mock.GetItemsWithContentFunc == nil {
-		panic("DatabaseMock.GetItemsWithContentFunc: method is nil but Database.GetItemsWithContent was just called")
-	}
-	callInfo := struct {
-		Ctx    context.Context
-		Limit  int
-		Offset int
-	}{
-		Ctx:    ctx,
-		Limit:  limit,
-		Offset: offset,
-	}
-	mock.lockGetItemsWithContent.Lock()
-	mock.calls.GetItemsWithContent = append(mock.calls.GetItemsWithContent, callInfo)
-	mock.lockGetItemsWithContent.Unlock()
-	return mock.GetItemsWithContentFunc(ctx, limit, offset)
-}
-
-// GetItemsWithContentCalls gets all the calls that were made to GetItemsWithContent.
-// Check the length with:
-//
-//	len(mockedDatabase.GetItemsWithContentCalls())
-func (mock *DatabaseMock) GetItemsWithContentCalls() []struct {
-	Ctx    context.Context
-	Limit  int
-	Offset int
-} {
-	var calls []struct {
-		Ctx    context.Context
-		Limit  int
-		Offset int
-	}
-	mock.lockGetItemsWithContent.RLock()
-	calls = mock.calls.GetItemsWithContent
-	mock.lockGetItemsWithContent.RUnlock()
-	return calls
-}
-
-// SearchItems calls SearchItemsFunc.
-func (mock *DatabaseMock) SearchItems(ctx context.Context, query string, limit int, offset int) ([]types.Item, error) {
-	if mock.SearchItemsFunc == nil {
-		panic("DatabaseMock.SearchItemsFunc: method is nil but Database.SearchItems was just called")
-	}
-	callInfo := struct {
-		Ctx    context.Context
-		Query  string
-		Limit  int
-		Offset int
-	}{
-		Ctx:    ctx,
-		Query:  query,
-		Limit:  limit,
-		Offset: offset,
-	}
-	mock.lockSearchItems.Lock()
-	mock.calls.SearchItems = append(mock.calls.SearchItems, callInfo)
-	mock.lockSearchItems.Unlock()
-	return mock.SearchItemsFunc(ctx, query, limit, offset)
-}
-
-// SearchItemsCalls gets all the calls that were made to SearchItems.
-// Check the length with:
-//
-//	len(mockedDatabase.SearchItemsCalls())
-func (mock *DatabaseMock) SearchItemsCalls() []struct {
-	Ctx    context.Context
-	Query  string
-	Limit  int
-	Offset int
-} {
-	var calls []struct {
-		Ctx    context.Context
-		Query  string
-		Limit  int
-		Offset int
-	}
-	mock.lockSearchItems.RLock()
-	calls = mock.calls.SearchItems
-	mock.lockSearchItems.RUnlock()
 	return calls
 }

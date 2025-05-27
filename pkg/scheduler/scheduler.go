@@ -15,15 +15,19 @@ import (
 
 // Database interface for scheduler operations
 type Database interface {
-	GetEnabledFeeds(ctx context.Context) ([]db.Feed, error)
+	// Feed operations
 	GetFeed(ctx context.Context, id int64) (*db.Feed, error)
-	UpdateFeed(ctx context.Context, feed *db.Feed) error
-	UpdateFeedLastFetched(ctx context.Context, feedID int64, lastFetched time.Time) error
+	GetFeeds(ctx context.Context, enabledOnly bool) ([]db.Feed, error)
+	GetFeedsToFetch(ctx context.Context, limit int) ([]db.Feed, error)
+	UpdateFeedFetched(ctx context.Context, feedID int64, nextFetch time.Time) error
 	UpdateFeedError(ctx context.Context, feedID int64, errMsg string) error
-	CreateItem(ctx context.Context, item *db.Item) error
+
+	// Item operations
 	GetItem(ctx context.Context, id int64) (*db.Item, error)
-	GetItemsForExtraction(ctx context.Context, limit int) ([]db.Item, error)
-	CreateContent(ctx context.Context, content *db.Content) error
+	CreateItem(ctx context.Context, item *db.Item) error
+	ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
+	GetItemsNeedingExtraction(ctx context.Context, limit int) ([]db.Item, error)
+	UpdateItemExtraction(ctx context.Context, itemID int64, content string, err error) error
 }
 
 // Parser interface for feed parsing
@@ -124,7 +128,7 @@ func (s *Scheduler) feedUpdateWorker(ctx context.Context) {
 
 // updateAllFeeds fetches and updates all enabled feeds
 func (s *Scheduler) updateAllFeeds(ctx context.Context) {
-	feeds, err := s.db.GetEnabledFeeds(ctx)
+	feeds, err := s.db.GetFeeds(ctx, true)
 	if err != nil {
 		lgr.Printf("[ERROR] failed to get enabled feeds: %v", err)
 		return
@@ -169,26 +173,31 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed) {
 		return
 	}
 
-	// update feed metadata if changed
-	if parsedFeed.Title != f.Title || parsedFeed.Description != f.Description.String {
-		f.Title = parsedFeed.Title
-		f.Description = db.NullString{String: parsedFeed.Description, Valid: parsedFeed.Description != ""}
-		if err := s.db.UpdateFeed(ctx, &f); err != nil {
-			lgr.Printf("[ERROR] failed to update feed metadata: %v", err)
-		}
-	}
+	// update feed metadata if changed - skip for now as we don't have UpdateFeed method
+	// TODO: add UpdateFeed method if needed
 
 	// store new items
 	newCount := 0
 	for _, item := range parsedFeed.Items {
+		// check if item already exists
+		exists, err := s.db.ItemExists(ctx, f.ID, item.GUID)
+		if err != nil {
+			lgr.Printf("[ERROR] failed to check item existence: %v", err)
+			continue
+		}
+		if exists {
+			continue
+		}
+
 		dbItem := &db.Item{
 			FeedID:      f.ID,
 			GUID:        item.GUID,
 			Title:       item.Title,
 			Link:        item.Link,
-			Description: db.NullString{String: item.Description, Valid: item.Description != ""},
-			Author:      db.NullString{String: item.Author, Valid: item.Author != ""},
-			Published:   db.NullTime{Time: item.Published, Valid: !item.Published.IsZero()},
+			Description: item.Description,
+			Content:     item.Content,
+			Author:      item.Author,
+			Published:   item.Published,
 		}
 
 		if err := s.db.CreateItem(ctx, dbItem); err != nil {
@@ -196,13 +205,12 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed) {
 			continue
 		}
 
-		if dbItem.ID != 0 { // item was created (not duplicate)
-			newCount++
-		}
+		newCount++
 	}
 
 	// update last fetched timestamp
-	if err := s.db.UpdateFeedLastFetched(ctx, f.ID, time.Now()); err != nil {
+	nextFetch := time.Now().Add(time.Duration(f.FetchInterval) * time.Second)
+	if err := s.db.UpdateFeedFetched(ctx, f.ID, nextFetch); err != nil {
 		lgr.Printf("[ERROR] failed to update last fetched: %v", err)
 	}
 
@@ -230,7 +238,7 @@ func (s *Scheduler) contentExtractionWorker(ctx context.Context) {
 
 // extractPendingContent extracts content for items that need it
 func (s *Scheduler) extractPendingContent(ctx context.Context) {
-	items, err := s.db.GetItemsForExtraction(ctx, s.maxWorkers)
+	items, err := s.db.GetItemsNeedingExtraction(ctx, s.maxWorkers)
 	if err != nil {
 		lgr.Printf("[ERROR] failed to get items for extraction: %v", err)
 		return
@@ -274,23 +282,14 @@ func (s *Scheduler) extractItemContent(ctx context.Context, item db.Item) {
 	if err != nil {
 		lgr.Printf("[ERROR] failed to extract content from %s: %v", item.Link, err)
 		// store extraction error
-		dbContent := &db.Content{
-			ItemID:          item.ID,
-			ExtractionError: db.NullString{String: err.Error(), Valid: true},
-		}
-		if err := s.db.CreateContent(ctx, dbContent); err != nil {
+		if err := s.db.UpdateItemExtraction(ctx, item.ID, "", err); err != nil {
 			lgr.Printf("[ERROR] failed to store extraction error: %v", err)
 		}
 		return
 	}
 
 	// store extracted content
-	dbContent := &db.Content{
-		ItemID:      item.ID,
-		FullContent: extracted.Content,
-	}
-
-	if err := s.db.CreateContent(ctx, dbContent); err != nil {
+	if err := s.db.UpdateItemExtraction(ctx, item.ID, extracted.Content, nil); err != nil {
 		lgr.Printf("[ERROR] failed to store content: %v", err)
 		return
 	}

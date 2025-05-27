@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -58,9 +57,10 @@ func TestScheduler_UpdateFeed(t *testing.T) {
 		mockExtractor := &mocks.ExtractorMock{}
 
 		testFeed := db.Feed{
-			ID:    1,
-			URL:   "http://example.com/feed.xml",
-			Title: "Test Feed",
+			ID:            1,
+			URL:           "http://example.com/feed.xml",
+			Title:         "Test Feed",
+			FetchInterval: 1800,
 		}
 
 		parsedFeed := &types.Feed{
@@ -89,13 +89,9 @@ func TestScheduler_UpdateFeed(t *testing.T) {
 			return parsedFeed, nil
 		}
 
-		updateFeedCalled := false
-		mockDB.UpdateFeedFunc = func(ctx context.Context, feed *db.Feed) error {
-			updateFeedCalled = true
-			assert.Equal(t, parsedFeed.Title, feed.Title)
-			assert.Equal(t, parsedFeed.Description, feed.Description.String)
-			assert.True(t, feed.Description.Valid)
-			return nil
+		// mock ItemExists to return false for all items
+		mockDB.ItemExistsFunc = func(ctx context.Context, feedID int64, guid string) (bool, error) {
+			return false, nil
 		}
 
 		createItemCount := 0
@@ -105,7 +101,7 @@ func TestScheduler_UpdateFeed(t *testing.T) {
 			return nil
 		}
 
-		mockDB.UpdateFeedLastFetchedFunc = func(ctx context.Context, feedID int64, lastFetched time.Time) error {
+		mockDB.UpdateFeedFetchedFunc = func(ctx context.Context, feedID int64, nextFetch time.Time) error {
 			assert.Equal(t, testFeed.ID, feedID)
 			return nil
 		}
@@ -113,7 +109,6 @@ func TestScheduler_UpdateFeed(t *testing.T) {
 		s := NewScheduler(mockDB, mockParser, mockExtractor, Config{})
 		s.updateFeed(ctx, testFeed)
 
-		assert.True(t, updateFeedCalled)
 		assert.Equal(t, 2, createItemCount)
 	})
 
@@ -123,8 +118,9 @@ func TestScheduler_UpdateFeed(t *testing.T) {
 		mockExtractor := &mocks.ExtractorMock{}
 
 		testFeed := db.Feed{
-			ID:  1,
-			URL: "http://example.com/feed.xml",
+			ID:            1,
+			URL:           "http://example.com/feed.xml",
+			FetchInterval: 1800,
 		}
 
 		parseErr := errors.New("parse error")
@@ -172,19 +168,19 @@ func TestScheduler_ExtractItemContent(t *testing.T) {
 			return extractResult, nil
 		}
 
-		contentCreated := false
-		mockDB.CreateContentFunc = func(ctx context.Context, content *db.Content) error {
-			contentCreated = true
-			assert.Equal(t, testItem.ID, content.ItemID)
-			assert.Equal(t, extractResult.Content, content.FullContent)
-			assert.False(t, content.ExtractionError.Valid)
+		contentUpdated := false
+		mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content string, err error) error {
+			contentUpdated = true
+			assert.Equal(t, testItem.ID, itemID)
+			assert.Equal(t, extractResult.Content, content)
+			assert.NoError(t, err)
 			return nil
 		}
 
 		s := NewScheduler(mockDB, mockParser, mockExtractor, Config{})
 		s.extractItemContent(ctx, testItem)
 
-		assert.True(t, contentCreated)
+		assert.True(t, contentUpdated)
 	})
 
 	t.Run("extraction error", func(t *testing.T) {
@@ -203,11 +199,11 @@ func TestScheduler_ExtractItemContent(t *testing.T) {
 		}
 
 		errorStored := false
-		mockDB.CreateContentFunc = func(ctx context.Context, content *db.Content) error {
+		mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content string, err error) error {
 			errorStored = true
-			assert.Equal(t, testItem.ID, content.ItemID)
-			assert.True(t, content.ExtractionError.Valid)
-			assert.Equal(t, extractErr.Error(), content.ExtractionError.String)
+			assert.Equal(t, testItem.ID, itemID)
+			assert.Empty(t, content)
+			assert.Equal(t, extractErr, err)
 			return nil
 		}
 
@@ -225,8 +221,9 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 	mockExtractor := &mocks.ExtractorMock{}
 
 	testFeed := &db.Feed{
-		ID:  1,
-		URL: "http://example.com/feed.xml",
+		ID:            1,
+		URL:           "http://example.com/feed.xml",
+		FetchInterval: 300, // 5 minutes in seconds
 	}
 
 	parsedFeed := &types.Feed{
@@ -244,15 +241,15 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		return parsedFeed, nil
 	}
 
+	mockDB.ItemExistsFunc = func(ctx context.Context, feedID int64, guid string) (bool, error) {
+		return false, nil
+	}
+
 	mockDB.CreateItemFunc = func(ctx context.Context, item *db.Item) error {
 		return nil
 	}
 
-	mockDB.UpdateFeedFunc = func(ctx context.Context, feed *db.Feed) error {
-		return nil
-	}
-
-	mockDB.UpdateFeedLastFetchedFunc = func(ctx context.Context, feedID int64, lastFetched time.Time) error {
+	mockDB.UpdateFeedFetchedFunc = func(ctx context.Context, feedID int64, nextFetch time.Time) error {
 		assert.Equal(t, testFeed.ID, feedID)
 		return nil
 	}
@@ -287,9 +284,9 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		return extractResult, nil
 	}
 
-	mockDB.CreateContentFunc = func(ctx context.Context, content *db.Content) error {
-		assert.Equal(t, testItem.ID, content.ItemID)
-		assert.Equal(t, extractResult.Content, content.FullContent)
+	mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content string, err error) error {
+		assert.Equal(t, testItem.ID, itemID)
+		assert.Equal(t, extractResult.Content, content)
 		return nil
 	}
 
@@ -304,10 +301,10 @@ func TestScheduler_StartStop(t *testing.T) {
 	mockExtractor := &mocks.ExtractorMock{}
 
 	// mock expectations for the initial feed update
-	mockDB.GetEnabledFeedsFunc = func(ctx context.Context) ([]db.Feed, error) {
+	mockDB.GetFeedsFunc = func(ctx context.Context, enabledOnly bool) ([]db.Feed, error) {
 		return []db.Feed{}, nil
 	}
-	mockDB.GetItemsForExtractionFunc = func(ctx context.Context, limit int) ([]db.Item, error) {
+	mockDB.GetItemsNeedingExtractionFunc = func(ctx context.Context, limit int) ([]db.Item, error) {
 		return []db.Item{}, nil
 	}
 
@@ -357,7 +354,7 @@ func TestScheduler_extractPendingContent(t *testing.T) {
 		},
 	}
 
-	mockDB.GetItemsForExtractionFunc = func(ctx context.Context, limit int) ([]db.Item, error) {
+	mockDB.GetItemsNeedingExtractionFunc = func(ctx context.Context, limit int) ([]db.Item, error) {
 		assert.Equal(t, 5, limit) // default max workers
 		return pendingItems, nil
 	}
@@ -367,26 +364,22 @@ func TestScheduler_extractPendingContent(t *testing.T) {
 		Title:   "Article Title",
 	}
 
-	extractCallCount := 0
 	mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
-		extractCallCount++
 		if url == "http://example.com/2" {
 			return nil, fmt.Errorf("extraction failed")
 		}
 		return extractedContent, nil
 	}
 
-	createContentCallCount := 0
-	mockDB.CreateContentFunc = func(ctx context.Context, content *db.Content) error {
-		createContentCallCount++
-		switch content.ItemID {
+	mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content string, err error) error {
+		switch itemID {
 		case 1:
-			assert.Equal(t, "Extracted content", content.FullContent)
-			assert.False(t, content.ExtractionError.Valid)
+			assert.Equal(t, "Extracted content", content)
+			assert.NoError(t, err) //nolint:testifylint // inside mock function
 		case 2:
-			assert.Empty(t, content.FullContent)
-			assert.True(t, content.ExtractionError.Valid)
-			assert.Contains(t, content.ExtractionError.String, "extraction failed")
+			assert.Empty(t, content)
+			assert.NotNil(t, err) //nolint:testifylint // inside mock function
+			assert.Contains(t, err.Error(), "extraction failed")
 		}
 		return nil
 	}
@@ -394,8 +387,8 @@ func TestScheduler_extractPendingContent(t *testing.T) {
 	s := NewScheduler(mockDB, mockParser, mockExtractor, Config{})
 	s.extractPendingContent(ctx)
 
-	assert.Equal(t, 2, extractCallCount)
-	assert.Equal(t, 2, createContentCallCount)
+	assert.Len(t, mockExtractor.ExtractCalls(), 2)
+	assert.Len(t, mockDB.UpdateItemExtractionCalls(), 2)
 }
 
 func TestScheduler_updateAllFeeds(t *testing.T) {
@@ -417,7 +410,7 @@ func TestScheduler_updateAllFeeds(t *testing.T) {
 		},
 	}
 
-	mockDB.GetEnabledFeedsFunc = func(ctx context.Context) ([]db.Feed, error) {
+	mockDB.GetFeedsFunc = func(ctx context.Context, enabledOnly bool) ([]db.Feed, error) {
 		return testFeeds, nil
 	}
 
@@ -434,17 +427,11 @@ func TestScheduler_updateAllFeeds(t *testing.T) {
 		},
 	}
 
-	parseCallCount := 0
 	mockParser.ParseFunc = func(ctx context.Context, url string) (*types.Feed, error) {
-		parseCallCount++
 		if url == "http://example.com/feed2.xml" {
 			return nil, fmt.Errorf("parse error")
 		}
 		return parsedFeed, nil
-	}
-
-	mockDB.UpdateFeedFunc = func(ctx context.Context, feed *db.Feed) error {
-		return nil
 	}
 
 	mockDB.UpdateFeedErrorFunc = func(ctx context.Context, feedID int64, errMsg string) error {
@@ -458,14 +445,18 @@ func TestScheduler_updateAllFeeds(t *testing.T) {
 		return nil
 	}
 
-	mockDB.UpdateFeedLastFetchedFunc = func(ctx context.Context, feedID int64, lastFetched time.Time) error {
+	mockDB.ItemExistsFunc = func(ctx context.Context, feedID int64, guid string) (bool, error) {
+		return false, nil
+	}
+
+	mockDB.UpdateFeedFetchedFunc = func(ctx context.Context, feedID int64, nextFetch time.Time) error {
 		return nil
 	}
 
 	s := NewScheduler(mockDB, mockParser, mockExtractor, Config{MaxWorkers: 2})
 	s.updateAllFeeds(ctx)
 
-	assert.Equal(t, 2, parseCallCount)
+	assert.Len(t, mockParser.ParseCalls(), 2)
 }
 
 func TestScheduler_periodicUpdates(t *testing.T) {
@@ -476,12 +467,7 @@ func TestScheduler_periodicUpdates(t *testing.T) {
 	mockParser := &mocks.ParserMock{}
 	mockExtractor := &mocks.ExtractorMock{}
 
-	updateCount := 0
-	var mu sync.Mutex
-	mockDB.GetEnabledFeedsFunc = func(ctx context.Context) ([]db.Feed, error) {
-		mu.Lock()
-		updateCount++
-		mu.Unlock()
+	mockDB.GetFeedsFunc = func(ctx context.Context, enabledOnly bool) ([]db.Feed, error) {
 		return []db.Feed{}, nil
 	}
 
@@ -500,7 +486,5 @@ func TestScheduler_periodicUpdates(t *testing.T) {
 	// wait for graceful shutdown
 	time.Sleep(50 * time.Millisecond)
 
-	mu.Lock()
-	assert.GreaterOrEqual(t, updateCount, 2)
-	mu.Unlock()
+	assert.GreaterOrEqual(t, len(mockDB.GetFeedsCalls()), 2)
 }
