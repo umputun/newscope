@@ -2,7 +2,9 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -250,4 +252,256 @@ func (db *DB) DeleteOldItems(ctx context.Context, olderThan time.Duration) (int6
 	}
 
 	return result.RowsAffected()
+}
+
+// UpdateItemContent updates the content fields after extraction
+func (db *DB) UpdateItemContent(ctx context.Context, itemID int64, content, contentHTML, language, extractionMethod, extractionMode string, readTime, mediaCount int) error {
+	// calculate content hash
+	hash := sha256.Sum256([]byte(content))
+	contentHash := hex.EncodeToString(hash[:])
+
+	query := `
+		UPDATE items SET
+			content = ?, content_html = ?, content_hash = ?,
+			language = ?, read_time = ?, media_count = ?,
+			extraction_method = ?, extraction_mode = ?,
+			content_extracted = 1,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`
+
+	_, err := db.conn.ExecContext(ctx, query,
+		sql.NullString{String: content, Valid: content != ""},
+		sql.NullString{String: contentHTML, Valid: contentHTML != ""},
+		sql.NullString{String: contentHash, Valid: true},
+		sql.NullString{String: language, Valid: language != ""},
+		sql.NullInt64{Int64: int64(readTime), Valid: readTime > 0},
+		sql.NullInt64{Int64: int64(mediaCount), Valid: true},
+		sql.NullString{String: extractionMethod, Valid: extractionMethod != ""},
+		sql.NullString{String: extractionMode, Valid: extractionMode != ""},
+		itemID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("update item content: %w", err)
+	}
+	return nil
+}
+
+// GetItemsByContentHash finds items with the same content hash
+func (db *DB) GetItemsByContentHash(ctx context.Context, contentHash string) ([]Item, error) {
+	query := `
+		SELECT * FROM items 
+		WHERE content_hash = ? 
+		ORDER BY published DESC`
+
+	var items []Item
+	err := db.conn.SelectContext(ctx, &items, query, contentHash)
+	if err != nil {
+		return nil, fmt.Errorf("get items by content hash: %w", err)
+	}
+	return items, nil
+}
+
+// GetItemsWithoutContent retrieves items that need content extraction
+func (db *DB) GetItemsWithoutContent(ctx context.Context, limit int) ([]Item, error) {
+	query := `
+		SELECT * FROM items 
+		WHERE content_extracted = 0 
+		  AND published > datetime('now', '-7 days')
+		ORDER BY published DESC
+		LIMIT ?`
+
+	var items []Item
+	err := db.conn.SelectContext(ctx, &items, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get items without content: %w", err)
+	}
+	return items, nil
+}
+
+// GetItemsByLanguage retrieves items by language
+func (db *DB) GetItemsByLanguage(ctx context.Context, language string, limit, offset int) ([]Item, error) {
+	query := `
+		SELECT * FROM items 
+		WHERE language = ? 
+		ORDER BY published DESC
+		LIMIT ? OFFSET ?`
+
+	var items []Item
+	err := db.conn.SelectContext(ctx, &items, query, language, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("get items by language: %w", err)
+	}
+	return items, nil
+}
+
+// SearchItemsFullText performs full-text search on items
+func (db *DB) SearchItemsFullText(ctx context.Context, query string, limit, offset int) ([]Item, error) {
+	searchQuery := `
+		SELECT i.* FROM items i
+		JOIN items_fts ON items_fts.rowid = i.id
+		WHERE items_fts MATCH ?
+		ORDER BY rank
+		LIMIT ? OFFSET ?`
+
+	var items []Item
+	err := db.conn.SelectContext(ctx, &items, searchQuery, query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("search items full text: %w", err)
+	}
+	return items, nil
+}
+
+// GetItemStats returns statistics about items
+func (db *DB) GetItemStats(ctx context.Context) (map[string]interface{}, error) {
+	stats := make(map[string]interface{})
+
+	// total items
+	var totalItems int64
+	err := db.conn.GetContext(ctx, &totalItems, "SELECT COUNT(*) FROM items")
+	if err != nil {
+		return nil, fmt.Errorf("get total items: %w", err)
+	}
+	stats["total_items"] = totalItems
+
+	// items with content
+	var itemsWithContent int64
+	err = db.conn.GetContext(ctx, &itemsWithContent,
+		"SELECT COUNT(*) FROM items WHERE content_extracted = 1")
+	if err != nil {
+		return nil, fmt.Errorf("get items with content: %w", err)
+	}
+	stats["items_with_content"] = itemsWithContent
+
+	// average read time
+	var avgReadTime sql.NullFloat64
+	err = db.conn.GetContext(ctx, &avgReadTime,
+		"SELECT AVG(read_time) FROM items WHERE read_time IS NOT NULL")
+	if err != nil {
+		return nil, fmt.Errorf("get average read time: %w", err)
+	}
+	if avgReadTime.Valid {
+		stats["avg_read_time_minutes"] = avgReadTime.Float64
+	}
+
+	// items by language
+	query := `
+		SELECT language, COUNT(*) as count
+		FROM items
+		WHERE language IS NOT NULL
+		GROUP BY language
+		ORDER BY count DESC
+		LIMIT 10`
+
+	var langCounts []struct {
+		Language string `db:"language"`
+		Count    int64  `db:"count"`
+	}
+
+	err = db.conn.SelectContext(ctx, &langCounts, query)
+	if err != nil {
+		return nil, fmt.Errorf("get language counts: %w", err)
+	}
+
+	languages := make(map[string]int64)
+	for _, lc := range langCounts {
+		languages[lc.Language] = lc.Count
+	}
+	stats["items_by_language"] = languages
+
+	// extraction methods
+	query = `
+		SELECT extraction_method, COUNT(*) as count
+		FROM items
+		WHERE extraction_method IS NOT NULL
+		GROUP BY extraction_method`
+
+	var methodCounts []struct {
+		Method string `db:"extraction_method"`
+		Count  int64  `db:"count"`
+	}
+
+	err = db.conn.SelectContext(ctx, &methodCounts, query)
+	if err != nil {
+		return nil, fmt.Errorf("get extraction method counts: %w", err)
+	}
+
+	methods := make(map[string]int64)
+	for _, mc := range methodCounts {
+		methods[mc.Method] = mc.Count
+	}
+	stats["extraction_methods"] = methods
+
+	return stats, nil
+}
+
+// GetDuplicateItems finds potential duplicate items based on content hash
+func (db *DB) GetDuplicateItems(ctx context.Context, limit int) ([]struct {
+	ContentHash string `db:"content_hash"`
+	Count       int    `db:"count"`
+	Items       []Item
+}, error) {
+	// first get content hashes with duplicates
+	query := `
+		SELECT content_hash, COUNT(*) as count
+		FROM items
+		WHERE content_hash IS NOT NULL
+		GROUP BY content_hash
+		HAVING count > 1
+		ORDER BY count DESC
+		LIMIT ?`
+
+	var duplicates []struct {
+		ContentHash string `db:"content_hash"`
+		Count       int    `db:"count"`
+	}
+
+	err := db.conn.SelectContext(ctx, &duplicates, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get duplicate hashes: %w", err)
+	}
+
+	// fetch items for each duplicate hash
+	results := make([]struct {
+		ContentHash string `db:"content_hash"`
+		Count       int    `db:"count"`
+		Items       []Item
+	}, len(duplicates))
+
+	for i, dup := range duplicates {
+		items, err := db.GetItemsByContentHash(ctx, dup.ContentHash)
+		if err != nil {
+			return nil, fmt.Errorf("get items for hash %s: %w", dup.ContentHash, err)
+		}
+
+		results[i] = struct {
+			ContentHash string `db:"content_hash"`
+			Count       int    `db:"count"`
+			Items       []Item
+		}{
+			ContentHash: dup.ContentHash,
+			Count:       dup.Count,
+			Items:       items,
+		}
+	}
+
+	return results, nil
+}
+
+// CleanupOldItems removes items older than the specified duration (enhanced version)
+func (db *DB) CleanupOldItems(ctx context.Context, olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan)
+
+	result, err := db.conn.ExecContext(ctx,
+		"DELETE FROM items WHERE published < ? OR (published IS NULL AND created_at < ?)",
+		cutoff, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("cleanup old items: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("get rows affected: %w", err)
+	}
+	return affected, nil
 }

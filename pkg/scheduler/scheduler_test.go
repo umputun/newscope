@@ -471,7 +471,7 @@ func TestScheduler_updateAllFeeds(t *testing.T) {
 func TestScheduler_periodicUpdates(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	mockDB := &mocks.DatabaseMock{}
 	mockParser := &mocks.ParserMock{}
 	mockExtractor := &mocks.ExtractorMock{}
@@ -486,7 +486,7 @@ func TestScheduler_periodicUpdates(t *testing.T) {
 	}
 
 	s := NewScheduler(mockDB, mockParser, mockExtractor, Config{
-		UpdateInterval: 50 * time.Millisecond,
+		UpdateInterval:  50 * time.Millisecond,
 		ExtractInterval: 1 * time.Hour, // don't run extraction
 	})
 
@@ -496,7 +496,7 @@ func TestScheduler_periodicUpdates(t *testing.T) {
 	// wait for at least 2 updates
 	time.Sleep(150 * time.Millisecond)
 	cancel()
-	
+
 	// wait for graceful shutdown
 	time.Sleep(50 * time.Millisecond)
 
@@ -504,4 +504,3 @@ func TestScheduler_periodicUpdates(t *testing.T) {
 	assert.GreaterOrEqual(t, updateCount, 2)
 	mu.Unlock()
 }
-

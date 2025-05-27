@@ -121,4 +121,3 @@ func (d *DBAdapter) SearchItems(ctx context.Context, query string, limit, offset
 	}
 	return items, nil
 }
-

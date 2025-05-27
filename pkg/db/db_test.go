@@ -20,7 +20,7 @@ func setupTestDB(t *testing.T) (db *DB, cleanup func()) {
 	tmpFile.Close()
 
 	cfg := Config{
-		DSN: "file:" + tmpFile.Name() + "?mode=rwc",
+		DSN: ":memory:",
 	}
 
 	db, err = New(cfg)

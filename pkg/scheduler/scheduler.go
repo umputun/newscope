@@ -319,4 +319,3 @@ func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
 	s.extractItemContent(ctx, *item)
 	return nil
 }
-

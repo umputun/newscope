@@ -178,4 +178,3 @@ func TestParser_Parse_NoGUID(t *testing.T) {
 	// should generate GUID from feed title and item title
 	assert.Equal(t, "Test Feed-No GUID Article", item.GUID)
 }
-

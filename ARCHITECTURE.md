@@ -24,19 +24,236 @@ config.yaml → Config struct → Validation → Application components
 
 SQLite-based persistence using pure Go driver (modernc.org/sqlite) with sqlx for query building.
 
-**Models:**
-- `Feed`: RSS/Atom feed sources with metadata
-- `Item`: Individual articles/posts from feeds
-- `Content`: Extracted full-text content
-- `Category`: Tags/categories for items
-- `ItemWithContent`: Joined view of items with their content
-- `FeedWithStats`: Feed with aggregated statistics
+**Core Characteristics:**
+- Pure Go SQLite driver (no CGO dependency)
+- WAL mode for concurrent readers
+- Foreign key constraints enforced
+- Full-text search with FTS5
+- Automatic schema initialization and migrations
 
-**Key Features:**
-- Automatic schema migrations on startup
-- SQL null types handling (NullString, NullTime, etc.)
-- Transaction support for atomic operations
-- Prepared statements for performance
+#### Storage Schema
+
+**Primary Tables:**
+
+1. **feeds** - RSS/Atom feed sources
+   ```sql
+   - id (INTEGER PRIMARY KEY)
+   - url (TEXT UNIQUE NOT NULL) - Feed URL
+   - title (TEXT) - Feed title
+   - description (TEXT) - Feed description
+   - last_fetched (DATETIME) - Last successful fetch
+   - next_fetch (DATETIME) - Scheduled next fetch
+   - fetch_interval (INTEGER DEFAULT 1800) - Seconds between fetches
+   - last_error (TEXT) - Last fetch error message
+   - error_count (INTEGER DEFAULT 0) - Consecutive error count
+   - priority (INTEGER DEFAULT 1) - Fetch priority
+   - metadata (JSON) - Additional feed metadata
+   - enabled (BOOLEAN DEFAULT 1) - Feed active status
+   - avg_score (REAL) - Average article score
+   - created_at, updated_at (DATETIME)
+   ```
+
+2. **items** - Individual articles/posts
+   ```sql
+   - id (INTEGER PRIMARY KEY)
+   - feed_id (INTEGER NOT NULL, FK → feeds.id)
+   - guid (TEXT NOT NULL) - Unique identifier from feed
+   - title (TEXT NOT NULL) - Article title
+   - link (TEXT NOT NULL) - Article URL
+   - description (TEXT) - Summary/excerpt
+   - content (TEXT) - Original content from feed
+   - author (TEXT) - Author name
+   - categories (JSON) - Array of category strings
+   - published (DATETIME) - Publication date
+   - image_url (TEXT) - Featured image
+   - content_hash (TEXT) - Hash for duplicate detection
+   - language (TEXT) - Detected language code
+   - content_extracted (BOOLEAN DEFAULT 0)
+   - created_at, updated_at (DATETIME)
+   - UNIQUE(feed_id, guid) - Prevent duplicates
+   ```
+
+3. **content** - Extracted full-text content
+   ```sql
+   - id (INTEGER PRIMARY KEY)
+   - item_id (INTEGER UNIQUE, FK → items.id)
+   - content (TEXT NOT NULL) - Extracted full text
+   - text_content (TEXT) - Plain text version
+   - language (TEXT) - Detected language
+   - extracted_at (DATETIME) - Extraction timestamp
+   - extractor (TEXT) - Extraction method used
+   - extractor_meta (JSON) - Extractor metadata
+   - error (TEXT) - Extraction error if any
+   ```
+
+4. **categories** - Classification system
+   ```sql
+   - id (INTEGER PRIMARY KEY)
+   - name (TEXT UNIQUE NOT NULL) - Category name
+   - keywords (JSON) - Array of keywords
+   - is_positive (BOOLEAN DEFAULT 1) - Sentiment indicator
+   - weight (REAL DEFAULT 1.0) - Category importance
+   - parent_id (INTEGER, FK → categories.id) - Hierarchy support
+   - active (BOOLEAN DEFAULT 1) - Category status
+   - created_at, updated_at (DATETIME)
+   ```
+
+5. **item_categories** - Many-to-many junction
+   ```sql
+   - item_id (INTEGER, FK → items.id ON DELETE CASCADE)
+   - category_id (INTEGER, FK → categories.id ON DELETE CASCADE)
+   - confidence (REAL DEFAULT 1.0) - Assignment confidence
+   - PRIMARY KEY (item_id, category_id)
+   ```
+
+6. **article_scores** - Scoring and ranking
+   ```sql
+   - article_id (INTEGER PRIMARY KEY, FK → items.id)
+   - rule_score (REAL) - Rule-based score
+   - ml_score (REAL) - ML model score
+   - source_score (REAL) - Source reputation score
+   - recency_score (REAL) - Time-based score
+   - final_score (REAL NOT NULL) - Combined score
+   - explanation (JSON) - Score breakdown
+   - scored_at (DATETIME) - Scoring timestamp
+   - model_version (INTEGER) - ML model version used
+   ```
+
+7. **user_feedback** - User interaction tracking
+   ```sql
+   - id (INTEGER PRIMARY KEY)
+   - article_id (INTEGER, FK → items.id)
+   - feedback_type (TEXT NOT NULL) - Type of feedback
+   - feedback_value (INTEGER) - Numeric value
+   - feedback_at (DATETIME) - Timestamp
+   - time_spent (INTEGER) - Reading time in seconds
+   - used_for_training (BOOLEAN DEFAULT 0)
+   - UNIQUE(article_id) - One feedback per article
+   ```
+
+8. **user_actions** - Detailed action logging
+   ```sql
+   - id (INTEGER PRIMARY KEY)
+   - article_id (INTEGER, FK → items.id)
+   - action (TEXT NOT NULL) - Action type
+   - action_at (DATETIME) - Timestamp
+   - context (JSON) - Additional context
+   ```
+
+9. **ml_models** - Machine learning model storage
+   ```sql
+   - id (INTEGER PRIMARY KEY)
+   - model_type (TEXT NOT NULL) - Model identifier
+   - model_data (BLOB NOT NULL) - Serialized model
+   - feature_config (JSON) - Feature configuration
+   - training_stats (JSON) - Training metrics
+   - sample_count (INTEGER) - Training samples
+   - created_at (DATETIME)
+   - is_active (BOOLEAN DEFAULT 0) - Active model flag
+   ```
+
+10. **settings** - Key-value configuration store
+    ```sql
+    - key (TEXT PRIMARY KEY)
+    - value (TEXT NOT NULL)
+    - created_at, updated_at (DATETIME)
+    ```
+
+#### Indexes and Performance
+
+**Strategic Indexes:**
+```sql
+- idx_feeds_next_fetch ON feeds(next_fetch) - Scheduler queries
+- idx_items_feed_id ON items(feed_id) - Feed-item lookups
+- idx_items_published ON items(published DESC) - Chronological queries
+- idx_items_feed_published ON items(feed_id, published DESC) - Feed timeline
+- idx_items_content_extracted ON items(content_extracted) - Extraction queue
+- idx_items_url_hash ON items(link, content_hash) - Duplicate detection
+- idx_scores_final ON article_scores(final_score DESC) - Top articles
+- idx_feedback_training ON user_feedback(used_for_training, feedback_at)
+- idx_actions_article ON user_actions(article_id, action_at)
+- idx_categories_active ON categories(active)
+- idx_item_categories_item ON item_categories(item_id)
+- idx_item_categories_category ON item_categories(category_id)
+```
+
+**Full-Text Search:**
+```sql
+CREATE VIRTUAL TABLE items_fts USING fts5(
+    title, description, content
+);
+
+-- Triggers to maintain FTS index
+CREATE TRIGGER items_fts_insert AFTER INSERT ON items
+CREATE TRIGGER items_fts_update AFTER UPDATE ON items  
+CREATE TRIGGER items_fts_delete AFTER DELETE ON items
+```
+
+#### SQLite Configuration
+
+**Pragmas for Optimization:**
+```sql
+PRAGMA foreign_keys = ON;          -- Enforce referential integrity
+PRAGMA journal_mode = WAL;         -- Write-Ahead Logging
+PRAGMA synchronous = NORMAL;       -- Balance safety/performance
+PRAGMA cache_size = -64000;        -- 64MB cache
+PRAGMA temp_store = MEMORY;        -- Memory for temp tables
+```
+
+#### Data Access Patterns
+
+**Common Query Patterns:**
+
+1. **Feed Updates**
+   - Get feeds due for update: `WHERE next_fetch <= NOW() AND enabled = 1`
+   - Batch upsert items: `INSERT ... ON CONFLICT(feed_id, guid) DO UPDATE`
+   - Update feed metadata: Transaction with error handling
+
+2. **Content Extraction**
+   - Queue unprocessed: `WHERE content_extracted = 0 ORDER BY published DESC`
+   - Store extracted content: Insert with FTS update trigger
+   - Handle extraction errors: Update item and create error record
+
+3. **Article Retrieval**
+   - Recent articles: `ORDER BY published DESC LIMIT ? OFFSET ?`
+   - By category: Join through item_categories
+   - Full-text search: Query FTS table then join results
+   - High-scoring: `WHERE final_score >= ? ORDER BY final_score DESC`
+
+4. **Statistics and Analytics**
+   - Feed performance: Aggregate scores, error rates
+   - Category distribution: Count and confidence aggregation
+   - User engagement: Action counts and time analysis
+
+**Transaction Patterns:**
+```go
+// Complex operations use transactions
+err := db.InTransaction(ctx, func(tx *sqlx.Tx) error {
+    // Multiple related operations
+    // All succeed or all rollback
+})
+```
+
+#### Null Value Handling
+
+All nullable columns use sql.Null* types:
+- `sql.NullString` for optional text
+- `sql.NullTime` for optional timestamps
+- `sql.NullInt64` for optional integers
+- `sql.NullFloat64` for optional decimals
+- `sql.NullBool` for optional booleans
+
+This ensures proper NULL handling and prevents zero-value ambiguity.
+
+#### Migration Strategy
+
+Schema is versioned and applied automatically:
+1. Check current schema version
+2. Apply pending migrations in order
+3. Update schema version
+4. All wrapped in transaction
+
+Future migrations will be added as needed while maintaining backward compatibility.
 
 ### 3. Feed System (`pkg/feed`)
 

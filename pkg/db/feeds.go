@@ -11,8 +11,8 @@ import (
 // CreateFeed creates a new feed
 func (db *DB) CreateFeed(ctx context.Context, feed *Feed) error {
 	query := `
-		INSERT INTO feeds (url, title, description, enabled)
-		VALUES (:url, :title, :description, :enabled)
+		INSERT INTO feeds (url, title, description, enabled, priority, fetch_interval)
+		VALUES (:url, :title, :description, :enabled, :priority, :fetch_interval)
 	`
 	result, err := db.conn.NamedExecContext(ctx, query, feed)
 	if err != nil {
@@ -123,12 +123,24 @@ func (db *DB) UpdateFeed(ctx context.Context, feed *Feed) error {
 
 // UpdateFeedLastFetched updates the last fetched timestamp
 func (db *DB) UpdateFeedLastFetched(ctx context.Context, feedID int64, lastFetched time.Time) error {
+	// get feed to know its interval
+	feed, err := db.GetFeed(ctx, feedID)
+	if err != nil {
+		return fmt.Errorf("get feed for interval: %w", err)
+	}
+
+	// calculate next fetch time based on interval
+	nextFetch := lastFetched.Add(time.Duration(feed.FetchInterval) * time.Second)
 	query := `
 		UPDATE feeds 
-		SET last_fetched = ?, last_error = NULL, error_count = 0, updated_at = ?
+		SET last_fetched = ?, 
+		    next_fetch = ?,
+		    last_error = NULL, 
+		    error_count = 0, 
+		    updated_at = ?
 		WHERE id = ?
 	`
-	_, err := db.conn.ExecContext(ctx, query, lastFetched, time.Now(), feedID)
+	_, err = db.conn.ExecContext(ctx, query, lastFetched.UTC(), nextFetch.UTC(), time.Now().UTC(), feedID)
 	if err != nil {
 		return fmt.Errorf("update feed last fetched: %w", err)
 	}
@@ -167,4 +179,69 @@ func (db *DB) DeleteFeed(ctx context.Context, id int64) error {
 	}
 
 	return nil
+}
+
+// GetFeedsDueForUpdate retrieves feeds that need to be updated
+func (db *DB) GetFeedsDueForUpdate(ctx context.Context, limit int) ([]Feed, error) {
+	query := `
+		SELECT * FROM feeds 
+		WHERE enabled = 1 
+		  AND (next_fetch IS NULL OR next_fetch <= ?)
+		ORDER BY priority DESC, next_fetch ASC
+		LIMIT ?`
+
+	var feeds []Feed
+	err := db.conn.SelectContext(ctx, &feeds, query, time.Now().UTC(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("get feeds due for update: %w", err)
+	}
+	return feeds, nil
+}
+
+// UpdateFeedPriority updates the priority of a feed
+func (db *DB) UpdateFeedPriority(ctx context.Context, feedID int64, priority int) error {
+	query := `UPDATE feeds SET priority = ?, updated_at = ? WHERE id = ?`
+	_, err := db.conn.ExecContext(ctx, query, priority, time.Now(), feedID)
+	if err != nil {
+		return fmt.Errorf("update feed priority: %w", err)
+	}
+	return nil
+}
+
+// UpdateFeedInterval updates the fetch interval for a feed
+func (db *DB) UpdateFeedInterval(ctx context.Context, feedID int64, intervalSeconds int) error {
+	query := `
+		UPDATE feeds 
+		SET fetch_interval = ?, updated_at = ? 
+		WHERE id = ?`
+	_, err := db.conn.ExecContext(ctx, query, intervalSeconds, time.Now(), feedID)
+	if err != nil {
+		return fmt.Errorf("update feed interval: %w", err)
+	}
+	return nil
+}
+
+// SetFeedMetadata sets custom metadata for a feed
+func (db *DB) SetFeedMetadata(ctx context.Context, feedID int64, metadata string) error {
+	query := `UPDATE feeds SET metadata = ?, updated_at = ? WHERE id = ?`
+	_, err := db.conn.ExecContext(ctx, query, metadata, time.Now(), feedID)
+	if err != nil {
+		return fmt.Errorf("set feed metadata: %w", err)
+	}
+	return nil
+}
+
+// GetFeedsByPriority retrieves feeds ordered by priority
+func (db *DB) GetFeedsByPriority(ctx context.Context, minPriority int) ([]Feed, error) {
+	query := `
+		SELECT * FROM feeds 
+		WHERE enabled = 1 AND priority >= ?
+		ORDER BY priority DESC, title`
+
+	var feeds []Feed
+	err := db.conn.SelectContext(ctx, &feeds, query, minPriority)
+	if err != nil {
+		return nil, fmt.Errorf("get feeds by priority: %w", err)
+	}
+	return feeds, nil
 }

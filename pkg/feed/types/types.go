@@ -12,7 +12,7 @@ type Feed struct {
 
 // Item represents a single article from an RSS/Atom feed
 type Item struct {
-	FeedName    string    // name of the feed this item belongs to (optional)
+	FeedName    string // name of the feed this item belongs to (optional)
 	GUID        string
 	Title       string
 	Link        string

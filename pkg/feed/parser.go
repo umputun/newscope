@@ -111,4 +111,3 @@ func (p *Parser) fetch(ctx context.Context, url string) (io.ReadCloser, error) {
 
 	return resp.Body, nil
 }
-
