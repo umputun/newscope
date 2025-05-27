@@ -32,7 +32,7 @@ func (d *DBAdapter) GetFeeds(ctx context.Context) ([]types.Feed, error) {
 
 // GetItems adapts db.GetItems to return types.Item
 func (d *DBAdapter) GetItems(ctx context.Context, limit, _ int) ([]types.Item, error) {
-	// our simplified DB uses minScore instead of offset
+	// DB uses minScore instead of offset
 	// for now, return all items with score >= 0
 	dbItems, err := d.DB.GetItems(ctx, limit, 0)
 	if err != nil {

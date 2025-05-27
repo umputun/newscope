@@ -15,14 +15,12 @@ import (
 
 // Database interface for scheduler operations
 type Database interface {
-	// Feed operations
 	GetFeed(ctx context.Context, id int64) (*db.Feed, error)
 	GetFeeds(ctx context.Context, enabledOnly bool) ([]db.Feed, error)
 	GetFeedsToFetch(ctx context.Context, limit int) ([]db.Feed, error)
 	UpdateFeedFetched(ctx context.Context, feedID int64, nextFetch time.Time) error
 	UpdateFeedError(ctx context.Context, feedID int64, errMsg string) error
 
-	// Item operations
 	GetItem(ctx context.Context, id int64) (*db.Item, error)
 	CreateItem(ctx context.Context, item *db.Item) error
 	ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
