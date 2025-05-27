@@ -51,7 +51,7 @@ func TestHTTPExtractor_Extract_RealArticles(t *testing.T) {
 			expectedContent: []string{
 				"GPT-4 Turbo",
 				"128K context window",
-				"vision capabilities",  
+				"vision capabilities",
 				"DevDay in San Francisco",
 				"$0.01 per 1,000 input tokens",
 			},
@@ -132,6 +132,7 @@ func TestHTTPExtractor_Extract_RealArticles(t *testing.T) {
 			content, err := extractor.Extract(ctx, url)
 			require.NoError(t, err)
 			require.NotEmpty(t, content)
+			t.Logf("Extracted content (%d chars): %s", len(content), content)
 
 			// check minimum length
 			assert.GreaterOrEqual(t, len(content), tt.minLength,

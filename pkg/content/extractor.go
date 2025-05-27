@@ -33,7 +33,7 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (string, err
 	if urlStr == "" {
 		return "", fmt.Errorf("empty URL")
 	}
-	
+
 	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
 		return "", fmt.Errorf("parse URL: %w", err)
