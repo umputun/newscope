@@ -1,0 +1,119 @@
+{{template "base.html" .}}
+
+{{define "title"}}Feeds - Newscope{{end}}
+
+{{define "content"}}
+<div class="feeds-header">
+    <h2>Feed Management</h2>
+    <button class="btn-primary" onclick="document.getElementById('add-feed-form').style.display='block'">
+        Add New Feed
+    </button>
+</div>
+
+<!-- Add Feed Form (hidden by default) -->
+<div id="add-feed-form" class="feed-form" style="display: none;">
+    <h3>Add New Feed</h3>
+    <form hx-post="/api/v1/feeds" 
+          hx-target="#feeds-list" 
+          hx-swap="beforeend"
+          hx-on="htmx:afterRequest: this.reset(); document.getElementById('add-feed-form').style.display='none'">
+        <div class="form-group">
+            <label for="url">Feed URL:</label>
+            <input type="url" id="url" name="url" required placeholder="https://example.com/feed.xml">
+        </div>
+        <div class="form-group">
+            <label for="title">Title (optional):</label>
+            <input type="text" id="title" name="title" placeholder="Feed title">
+        </div>
+        <div class="form-group">
+            <label for="fetch_interval">Update Interval (minutes):</label>
+            <input type="number" id="fetch_interval" name="fetch_interval" value="30" min="5" max="1440">
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Add Feed</button>
+            <button type="button" class="btn-secondary" onclick="this.form.reset(); document.getElementById('add-feed-form').style.display='none'">
+                Cancel
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Feeds List -->
+<div id="feeds-list" class="feeds-list">
+    {{range .Feeds}}
+    <div class="feed-card" id="feed-{{.ID}}">
+        <div class="feed-header">
+            <h3>{{.Title}}</h3>
+            <div class="feed-status">
+                {{if .Enabled}}
+                <span class="status-badge status-enabled">Enabled</span>
+                {{else}}
+                <span class="status-badge status-disabled">Disabled</span>
+                {{end}}
+                {{if gt .ErrorCount 0}}
+                <span class="status-badge status-error">{{.ErrorCount}} errors</span>
+                {{end}}
+            </div>
+        </div>
+        
+        <div class="feed-details">
+            <p class="feed-url">{{.URL}}</p>
+            {{if .Description}}
+            <p class="feed-description">{{.Description}}</p>
+            {{end}}
+            
+            <div class="feed-meta">
+                <span>Update interval: {{.FetchInterval}} seconds</span>
+                {{if .LastFetched}}
+                <span>Last fetched: <time datetime="{{.LastFetched.Format "2006-01-02T15:04:05Z07:00"}}">{{.LastFetched.Format "Jan 2, 15:04"}}</time></span>
+                {{end}}
+                {{if .NextFetch}}
+                <span>Next fetch: <time datetime="{{.NextFetch.Format "2006-01-02T15:04:05Z07:00"}}">{{.NextFetch.Format "Jan 2, 15:04"}}</time></span>
+                {{end}}
+            </div>
+            
+            {{if .LastError}}
+            <div class="feed-error">
+                <strong>Last error:</strong> {{.LastError}}
+            </div>
+            {{end}}
+        </div>
+        
+        <div class="feed-actions">
+            {{if .Enabled}}
+            <button class="btn-secondary"
+                    hx-post="/api/v1/feeds/{{.ID}}/disable"
+                    hx-target="#feed-{{.ID}}"
+                    hx-swap="outerHTML">
+                Disable
+            </button>
+            {{else}}
+            <button class="btn-primary"
+                    hx-post="/api/v1/feeds/{{.ID}}/enable"
+                    hx-target="#feed-{{.ID}}"
+                    hx-swap="outerHTML">
+                Enable
+            </button>
+            {{end}}
+            
+            <button class="btn-secondary"
+                    hx-post="/api/v1/feeds/{{.ID}}/fetch"
+                    hx-indicator="#fetch-indicator-{{.ID}}">
+                Fetch Now
+            </button>
+            <span id="fetch-indicator-{{.ID}}" class="htmx-indicator">Fetching...</span>
+            
+            <button class="btn-danger"
+                    hx-delete="/api/v1/feeds/{{.ID}}"
+                    hx-target="#feed-{{.ID}}"
+                    hx-swap="outerHTML"
+                    hx-confirm="Are you sure you want to delete this feed?">
+                Delete
+            </button>
+        </div>
+    </div>
+    {{else}}
+    <p class="no-feeds">No feeds configured. Add your first feed to get started!</p>
+    {{end}}
+</div>
+{{end}}

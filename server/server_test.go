@@ -5,19 +5,110 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-pkgz/routegroup"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed/types"
 	"github.com/umputun/newscope/server/mocks"
 )
+
+// testServer creates a server instance with loaded templates for testing
+func testServer(t *testing.T, cfg ConfigProvider, database Database, scheduler Scheduler) *Server {
+	srv := &Server{
+		config:    cfg,
+		db:        database,
+		scheduler: scheduler,
+		version:   "test",
+		debug:     false,
+		router:    routegroup.New(http.NewServeMux()),
+	}
+
+	// create simple test templates
+	tmpl := template.New("test")
+
+	// articles.html template
+	tmpl = template.Must(tmpl.New("articles.html").Parse(`
+<!DOCTYPE html>
+<html>
+<head><title>Articles</title></head>
+<body>
+<div class="articles">
+{{range .Articles}}
+<div class="article">
+	<h3>{{.Title}}</h3>
+	<p>{{.FeedName}}</p>
+	<p>Score: {{.RelevanceScore}}/10</p>
+</div>
+{{end}}
+</div>
+</body>
+</html>
+`))
+
+	// article-card.html template
+	tmpl = template.Must(tmpl.New("article-card.html").Parse(`
+<div class="article-card">
+	<h3>{{.Title}}</h3>
+	<p>{{.FeedName}}</p>
+	{{if .UserFeedback}}<div class="btn-like active">{{.UserFeedback}}</div>{{end}}
+	{{if .ExtractedContent}}<button>Show Content</button>{{end}}
+</div>
+`))
+
+	// article-content.html template
+	tmpl = template.Must(tmpl.New("article-content.html").Parse(`
+<div class="content-modal">
+	<h2>Full Article</h2>
+	<p>{{.ExtractedContent}}</p>
+	<button>Close</button>
+</div>
+`))
+
+	// feeds.html template
+	tmpl = template.Must(tmpl.New("feeds.html").Parse(`
+<!DOCTYPE html>
+<html>
+<head><title>Feeds</title></head>
+<body>
+<h2>Feed Management</h2>
+<div class="feeds-list">
+{{range .Feeds}}
+<div class="feed">
+	<h3>{{.Title}}</h3>
+	<p>{{.URL}}</p>
+	{{if .LastError}}<p class="error">{{.LastError}}</p>{{end}}
+</div>
+{{end}}
+</div>
+</body>
+</html>
+`))
+
+	// feed-card.html template
+	tmpl = template.Must(tmpl.New("feed-card.html").Parse(`
+<div class="feed-card">
+	<h3>{{.Title}}</h3>
+	<p>{{.URL}}</p>
+</div>
+`))
+
+	srv.templates = tmpl
+	srv.setupMiddleware()
+	srv.setupRoutes()
+
+	return srv
+}
 
 func TestServer_New(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
@@ -25,10 +116,10 @@ func TestServer_New(t *testing.T) {
 			return ":8080", 30 * time.Second
 		},
 	}
-	db := &mocks.DatabaseMock{}
+	database := &mocks.DatabaseMock{}
 	scheduler := &mocks.SchedulerMock{}
 
-	srv := New(cfg, db, scheduler, "1.0.0", false)
+	srv := New(cfg, database, scheduler, "1.0.0", false)
 	assert.NotNil(t, srv)
 	assert.Equal(t, "1.0.0", srv.version)
 	assert.False(t, srv.debug)
@@ -48,7 +139,7 @@ func TestServer_Run(t *testing.T) {
 		},
 	}
 
-	db := &mocks.DatabaseMock{
+	database := &mocks.DatabaseMock{
 		GetFeedsFunc: func(ctx context.Context) ([]types.Feed, error) {
 			return []types.Feed{}, nil
 		},
@@ -59,7 +150,7 @@ func TestServer_Run(t *testing.T) {
 
 	scheduler := &mocks.SchedulerMock{}
 
-	srv := New(cfg, db, scheduler, "1.0.0", false)
+	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -93,10 +184,10 @@ func TestServer_statusHandler(t *testing.T) {
 			return ":8080", 30 * time.Second
 		},
 	}
-	db := &mocks.DatabaseMock{}
+	database := &mocks.DatabaseMock{}
 	scheduler := &mocks.SchedulerMock{}
 
-	srv := New(cfg, db, scheduler, "1.2.3", false)
+	srv := New(cfg, database, scheduler, "1.2.3", false)
 
 	// create test request
 	req := httptest.NewRequest("GET", "/status", http.NoBody)
@@ -125,13 +216,35 @@ func TestServer_rssFeedHandler(t *testing.T) {
 			return ":8080", 30 * time.Second
 		},
 	}
-	db := &mocks.DatabaseMock{}
+
+	now := time.Now()
+	database := &mocks.DatabaseMock{
+		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+			assert.InEpsilon(t, 5.0, minScore, 0.001) // default score
+			assert.Equal(t, "technology", topic)
+			assert.Equal(t, 50, limit)
+
+			return []types.ItemWithClassification{
+				{
+					Item: types.Item{
+						GUID:      "guid-1",
+						Title:     "Tech News",
+						Link:      "https://example.com/tech",
+						Published: now,
+					},
+					RelevanceScore: 8.5,
+					Explanation:    "Tech related",
+					Topics:         []string{"technology"},
+				},
+			}, nil
+		},
+	}
 	scheduler := &mocks.SchedulerMock{}
 
-	srv := New(cfg, db, scheduler, "1.0.0", false)
+	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	// create test request with path parameter
-	req := httptest.NewRequest("GET", "/feed/technology", http.NoBody)
+	req := httptest.NewRequest("GET", "/rss/technology", http.NoBody)
 	req.SetPathValue("topic", "technology")
 	w := httptest.NewRecorder()
 
@@ -140,7 +253,9 @@ func TestServer_rssFeedHandler(t *testing.T) {
 
 	// check response
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "RSS feed for topic: technology")
+	assert.Equal(t, "application/rss+xml; charset=utf-8", w.Header().Get("Content-Type"))
+	assert.Contains(t, w.Body.String(), `<title>Newscope - technology (Score ≥ 5.0)</title>`)
+	assert.Contains(t, w.Body.String(), `<title>[8.5] Tech News</title>`)
 }
 
 func TestRenderJSON(t *testing.T) {
@@ -211,8 +326,8 @@ func TestServer_articlesHandler(t *testing.T) {
 
 	now := time.Now()
 	classifiedAt := now
-	
-	db := &mocks.DatabaseMock{
+
+	database := &mocks.DatabaseMock{
 		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
 			return []types.ItemWithClassification{
 				{
@@ -238,7 +353,7 @@ func TestServer_articlesHandler(t *testing.T) {
 	}
 
 	scheduler := &mocks.SchedulerMock{}
-	srv := New(cfg, db, scheduler, "1.0.0", false)
+	srv := testServer(t, cfg, database, scheduler)
 
 	// test request
 	req := httptest.NewRequest("GET", "/articles?score=5.0&topic=tech", http.NoBody)
@@ -260,7 +375,7 @@ func TestServer_feedbackHandler(t *testing.T) {
 	}
 
 	feedbackCalled := false
-	db := &mocks.DatabaseMock{
+	database := &mocks.DatabaseMock{
 		UpdateItemFeedbackFunc: func(ctx context.Context, itemID int64, feedback string) error {
 			feedbackCalled = true
 			assert.Equal(t, int64(123), itemID)
@@ -283,7 +398,7 @@ func TestServer_feedbackHandler(t *testing.T) {
 	}
 
 	scheduler := &mocks.SchedulerMock{}
-	srv := New(cfg, db, scheduler, "1.0.0", false)
+	srv := testServer(t, cfg, database, scheduler)
 
 	// test like action
 	req := httptest.NewRequest("POST", "/api/v1/feedback/123/like", http.NoBody)
@@ -315,7 +430,7 @@ func TestServer_extractHandler(t *testing.T) {
 		},
 	}
 
-	db := &mocks.DatabaseMock{
+	database := &mocks.DatabaseMock{
 		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
 			return &types.ItemWithClassification{
 				Item: types.Item{
@@ -330,7 +445,7 @@ func TestServer_extractHandler(t *testing.T) {
 		},
 	}
 
-	srv := New(cfg, db, scheduler, "1.0.0", false)
+	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	req := httptest.NewRequest("POST", "/api/v1/extract/456", http.NoBody)
 	req.SetPathValue("id", "456")
@@ -358,8 +473,8 @@ func TestServer_classifyNowHandler(t *testing.T) {
 		},
 	}
 
-	db := &mocks.DatabaseMock{}
-	srv := New(cfg, db, scheduler, "1.0.0", false)
+	database := &mocks.DatabaseMock{}
+	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	req := httptest.NewRequest("POST", "/api/v1/classify-now", http.NoBody)
 	w := httptest.NewRecorder()
@@ -377,7 +492,7 @@ func TestServer_articleContentHandler(t *testing.T) {
 		},
 	}
 
-	db := &mocks.DatabaseMock{
+	database := &mocks.DatabaseMock{
 		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
 			assert.Equal(t, int64(789), itemID)
 			return &types.ItemWithClassification{
@@ -387,7 +502,7 @@ func TestServer_articleContentHandler(t *testing.T) {
 	}
 
 	scheduler := &mocks.SchedulerMock{}
-	srv := New(cfg, db, scheduler, "1.0.0", false)
+	srv := testServer(t, cfg, database, scheduler)
 
 	req := httptest.NewRequest("GET", "/api/v1/articles/789/content", http.NoBody)
 	req.SetPathValue("id", "789")
@@ -399,4 +514,339 @@ func TestServer_articleContentHandler(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "Full Article")
 	assert.Contains(t, w.Body.String(), "This is the full article content.")
 	assert.Contains(t, w.Body.String(), "Close")
+}
+
+func TestServer_rssHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	now := time.Now()
+	classifiedAt := now
+
+	database := &mocks.DatabaseMock{
+		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+			// verify parameters
+			assert.InEpsilon(t, 7.0, minScore, 0.001)
+			assert.Equal(t, "technology", topic)
+			assert.Equal(t, 100, limit)
+
+			return []types.ItemWithClassification{
+				{
+					Item: types.Item{
+						GUID:        "guid-1",
+						Title:       "AI Breakthrough & More",
+						Link:        "https://example.com/ai-news",
+						Description: "Major advances in AI",
+						Author:      "John Doe",
+						Published:   now,
+					},
+					ID:             1,
+					FeedName:       "Tech News",
+					RelevanceScore: 9.5,
+					Explanation:    "Highly relevant to AI developments",
+					Topics:         []string{"ai", "technology"},
+					ClassifiedAt:   &classifiedAt,
+				},
+				{
+					Item: types.Item{
+						GUID:        "guid-2",
+						Title:       "Cloud Computing <Updates>",
+						Link:        "https://example.com/cloud",
+						Description: "New cloud services",
+						Published:   now.Add(-1 * time.Hour),
+					},
+					ID:             2,
+					FeedName:       "Cloud Weekly",
+					RelevanceScore: 7.5,
+					Explanation:    "Important cloud updates",
+					Topics:         []string{"cloud", "infrastructure"},
+					ClassifiedAt:   &classifiedAt,
+				},
+			}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	// test RSS request
+	req := httptest.NewRequest("GET", "/rss?topic=technology&min_score=7.0", http.NoBody)
+	w := httptest.NewRecorder()
+
+	srv.rssHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/rss+xml; charset=utf-8", w.Header().Get("Content-Type"))
+
+	rss := w.Body.String()
+
+	// check RSS structure
+	assert.Contains(t, rss, `<?xml version="1.0" encoding="UTF-8"?>`)
+	assert.Contains(t, rss, `<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">`)
+	assert.Contains(t, rss, `<channel>`)
+	assert.Contains(t, rss, `<title>Newscope - technology (Score ≥ 7.0)</title>`)
+	assert.Contains(t, rss, `<link>http://localhost:8080/</link>`)
+	assert.Contains(t, rss, `<description>AI-curated articles with relevance score ≥ 7</description>`)
+
+	// check first item
+	assert.Contains(t, rss, `<title>[9.5] AI Breakthrough &amp; More</title>`)
+	assert.Contains(t, rss, `<link>https://example.com/ai-news</link>`)
+	assert.Contains(t, rss, `<guid>guid-1</guid>`)
+	assert.Contains(t, rss, `Score: 9.5/10 - Highly relevant to AI developments`)
+	assert.Contains(t, rss, `Topics: ai, technology`)
+	assert.Contains(t, rss, `<author>John Doe</author>`)
+	assert.Contains(t, rss, `<category>ai</category>`)
+	assert.Contains(t, rss, `<category>technology</category>`)
+
+	// check second item with XML escaping
+	assert.Contains(t, rss, `<title>[7.5] Cloud Computing &lt;Updates&gt;</title>`)
+	assert.Contains(t, rss, `<link>https://example.com/cloud</link>`)
+
+	// check it's valid XML structure
+	assert.Contains(t, rss, `</channel>`)
+	assert.Contains(t, rss, `</rss>`)
+}
+
+func TestServer_generateRSSFeed(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	now := time.Now()
+	items := []types.ItemWithClassification{
+		{
+			Item: types.Item{
+				GUID:        "test-guid",
+				Title:       "Test & Article",
+				Link:        "https://example.com/test",
+				Description: "Test description with <special> chars",
+				Author:      "Test Author",
+				Published:   now,
+			},
+			RelevanceScore: 8.0,
+			Explanation:    "Test explanation",
+			Topics:         []string{"test", "example"},
+		},
+	}
+
+	rss := srv.generateRSSFeed("testing", 5.0, items)
+
+	// verify RSS structure
+	assert.Contains(t, rss, `<?xml version="1.0" encoding="UTF-8"?>`)
+	assert.Contains(t, rss, `<title>Newscope - testing (Score ≥ 5.0)</title>`)
+	assert.Contains(t, rss, `<title>[8.0] Test &amp; Article</title>`)
+	assert.Contains(t, rss, `Test description with &lt;special&gt; chars`)
+	assert.Contains(t, rss, `<category>test</category>`)
+	assert.Contains(t, rss, `<category>example</category>`)
+
+	// test empty topic
+	rss = srv.generateRSSFeed("", 7.5, items)
+	assert.Contains(t, rss, `<title>Newscope - All Topics (Score ≥ 7.5)</title>`)
+}
+
+func TestServer_escapeXML(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Hello World", "Hello World"},
+		{"Hello & World", "Hello &amp; World"},
+		{"<tag>content</tag>", "&lt;tag&gt;content&lt;/tag&gt;"},
+		{`"quoted"`, `&quot;quoted&quot;`},
+		{"'single quotes'", "&apos;single quotes&apos;"},
+		{"Multiple & < > \" ' chars", "Multiple &amp; &lt; &gt; &quot; &apos; chars"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := escapeXML(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestServer_feedsHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	now := time.Now()
+	database := &mocks.DatabaseMock{
+		GetAllFeedsFunc: func(ctx context.Context) ([]db.Feed, error) {
+			return []db.Feed{
+				{
+					ID:            1,
+					URL:           "https://example.com/feed.xml",
+					Title:         "Example Feed",
+					Description:   "A test feed",
+					LastFetched:   &now,
+					NextFetch:     &now,
+					FetchInterval: 3600,
+					ErrorCount:    0,
+					Enabled:       true,
+				},
+				{
+					ID:            2,
+					URL:           "https://test.com/rss",
+					Title:         "Test RSS",
+					Description:   "Another feed",
+					FetchInterval: 1800,
+					ErrorCount:    2,
+					LastError:     "Connection timeout",
+					Enabled:       false,
+				},
+			}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("GET", "/feeds", http.NoBody)
+	w := httptest.NewRecorder()
+
+	srv.feedsHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Feed Management")
+	assert.Contains(t, w.Body.String(), "Example Feed")
+	assert.Contains(t, w.Body.String(), "https://example.com/feed.xml")
+	assert.Contains(t, w.Body.String(), "Test RSS")
+	assert.Contains(t, w.Body.String(), "Connection timeout")
+}
+
+func TestServer_createFeedHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	feedCreated := false
+	fetchTriggered := false
+
+	database := &mocks.DatabaseMock{
+		CreateFeedFunc: func(ctx context.Context, feed *db.Feed) error {
+			feedCreated = true
+			assert.Equal(t, "https://newsite.com/feed", feed.URL)
+			assert.Equal(t, "New Site", feed.Title)
+			assert.Equal(t, 1800, feed.FetchInterval)
+			assert.True(t, feed.Enabled)
+			feed.ID = 99 // simulate DB assigning ID
+			return nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{
+		UpdateFeedNowFunc: func(ctx context.Context, feedID int64) error {
+			fetchTriggered = true
+			assert.Equal(t, int64(99), feedID)
+			return nil
+		},
+	}
+
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	form := "url=https://newsite.com/feed&title=New+Site&fetch_interval=30"
+	req := httptest.NewRequest("POST", "/api/v1/feeds", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	srv.createFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, feedCreated)
+
+	// wait for async fetch
+	time.Sleep(50 * time.Millisecond)
+	assert.True(t, fetchTriggered)
+
+	// response should contain feed card HTML
+	assert.Contains(t, w.Body.String(), "New Site")
+	assert.Contains(t, w.Body.String(), "https://newsite.com/feed")
+}
+
+func TestServer_updateFeedStatus(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	statusUpdated := false
+	now := time.Now()
+
+	database := &mocks.DatabaseMock{
+		UpdateFeedStatusFunc: func(ctx context.Context, feedID int64, enabled bool) error {
+			statusUpdated = true
+			assert.Equal(t, int64(42), feedID)
+			assert.True(t, enabled)
+			return nil
+		},
+		GetAllFeedsFunc: func(ctx context.Context) ([]db.Feed, error) {
+			return []db.Feed{
+				{
+					ID:            42,
+					URL:           "https://example.com/feed",
+					Title:         "Updated Feed",
+					Enabled:       true,
+					LastFetched:   &now,
+					FetchInterval: 3600,
+				},
+			}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("POST", "/api/v1/feeds/42/enable", http.NoBody)
+	req.SetPathValue("id", "42")
+	w := httptest.NewRecorder()
+
+	srv.enableFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, statusUpdated)
+	assert.Contains(t, w.Body.String(), "Updated Feed")
+}
+
+func TestServer_deleteFeedHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	feedDeleted := false
+	database := &mocks.DatabaseMock{
+		DeleteFeedFunc: func(ctx context.Context, feedID int64) error {
+			feedDeleted = true
+			assert.Equal(t, int64(123), feedID)
+			return nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("DELETE", "/api/v1/feeds/123", http.NoBody)
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.deleteFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, feedDeleted)
 }

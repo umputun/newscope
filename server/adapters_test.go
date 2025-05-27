@@ -287,7 +287,7 @@ func TestDBAdapter_GetClassifiedItems(t *testing.T) {
 
 	// create adapter and test GetClassifiedItems
 	adapter := &DBAdapter{DB: testDB}
-	
+
 	// test with min score filter
 	items, err := adapter.GetClassifiedItems(ctx, 5.0, "", 10)
 	require.NoError(t, err)
@@ -295,13 +295,13 @@ func TestDBAdapter_GetClassifiedItems(t *testing.T) {
 	assert.Equal(t, "Tech Article", items[0].Title)
 	assert.Equal(t, "Test Feed", items[0].FeedName)
 	assert.InEpsilon(t, 8.5, items[0].RelevanceScore, 0.01)
-	
+
 	// test with topic filter
 	items, err = adapter.GetClassifiedItems(ctx, 0.0, "science", 10)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, "Science Article", items[0].Title)
-	
+
 	// test with both filters
 	items, err = adapter.GetClassifiedItems(ctx, 5.0, "ai", 10)
 	require.NoError(t, err)
@@ -337,22 +337,22 @@ func TestDBAdapter_GetClassifiedItem(t *testing.T) {
 	}
 	err = testDB.CreateItem(ctx, item)
 	require.NoError(t, err)
-	
+
 	// add extracted content
 	err = testDB.UpdateItemExtraction(ctx, item.ID, "Full article content", nil)
 	require.NoError(t, err)
-	
+
 	// classify it
 	err = testDB.UpdateItemClassification(ctx, item.ID, 7.5, "Relevant article", []string{"test", "demo"})
 	require.NoError(t, err)
 
 	// create adapter and test GetClassifiedItem
 	adapter := &DBAdapter{DB: testDB}
-	
+
 	result, err := adapter.GetClassifiedItem(ctx, item.ID)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	assert.Equal(t, item.ID, result.ID)
 	assert.Equal(t, "Test Article", result.Title)
 	assert.Equal(t, "Test Feed", result.FeedName)
@@ -390,10 +390,10 @@ func TestDBAdapter_UpdateItemFeedback(t *testing.T) {
 
 	// create adapter and test UpdateItemFeedback
 	adapter := &DBAdapter{DB: testDB}
-	
+
 	err = adapter.UpdateItemFeedback(ctx, item.ID, "like")
 	require.NoError(t, err)
-	
+
 	// verify feedback was updated
 	updatedItem, err := testDB.GetItem(ctx, item.ID)
 	require.NoError(t, err)
@@ -436,7 +436,7 @@ func TestDBAdapter_GetTopics(t *testing.T) {
 		}
 		err = testDB.CreateItem(ctx, item)
 		require.NoError(t, err)
-		
+
 		// classify to set topics
 		err = testDB.UpdateItemClassification(ctx, item.ID, 5.0, "test", data.topics)
 		require.NoError(t, err)
@@ -444,19 +444,19 @@ func TestDBAdapter_GetTopics(t *testing.T) {
 
 	// create adapter and test GetTopics
 	adapter := &DBAdapter{DB: testDB}
-	
+
 	topics, err := adapter.GetTopics(ctx)
 	require.NoError(t, err)
-	
+
 	// should have unique topics
 	assert.Len(t, topics, 4) // tech, ai, science, web
-	
+
 	// verify all expected topics are present
 	topicMap := make(map[string]bool)
 	for _, topic := range topics {
 		topicMap[topic] = true
 	}
-	
+
 	assert.True(t, topicMap["tech"])
 	assert.True(t, topicMap["ai"])
 	assert.True(t, topicMap["science"])

@@ -40,7 +40,7 @@ type Database interface {
 	ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
 	GetItemsNeedingExtraction(ctx context.Context, limit int) ([]db.Item, error)
 	UpdateItemExtraction(ctx context.Context, itemID int64, content string, err error) error
-	
+
 	GetUnclassifiedItems(ctx context.Context, limit int) ([]db.Item, error)
 	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
 	UpdateClassifications(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error
@@ -114,7 +114,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 		go s.classificationWorker(ctx)
 	}
 
-	lgr.Printf("[INFO] scheduler started with update interval %v, extract interval %v, classify interval %v", 
+	lgr.Printf("[INFO] scheduler started with update interval %v, extract interval %v, classify interval %v",
 		s.updateInterval, s.extractInterval, s.classifyInterval)
 }
 
@@ -432,9 +432,9 @@ func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
 // ClassifyNow triggers immediate classification of pending items
 func (s *Scheduler) ClassifyNow(ctx context.Context) error {
 	lgr.Printf("[INFO] triggered immediate classification")
-	
+
 	// run classification once
 	s.classifyPendingItems(ctx)
-	
+
 	return nil
 }

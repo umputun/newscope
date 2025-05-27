@@ -121,7 +121,7 @@ func TestClassifier_ClassifyArticles_EmptyInput(t *testing.T) {
 
 func TestClassifier_CustomSystemPrompt(t *testing.T) {
 	customPrompt := "You are a specialized tech curator. Rate articles 0-10."
-	
+
 	cfg := config.LLMConfig{
 		APIKey:       "test-key",
 		Model:        "gpt-4",
@@ -262,15 +262,15 @@ func TestClassifier_parseResponse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			classifications, err := classifier.parseResponse(tt.response, articles)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
 			}
-			
+
 			require.NoError(t, err)
 			assert.Len(t, classifications, tt.wantCount)
-			
+
 			if tt.checkResult != nil {
 				tt.checkResult(t, classifications)
 			}
@@ -290,7 +290,7 @@ func TestClassifier_JSONMode(t *testing.T) {
 
 		articles := []db.Item{{GUID: "item1", Title: "Test"}}
 		prompt := classifier.buildPrompt(articles, nil)
-		
+
 		assert.Contains(t, prompt, "Respond with a JSON object containing a 'classifications' array")
 	})
 
@@ -305,7 +305,7 @@ func TestClassifier_JSONMode(t *testing.T) {
 
 		articles := []db.Item{{GUID: "item1", Title: "Test"}}
 		prompt := classifier.buildPrompt(articles, nil)
-		
+
 		assert.Contains(t, prompt, "Respond with a JSON array of classification objects")
 	})
 
@@ -333,12 +333,12 @@ func TestClassifier_JSONMode(t *testing.T) {
 		classifications, err := classifier.parseResponse(response, articles)
 		require.NoError(t, err)
 		require.Len(t, classifications, 2)
-		
+
 		assert.Equal(t, "item1", classifications[0].GUID)
 		assert.InEpsilon(t, 8.0, classifications[0].Score, 0.001)
 		assert.Equal(t, "Good", classifications[0].Explanation)
 		assert.Equal(t, []string{"tech"}, classifications[0].Topics)
-		
+
 		assert.Equal(t, "item2", classifications[1].GUID)
 		assert.InEpsilon(t, 3.0, classifications[1].Score, 0.001)
 	})
@@ -350,11 +350,11 @@ func TestClassifier_JSONMode(t *testing.T) {
 			var req openai.ChatCompletionRequest
 			err := json.NewDecoder(r.Body).Decode(&req)
 			assert.NoError(t, err)
-			
+
 			// verify JSON response format is set
 			assert.NotNil(t, req.ResponseFormat)
 			assert.Equal(t, openai.ChatCompletionResponseFormatTypeJSONObject, req.ResponseFormat.Type)
-			
+
 			// return mock response in JSON object format
 			resp := openai.ChatCompletionResponse{
 				Choices: []openai.ChatCompletionChoice{
@@ -365,16 +365,16 @@ func TestClassifier_JSONMode(t *testing.T) {
 					},
 				},
 			}
-			
+
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
 		}))
 		defer server.Close()
 
 		cfg := config.LLMConfig{
-			Endpoint:    server.URL + "/v1",
-			APIKey:      "test-key",
-			Model:       "gpt-4",
+			Endpoint: server.URL + "/v1",
+			APIKey:   "test-key",
+			Model:    "gpt-4",
 			Classification: config.ClassificationConfig{
 				UseJSONMode: true,
 			},
@@ -383,7 +383,7 @@ func TestClassifier_JSONMode(t *testing.T) {
 
 		articles := []db.Item{{GUID: "item1", Title: "Test"}}
 		classifications, err := classifier.ClassifyArticles(context.Background(), articles, nil)
-		
+
 		require.NoError(t, err)
 		require.Len(t, classifications, 1)
 		assert.Equal(t, "item1", classifications[0].GUID)

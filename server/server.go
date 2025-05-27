@@ -10,7 +10,9 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
+	texttemplate "text/template"
 	"time"
 
 	"github.com/go-pkgz/lgr"
@@ -18,6 +20,7 @@ import (
 	"github.com/go-pkgz/rest/logger"
 	"github.com/go-pkgz/routegroup"
 
+	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed/types"
 )
 
@@ -53,6 +56,10 @@ type Database interface {
 	GetClassifiedItem(ctx context.Context, itemID int64) (*types.ItemWithClassification, error)
 	UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error
 	GetTopics(ctx context.Context) ([]string, error)
+	GetAllFeeds(ctx context.Context) ([]db.Feed, error)
+	CreateFeed(ctx context.Context, feed *db.Feed) error
+	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
+	DeleteFeed(ctx context.Context, feedID int64) error
 }
 
 // Scheduler interface for on-demand operations
@@ -68,7 +75,7 @@ type ConfigProvider interface {
 }
 
 // New initializes a new server instance
-func New(cfg ConfigProvider, db Database, scheduler Scheduler, version string, debug bool) *Server {
+func New(cfg ConfigProvider, database Database, scheduler Scheduler, version string, debug bool) *Server {
 	// template functions
 	funcMap := template.FuncMap{
 		"mul": func(a, b float64) float64 {
@@ -85,7 +92,7 @@ func New(cfg ConfigProvider, db Database, scheduler Scheduler, version string, d
 
 	s := &Server{
 		config:    cfg,
-		db:        db,
+		db:        database,
 		scheduler: scheduler,
 		version:   version,
 		debug:     debug,
@@ -163,10 +170,18 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("POST /extract/{id}", s.extractHandler)
 		r.HandleFunc("POST /classify-now", s.classifyNowHandler)
 		r.HandleFunc("GET /articles/{id}/content", s.articleContentHandler)
+
+		// feed management
+		r.HandleFunc("POST /feeds", s.createFeedHandler)
+		r.HandleFunc("POST /feeds/{id}/enable", s.enableFeedHandler)
+		r.HandleFunc("POST /feeds/{id}/disable", s.disableFeedHandler)
+		r.HandleFunc("POST /feeds/{id}/fetch", s.fetchFeedHandler)
+		r.HandleFunc("DELETE /feeds/{id}", s.deleteFeedHandler)
 	})
 
 	// RSS routes
 	s.router.HandleFunc("GET /rss/{topic}", s.rssFeedHandler)
+	s.router.HandleFunc("GET /rss", s.rssHandler)
 }
 
 // statusHandler returns server status
@@ -181,10 +196,172 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 
 // rssFeedHandler serves RSS feed for a specific topic
 func (s *Server) rssFeedHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	topic := r.PathValue("topic")
 
-	// TODO: implement actual RSS generation based on topic
-	fmt.Fprintf(w, "RSS feed for topic: %s", topic)
+	// get min score from query params, default to 5.0
+	minScore := 5.0
+	if scoreStr := r.URL.Query().Get("min_score"); scoreStr != "" {
+		if score, err := strconv.ParseFloat(scoreStr, 64); err == nil {
+			minScore = score
+		}
+	}
+
+	// get classified items
+	items, err := s.db.GetClassifiedItems(ctx, minScore, topic, 50)
+	if err != nil {
+		log.Printf("[ERROR] failed to get items for RSS: %v", err)
+		http.Error(w, "Failed to generate RSS feed", http.StatusInternalServerError)
+		return
+	}
+
+	// create RSS feed
+	rss := s.generateRSSFeed(topic, minScore, items)
+
+	// set content type and write RSS
+	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
+	if _, err := w.Write([]byte(rss)); err != nil {
+		log.Printf("[ERROR] failed to write RSS response: %v", err)
+	}
+}
+
+// rssHandler serves RSS feed with topic from query params
+func (s *Server) rssHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// get topic from query params
+	topic := r.URL.Query().Get("topic")
+
+	// get min score from query params, default to 5.0
+	minScore := 5.0
+	if scoreStr := r.URL.Query().Get("min_score"); scoreStr != "" {
+		if score, err := strconv.ParseFloat(scoreStr, 64); err == nil {
+			minScore = score
+		}
+	}
+
+	// get classified items
+	items, err := s.db.GetClassifiedItems(ctx, minScore, topic, 100)
+	if err != nil {
+		log.Printf("[ERROR] failed to get items for RSS: %v", err)
+		http.Error(w, "Failed to generate RSS feed", http.StatusInternalServerError)
+		return
+	}
+
+	// create RSS feed
+	rss := s.generateRSSFeed(topic, minScore, items)
+
+	// set content type and write RSS
+	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
+	if _, err := w.Write([]byte(rss)); err != nil {
+		log.Printf("[ERROR] failed to write RSS response: %v", err)
+	}
+}
+
+// generateRSSFeed creates an RSS 2.0 feed from classified items
+func (s *Server) generateRSSFeed(topic string, minScore float64, items []types.ItemWithClassification) string {
+	const rssTemplate = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+  <title>{{.Title | escape}}</title>
+  <link>http://localhost:8080/</link>
+  <description>AI-curated articles with relevance score ≥ {{.MinScore}}</description>
+  <atom:link href="http://localhost:8080/rss/{{.Topic}}" rel="self" type="application/rss+xml" />
+  <lastBuildDate>{{.LastBuildDate}}</lastBuildDate>
+{{range .Items}}  <item>
+    <title>[{{.Score}}] {{.Title | escape}}</title>
+    <link>{{.Link | escape}}</link>
+    <guid>{{.GUID | escape}}</guid>
+    <description>{{.Description | escape}}</description>
+{{if .Author}}    <author>{{.Author | escape}}</author>
+{{end}}    <pubDate>{{.PubDate}}</pubDate>
+{{range .Topics}}    <category>{{. | escape}}</category>
+{{end}}  </item>
+{{end}}</channel>
+</rss>`
+
+	// prepare template data
+	type rssItem struct {
+		Title       string
+		Link        string
+		GUID        string
+		Description string
+		Author      string
+		PubDate     string
+		Topics      []string
+		Score       string
+	}
+
+	type rssData struct {
+		Title         string
+		Topic         string
+		MinScore      float64
+		LastBuildDate string
+		Items         []rssItem
+	}
+
+	// determine title
+	var title string
+	if topic != "" {
+		title = fmt.Sprintf("Newscope - %s (Score ≥ %.1f)", topic, minScore)
+	} else {
+		title = fmt.Sprintf("Newscope - All Topics (Score ≥ %.1f)", minScore)
+	}
+
+	// convert items to template data
+	rssItems := make([]rssItem, 0, len(items))
+	for _, item := range items {
+		// build description
+		desc := fmt.Sprintf("Score: %.1f/10 - %s", item.RelevanceScore, item.Explanation)
+		if len(item.Topics) > 0 {
+			desc += fmt.Sprintf("\nTopics: %s", strings.Join(item.Topics, ", "))
+		}
+		if item.Description != "" {
+			desc += "\n\n" + item.Description
+		}
+
+		rssItems = append(rssItems, rssItem{
+			Title:       item.Title,
+			Link:        item.Link,
+			GUID:        item.GUID,
+			Description: desc,
+			Author:      item.Author,
+			PubDate:     item.Published.Format(time.RFC1123Z),
+			Topics:      item.Topics,
+			Score:       fmt.Sprintf("%.1f", item.RelevanceScore),
+		})
+	}
+
+	data := rssData{
+		Title:         title,
+		Topic:         topic,
+		MinScore:      minScore,
+		LastBuildDate: time.Now().Format(time.RFC1123Z),
+		Items:         rssItems,
+	}
+
+	// execute template
+	tmpl := texttemplate.Must(texttemplate.New("rss").Funcs(texttemplate.FuncMap{
+		"escape": escapeXML,
+	}).Parse(rssTemplate))
+
+	var buf strings.Builder
+	if err := tmpl.Execute(&buf, data); err != nil {
+		log.Printf("[ERROR] failed to generate RSS: %v", err)
+		return ""
+	}
+
+	return buf.String()
+}
+
+// escapeXML escapes special characters for XML
+func escapeXML(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, "\"", "&quot;")
+	s = strings.ReplaceAll(s, "'", "&apos;")
+	return s
 }
 
 // RenderJSON sends JSON response
@@ -196,6 +373,153 @@ func RenderJSON(w http.ResponseWriter, _ *http.Request, code int, data interface
 			log.Printf("[ERROR] can't encode response to JSON: %v", err)
 		}
 	}
+}
+
+// createFeedHandler handles feed creation
+func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// parse form data
+	err := r.ParseForm()
+	if err != nil {
+		RenderError(w, r, fmt.Errorf("invalid form data"), http.StatusBadRequest)
+		return
+	}
+
+	url := r.FormValue("url")
+	if url == "" {
+		RenderError(w, r, fmt.Errorf("feed URL is required"), http.StatusBadRequest)
+		return
+	}
+
+	// parse fetch interval
+	fetchInterval := 1800 // default 30 minutes
+	if intervalStr := r.FormValue("fetch_interval"); intervalStr != "" {
+		if minutes, err := strconv.Atoi(intervalStr); err == nil {
+			fetchInterval = minutes * 60 // convert to seconds
+		}
+	}
+
+	feed := &db.Feed{
+		URL:           url,
+		Title:         r.FormValue("title"),
+		FetchInterval: fetchInterval,
+		Enabled:       true,
+	}
+
+	// create feed in database
+	if err := s.db.CreateFeed(ctx, feed); err != nil {
+		log.Printf("[ERROR] failed to create feed: %v", err)
+		RenderError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	// trigger immediate fetch
+	go func() {
+		if err := s.scheduler.UpdateFeedNow(context.Background(), feed.ID); err != nil {
+			log.Printf("[ERROR] failed to fetch new feed: %v", err)
+		}
+	}()
+
+	// return the feed card HTML for HTMX
+	s.renderFeedCard(w, feed)
+}
+
+// renderFeedCard renders a single feed card
+func (s *Server) renderFeedCard(w http.ResponseWriter, feed *db.Feed) {
+	if err := s.templates.ExecuteTemplate(w, "feed-card.html", feed); err != nil {
+		log.Printf("[ERROR] failed to render feed card: %v", err)
+		http.Error(w, "Failed to render feed", http.StatusInternalServerError)
+	}
+}
+
+// enableFeedHandler enables a feed
+func (s *Server) enableFeedHandler(w http.ResponseWriter, r *http.Request) {
+	s.updateFeedStatus(w, r, true)
+}
+
+// disableFeedHandler disables a feed
+func (s *Server) disableFeedHandler(w http.ResponseWriter, r *http.Request) {
+	s.updateFeedStatus(w, r, false)
+}
+
+// updateFeedStatus updates feed enabled status
+func (s *Server) updateFeedStatus(w http.ResponseWriter, r *http.Request, enabled bool) {
+	ctx := r.Context()
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		RenderError(w, r, fmt.Errorf("invalid feed ID"), http.StatusBadRequest)
+		return
+	}
+
+	// update status
+	if err := s.db.UpdateFeedStatus(ctx, id, enabled); err != nil {
+		log.Printf("[ERROR] failed to update feed status: %v", err)
+		RenderError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	// get updated feed
+	feeds, err := s.db.GetAllFeeds(ctx)
+	if err != nil {
+		http.Error(w, "Failed to reload feed", http.StatusInternalServerError)
+		return
+	}
+
+	// find the updated feed
+	for _, feed := range feeds {
+		if feed.ID == id {
+			s.renderFeedCard(w, &feed)
+			return
+		}
+	}
+
+	http.Error(w, "Feed not found", http.StatusNotFound)
+}
+
+// fetchFeedHandler triggers immediate feed fetch
+func (s *Server) fetchFeedHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		RenderError(w, r, fmt.Errorf("invalid feed ID"), http.StatusBadRequest)
+		return
+	}
+
+	// trigger fetch
+	if err := s.scheduler.UpdateFeedNow(ctx, id); err != nil {
+		log.Printf("[ERROR] failed to fetch feed: %v", err)
+		RenderError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// deleteFeedHandler deletes a feed
+func (s *Server) deleteFeedHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		RenderError(w, r, fmt.Errorf("invalid feed ID"), http.StatusBadRequest)
+		return
+	}
+
+	// delete feed
+	if err := s.db.DeleteFeed(ctx, id); err != nil {
+		log.Printf("[ERROR] failed to delete feed: %v", err)
+		RenderError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	// return empty response for HTMX to remove the element
+	w.WriteHeader(http.StatusOK)
 }
 
 // renderArticleCard renders a single article card as HTML
@@ -245,11 +569,11 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 
 	// prepare template data
 	data := struct {
-		ActivePage     string
-		Articles       []types.ItemWithClassification
-		Topics         []string
-		MinScore       float64
-		SelectedTopic  string
+		ActivePage    string
+		Articles      []types.ItemWithClassification
+		Topics        []string
+		MinScore      float64
+		SelectedTopic string
 	}{
 		ActivePage:    "home",
 		Articles:      articles,
@@ -265,9 +589,30 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // feedsHandler displays the feeds management page
-func (s *Server) feedsHandler(w http.ResponseWriter, _ *http.Request) {
-	// TODO: implement feeds page
-	http.Error(w, "Feeds page not implemented yet", http.StatusNotImplemented)
+func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// get all feeds from database
+	feeds, err := s.db.GetAllFeeds(ctx)
+	if err != nil {
+		log.Printf("[ERROR] failed to get feeds: %v", err)
+		http.Error(w, "Failed to load feeds", http.StatusInternalServerError)
+		return
+	}
+
+	// prepare template data
+	data := struct {
+		ActivePage string
+		Feeds      []db.Feed
+	}{
+		ActivePage: "feeds",
+		Feeds:      feeds,
+	}
+
+	if err := s.templates.ExecuteTemplate(w, "feeds.html", data); err != nil {
+		log.Printf("[ERROR] failed to render template: %v", err)
+		http.Error(w, "Failed to render page", http.StatusInternalServerError)
+	}
 }
 
 // settingsHandler displays the settings page
@@ -279,10 +624,10 @@ func (s *Server) settingsHandler(w http.ResponseWriter, _ *http.Request) {
 // feedbackHandler handles user feedback (like/dislike)
 func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	
+
 	idStr := r.PathValue("id")
 	action := r.PathValue("action")
-	
+
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		RenderError(w, r, fmt.Errorf("invalid item ID"), http.StatusBadRequest)
@@ -317,7 +662,7 @@ func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 // extractHandler triggers content extraction for an item
 func (s *Server) extractHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	
+
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -347,7 +692,7 @@ func (s *Server) extractHandler(w http.ResponseWriter, r *http.Request) {
 // classifyNowHandler triggers immediate classification
 func (s *Server) classifyNowHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	
+
 	// trigger classification
 	if err := s.scheduler.ClassifyNow(ctx); err != nil {
 		log.Printf("[ERROR] failed to trigger classification: %v", err)
@@ -361,7 +706,7 @@ func (s *Server) classifyNowHandler(w http.ResponseWriter, r *http.Request) {
 // articleContentHandler returns extracted content for an article
 func (s *Server) articleContentHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	
+
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {

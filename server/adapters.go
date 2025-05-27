@@ -83,7 +83,7 @@ func (d *DBAdapter) GetClassifiedItems(ctx context.Context, minScore float64, to
 	for rows.Next() {
 		var item db.Item
 		var feedTitle string
-		
+
 		err := rows.Scan(
 			&item.ID, &item.FeedID, &item.GUID, &item.Title, &item.Link,
 			&item.Description, &item.Content, &item.Author, &item.Published,
@@ -160,7 +160,7 @@ func (d *DBAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*types
 
 	var item db.Item
 	var feedTitle string
-	
+
 	err := d.QueryRowContext(ctx, query, itemID).Scan(
 		&item.ID, &item.FeedID, &item.GUID, &item.Title, &item.Link,
 		&item.Description, &item.Content, &item.Author, &item.Published,
@@ -218,4 +218,31 @@ func (d *DBAdapter) GetTopics(ctx context.Context) ([]string, error) {
 	}
 
 	return topics, nil
+}
+
+// GetAllFeeds returns all feeds with full details
+func (d *DBAdapter) GetAllFeeds(ctx context.Context) ([]db.Feed, error) {
+	return d.DB.GetFeeds(ctx, false) // get all feeds, not just enabled
+}
+
+// CreateFeed adds a new feed
+func (d *DBAdapter) CreateFeed(ctx context.Context, feed *db.Feed) error {
+	err := d.DB.CreateFeed(ctx, feed)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// UpdateFeedStatus enables or disables a feed
+func (d *DBAdapter) UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error {
+	query := "UPDATE feeds SET enabled = ? WHERE id = ?"
+	_, err := d.ExecContext(ctx, query, enabled, feedID)
+	return err
+}
+
+// DeleteFeed removes a feed
+func (d *DBAdapter) DeleteFeed(ctx context.Context, feedID int64) error {
+	return d.DB.DeleteFeed(ctx, feedID)
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed/types"
 )
 
@@ -16,6 +17,15 @@ import (
 //
 //		// make and configure a mocked server.Database
 //		mockedDatabase := &DatabaseMock{
+//			CreateFeedFunc: func(ctx context.Context, feed *db.Feed) error {
+//				panic("mock out the CreateFeed method")
+//			},
+//			DeleteFeedFunc: func(ctx context.Context, feedID int64) error {
+//				panic("mock out the DeleteFeed method")
+//			},
+//			GetAllFeedsFunc: func(ctx context.Context) ([]db.Feed, error) {
+//				panic("mock out the GetAllFeeds method")
+//			},
 //			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
 //				panic("mock out the GetClassifiedItem method")
 //			},
@@ -31,6 +41,9 @@ import (
 //			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 //				panic("mock out the GetTopics method")
 //			},
+//			UpdateFeedStatusFunc: func(ctx context.Context, feedID int64, enabled bool) error {
+//				panic("mock out the UpdateFeedStatus method")
+//			},
 //			UpdateItemFeedbackFunc: func(ctx context.Context, itemID int64, feedback string) error {
 //				panic("mock out the UpdateItemFeedback method")
 //			},
@@ -41,6 +54,15 @@ import (
 //
 //	}
 type DatabaseMock struct {
+	// CreateFeedFunc mocks the CreateFeed method.
+	CreateFeedFunc func(ctx context.Context, feed *db.Feed) error
+
+	// DeleteFeedFunc mocks the DeleteFeed method.
+	DeleteFeedFunc func(ctx context.Context, feedID int64) error
+
+	// GetAllFeedsFunc mocks the GetAllFeeds method.
+	GetAllFeedsFunc func(ctx context.Context) ([]db.Feed, error)
+
 	// GetClassifiedItemFunc mocks the GetClassifiedItem method.
 	GetClassifiedItemFunc func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error)
 
@@ -56,11 +78,33 @@ type DatabaseMock struct {
 	// GetTopicsFunc mocks the GetTopics method.
 	GetTopicsFunc func(ctx context.Context) ([]string, error)
 
+	// UpdateFeedStatusFunc mocks the UpdateFeedStatus method.
+	UpdateFeedStatusFunc func(ctx context.Context, feedID int64, enabled bool) error
+
 	// UpdateItemFeedbackFunc mocks the UpdateItemFeedback method.
 	UpdateItemFeedbackFunc func(ctx context.Context, itemID int64, feedback string) error
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// CreateFeed holds details about calls to the CreateFeed method.
+		CreateFeed []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Feed is the feed argument value.
+			Feed *db.Feed
+		}
+		// DeleteFeed holds details about calls to the DeleteFeed method.
+		DeleteFeed []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// FeedID is the feedID argument value.
+			FeedID int64
+		}
+		// GetAllFeeds holds details about calls to the GetAllFeeds method.
+		GetAllFeeds []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 		// GetClassifiedItem holds details about calls to the GetClassifiedItem method.
 		GetClassifiedItem []struct {
 			// Ctx is the ctx argument value.
@@ -98,6 +142,15 @@ type DatabaseMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
+		// UpdateFeedStatus holds details about calls to the UpdateFeedStatus method.
+		UpdateFeedStatus []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// FeedID is the feedID argument value.
+			FeedID int64
+			// Enabled is the enabled argument value.
+			Enabled bool
+		}
 		// UpdateItemFeedback holds details about calls to the UpdateItemFeedback method.
 		UpdateItemFeedback []struct {
 			// Ctx is the ctx argument value.
@@ -108,12 +161,120 @@ type DatabaseMock struct {
 			Feedback string
 		}
 	}
+	lockCreateFeed         sync.RWMutex
+	lockDeleteFeed         sync.RWMutex
+	lockGetAllFeeds        sync.RWMutex
 	lockGetClassifiedItem  sync.RWMutex
 	lockGetClassifiedItems sync.RWMutex
 	lockGetFeeds           sync.RWMutex
 	lockGetItems           sync.RWMutex
 	lockGetTopics          sync.RWMutex
+	lockUpdateFeedStatus   sync.RWMutex
 	lockUpdateItemFeedback sync.RWMutex
+}
+
+// CreateFeed calls CreateFeedFunc.
+func (mock *DatabaseMock) CreateFeed(ctx context.Context, feed *db.Feed) error {
+	if mock.CreateFeedFunc == nil {
+		panic("DatabaseMock.CreateFeedFunc: method is nil but Database.CreateFeed was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Feed *db.Feed
+	}{
+		Ctx:  ctx,
+		Feed: feed,
+	}
+	mock.lockCreateFeed.Lock()
+	mock.calls.CreateFeed = append(mock.calls.CreateFeed, callInfo)
+	mock.lockCreateFeed.Unlock()
+	return mock.CreateFeedFunc(ctx, feed)
+}
+
+// CreateFeedCalls gets all the calls that were made to CreateFeed.
+// Check the length with:
+//
+//	len(mockedDatabase.CreateFeedCalls())
+func (mock *DatabaseMock) CreateFeedCalls() []struct {
+	Ctx  context.Context
+	Feed *db.Feed
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Feed *db.Feed
+	}
+	mock.lockCreateFeed.RLock()
+	calls = mock.calls.CreateFeed
+	mock.lockCreateFeed.RUnlock()
+	return calls
+}
+
+// DeleteFeed calls DeleteFeedFunc.
+func (mock *DatabaseMock) DeleteFeed(ctx context.Context, feedID int64) error {
+	if mock.DeleteFeedFunc == nil {
+		panic("DatabaseMock.DeleteFeedFunc: method is nil but Database.DeleteFeed was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		FeedID int64
+	}{
+		Ctx:    ctx,
+		FeedID: feedID,
+	}
+	mock.lockDeleteFeed.Lock()
+	mock.calls.DeleteFeed = append(mock.calls.DeleteFeed, callInfo)
+	mock.lockDeleteFeed.Unlock()
+	return mock.DeleteFeedFunc(ctx, feedID)
+}
+
+// DeleteFeedCalls gets all the calls that were made to DeleteFeed.
+// Check the length with:
+//
+//	len(mockedDatabase.DeleteFeedCalls())
+func (mock *DatabaseMock) DeleteFeedCalls() []struct {
+	Ctx    context.Context
+	FeedID int64
+} {
+	var calls []struct {
+		Ctx    context.Context
+		FeedID int64
+	}
+	mock.lockDeleteFeed.RLock()
+	calls = mock.calls.DeleteFeed
+	mock.lockDeleteFeed.RUnlock()
+	return calls
+}
+
+// GetAllFeeds calls GetAllFeedsFunc.
+func (mock *DatabaseMock) GetAllFeeds(ctx context.Context) ([]db.Feed, error) {
+	if mock.GetAllFeedsFunc == nil {
+		panic("DatabaseMock.GetAllFeedsFunc: method is nil but Database.GetAllFeeds was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockGetAllFeeds.Lock()
+	mock.calls.GetAllFeeds = append(mock.calls.GetAllFeeds, callInfo)
+	mock.lockGetAllFeeds.Unlock()
+	return mock.GetAllFeedsFunc(ctx)
+}
+
+// GetAllFeedsCalls gets all the calls that were made to GetAllFeeds.
+// Check the length with:
+//
+//	len(mockedDatabase.GetAllFeedsCalls())
+func (mock *DatabaseMock) GetAllFeedsCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockGetAllFeeds.RLock()
+	calls = mock.calls.GetAllFeeds
+	mock.lockGetAllFeeds.RUnlock()
+	return calls
 }
 
 // GetClassifiedItem calls GetClassifiedItemFunc.
@@ -297,6 +458,46 @@ func (mock *DatabaseMock) GetTopicsCalls() []struct {
 	mock.lockGetTopics.RLock()
 	calls = mock.calls.GetTopics
 	mock.lockGetTopics.RUnlock()
+	return calls
+}
+
+// UpdateFeedStatus calls UpdateFeedStatusFunc.
+func (mock *DatabaseMock) UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error {
+	if mock.UpdateFeedStatusFunc == nil {
+		panic("DatabaseMock.UpdateFeedStatusFunc: method is nil but Database.UpdateFeedStatus was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		FeedID  int64
+		Enabled bool
+	}{
+		Ctx:     ctx,
+		FeedID:  feedID,
+		Enabled: enabled,
+	}
+	mock.lockUpdateFeedStatus.Lock()
+	mock.calls.UpdateFeedStatus = append(mock.calls.UpdateFeedStatus, callInfo)
+	mock.lockUpdateFeedStatus.Unlock()
+	return mock.UpdateFeedStatusFunc(ctx, feedID, enabled)
+}
+
+// UpdateFeedStatusCalls gets all the calls that were made to UpdateFeedStatus.
+// Check the length with:
+//
+//	len(mockedDatabase.UpdateFeedStatusCalls())
+func (mock *DatabaseMock) UpdateFeedStatusCalls() []struct {
+	Ctx     context.Context
+	FeedID  int64
+	Enabled bool
+} {
+	var calls []struct {
+		Ctx     context.Context
+		FeedID  int64
+		Enabled bool
+	}
+	mock.lockUpdateFeedStatus.RLock()
+	calls = mock.calls.UpdateFeedStatus
+	mock.lockUpdateFeedStatus.RUnlock()
 	return calls
 }
 

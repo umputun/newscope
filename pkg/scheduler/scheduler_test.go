@@ -503,15 +503,15 @@ func TestScheduler_classifyPendingItems(t *testing.T) {
 
 	testItems := []db.Item{
 		{
-			ID:   1,
-			GUID: "guid1",
-			Title: "Article 1",
+			ID:               1,
+			GUID:             "guid1",
+			Title:            "Article 1",
 			ExtractedContent: "Content 1",
 		},
 		{
-			ID:   2,
-			GUID: "guid2", 
-			Title: "Article 2",
+			ID:               2,
+			GUID:             "guid2",
+			Title:            "Article 2",
 			ExtractedContent: "Content 2",
 		},
 	}
@@ -533,7 +533,7 @@ func TestScheduler_classifyPendingItems(t *testing.T) {
 	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
 		assert.Len(t, articles, 2)
 		assert.Len(t, feedbacks, 1)
-		
+
 		return []db.Classification{
 			{
 				GUID:        "guid1",
@@ -603,11 +603,11 @@ func TestScheduler_ClassifyNow(t *testing.T) {
 	}
 
 	s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
-	
+
 	// test ClassifyNow
 	err := s.ClassifyNow(ctx)
 	require.NoError(t, err)
-	
+
 	// verify classification was triggered
 	assert.Len(t, mockDB.GetUnclassifiedItemsCalls(), 1)
 	assert.Len(t, mockClassifier.ClassifyArticlesCalls(), 1)
