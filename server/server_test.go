@@ -37,12 +37,22 @@ func testServer(t *testing.T, cfg ConfigProvider, database Database, scheduler S
 	// create simple test templates
 	tmpl := template.New("test")
 
-	// articles.html template
-	tmpl = template.Must(tmpl.New("articles.html").Parse(`
+	// base.html template
+	tmpl = template.Must(tmpl.New("base.html").Parse(`
 <!DOCTYPE html>
 <html>
-<head><title>Articles</title></head>
+<head><title>{{block "title" .}}Test{{end}}</title></head>
 <body>
+{{block "content" .}}{{end}}
+</body>
+</html>
+`))
+
+	// articles.html template
+	tmpl = template.Must(tmpl.New("articles.html").Parse(`
+{{template "base.html" .}}
+{{define "title"}}Articles{{end}}
+{{define "content"}}
 <div class="articles">
 {{range .Articles}}
 <div class="article">
@@ -52,8 +62,7 @@ func testServer(t *testing.T, cfg ConfigProvider, database Database, scheduler S
 </div>
 {{end}}
 </div>
-</body>
-</html>
+{{end}}
 `))
 
 	// article-card.html template
@@ -61,6 +70,7 @@ func testServer(t *testing.T, cfg ConfigProvider, database Database, scheduler S
 <div class="article-card">
 	<h3>{{.Title}}</h3>
 	<p>{{.FeedName}}</p>
+	<span class="score-text">Score: {{printf "%.1f" .RelevanceScore}}/10</span>
 	{{if .UserFeedback}}<div class="btn-like active">{{.UserFeedback}}</div>{{end}}
 	{{if .ExtractedContent}}<button>Show Content</button>{{end}}
 </div>
@@ -77,10 +87,9 @@ func testServer(t *testing.T, cfg ConfigProvider, database Database, scheduler S
 
 	// feeds.html template
 	tmpl = template.Must(tmpl.New("feeds.html").Parse(`
-<!DOCTYPE html>
-<html>
-<head><title>Feeds</title></head>
-<body>
+{{template "base.html" .}}
+{{define "title"}}Feeds{{end}}
+{{define "content"}}
 <h2>Feed Management</h2>
 <div class="feeds-list">
 {{range .Feeds}}
@@ -91,8 +100,7 @@ func testServer(t *testing.T, cfg ConfigProvider, database Database, scheduler S
 </div>
 {{end}}
 </div>
-</body>
-</html>
+{{end}}
 `))
 
 	// feed-card.html template
@@ -355,7 +363,7 @@ func TestServer_articlesHandler(t *testing.T) {
 	scheduler := &mocks.SchedulerMock{}
 	srv := testServer(t, cfg, database, scheduler)
 
-	// test request
+	// test regular request (full page)
 	req := httptest.NewRequest("GET", "/articles?score=5.0&topic=tech", http.NoBody)
 	w := httptest.NewRecorder()
 
@@ -365,6 +373,35 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "Test Article")
 	assert.Contains(t, w.Body.String(), "Test Feed")
 	assert.Contains(t, w.Body.String(), "Score: 8.5/10")
+	assert.Contains(t, w.Body.String(), "<html") // should contain full HTML
+
+	// test HTMX request (partial update)
+	req2 := httptest.NewRequest("GET", "/articles?score=5.0&topic=tech", http.NoBody)
+	req2.Header.Set("HX-Request", "true")
+	w2 := httptest.NewRecorder()
+
+	srv.articlesHandler(w2, req2)
+
+	assert.Equal(t, http.StatusOK, w2.Code)
+	assert.Contains(t, w2.Body.String(), "Test Article")
+	assert.Contains(t, w2.Body.String(), "Test Feed")
+	assert.Contains(t, w2.Body.String(), "Score: 8.5/10")
+	assert.NotContains(t, w2.Body.String(), "<html") // should NOT contain full HTML for HTMX request
+
+	// test HTMX request with no articles
+	database.GetClassifiedItemsFunc = func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+		return []types.ItemWithClassification{}, nil
+	}
+
+	req3 := httptest.NewRequest("GET", "/articles?score=10.0", http.NoBody)
+	req3.Header.Set("HX-Request", "true")
+	w3 := httptest.NewRecorder()
+
+	srv.articlesHandler(w3, req3)
+
+	assert.Equal(t, http.StatusOK, w3.Code)
+	assert.Contains(t, w3.Body.String(), "No articles found")
+	assert.NotContains(t, w3.Body.String(), "<html") // should NOT contain full HTML
 }
 
 func TestServer_feedbackHandler(t *testing.T) {

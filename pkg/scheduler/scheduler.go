@@ -228,6 +228,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed) {
 		}
 
 		newCount++
+
 	}
 
 	// update last fetched timestamp

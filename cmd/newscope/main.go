@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -133,9 +132,9 @@ func main() {
 }
 
 func setupLog(dbg bool, secs ...string) {
-	logOpts := []lgr.Option{lgr.Out(io.Discard), lgr.Err(io.Discard)}
+	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
 	if dbg {
-		logOpts = []lgr.Option{lgr.Debug, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
+		logOpts = []lgr.Option{lgr.Debug, lgr.CallerFile, lgr.CallerFunc, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
 	}
 
 	colorizer := lgr.Mapper{
@@ -147,6 +146,7 @@ func setupLog(dbg bool, secs ...string) {
 		TimeFunc:   func(s string) string { return color.New(color.FgCyan).Sprint(s) },
 	}
 	logOpts = append(logOpts, lgr.Map(colorizer))
+
 	if len(secs) > 0 {
 		logOpts = append(logOpts, lgr.Secret(secs...))
 	}

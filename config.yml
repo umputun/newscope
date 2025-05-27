@@ -7,24 +7,24 @@ server:
   timeout: "30s"
 
 database:
-  dsn: "./data/newscope.db"
+  dsn: "./var/newscope.db"
   max_open_conns: 10
   max_idle_conns: 5
   conn_max_lifetime: 3600
 
 schedule:
   update_interval: 30    # minutes
-  extract_interval: 5    # minutes  
-  classify_interval: 10  # minutes
-  max_workers: 5
+  extract_interval: 1    # minutes
+  classify_interval: 1  # minutes
+  max_workers: 20
 
 llm:
   # OpenAI-compatible endpoint (OpenAI, Ollama, etc)
-  endpoint: "http://localhost:11434/v1"  # Ollama example
-  # endpoint: "https://api.openai.com/v1" # OpenAI example
+  #endpoint: "http://localhost:11434/v1"  # Ollama example
+  endpoint: "https://api.openai.com/v1" # OpenAI example
   
   api_key: "${OPENAI_API_KEY}"  # From environment
-  model: "llama3"                # or "gpt-4o-mini"
+  model: "gpt-4o-mini"                # or "gpt-4o-mini"
   temperature: 0.3               # Lower = more consistent
   max_tokens: 500
   timeout: "30s"

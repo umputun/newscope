@@ -31,7 +31,7 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
-//go:embed static/*
+//go:embed static
 var staticFS embed.FS
 
 // Server represents HTTP server instance
@@ -84,10 +84,21 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"printf": fmt.Sprintf,
 	}
 
-	// parse templates
-	templates, err := template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/*.html")
+	// parse base template and components only
+	templates := template.New("").Funcs(funcMap)
+
+	// parse base template first
+	templates, err := templates.ParseFS(templateFS, "templates/base.html")
 	if err != nil {
-		log.Printf("[ERROR] failed to parse templates: %v", err)
+		log.Printf("[ERROR] failed to parse base template: %v", err)
+	}
+
+	// parse component templates (not page templates)
+	templates, err = templates.ParseFS(templateFS,
+		"templates/article-card.html",
+		"templates/feed-card.html")
+	if err != nil {
+		log.Printf("[ERROR] failed to parse component templates: %v", err)
 	}
 
 	s := &Server{
@@ -155,7 +166,14 @@ func (s *Server) setupMiddleware() {
 // setupRoutes configures application routes
 func (s *Server) setupRoutes() {
 	// serve static files
-	s.router.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	s.router.HandleFunc("GET /static/{path...}", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/static/")
+		if path == "" {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFileFS(w, r, staticFS, "static/"+path)
+	})
 
 	// web UI routes
 	s.router.HandleFunc("GET /", s.articlesHandler)
@@ -522,6 +540,33 @@ func (s *Server) deleteFeedHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// renderPage renders a page template with the base template
+func (s *Server) renderPage(w http.ResponseWriter, templateName string, data interface{}) error {
+	// create a new template instance for this request to avoid conflicts
+	tmpl := template.New("").Funcs(template.FuncMap{
+		"mul": func(a, b float64) float64 { return a * b },
+	})
+
+	// parse all templates needed for this page
+	templates := []string{"templates/base.html", "templates/" + templateName}
+
+	// add component templates based on which page is being rendered
+	switch templateName {
+	case "articles.html":
+		templates = append(templates, "templates/article-card.html")
+	case "feeds.html":
+		templates = append(templates, "templates/feed-card.html")
+	}
+
+	tmpl, err := tmpl.ParseFS(templateFS, templates...)
+	if err != nil {
+		return fmt.Errorf("parse templates: %w", err)
+	}
+
+	// execute the template
+	return tmpl.ExecuteTemplate(w, templateName, data)
+}
+
 // renderArticleCard renders a single article card as HTML
 func (s *Server) renderArticleCard(w http.ResponseWriter, article *types.ItemWithClassification) {
 	if err := s.templates.ExecuteTemplate(w, "article-card.html", article); err != nil {
@@ -567,7 +612,21 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		topics = []string{} // continue with empty topics
 	}
 
-	// prepare template data
+	// check if this is an HTMX request for partial update
+	if r.Header.Get("HX-Request") == "true" {
+		// for HTMX requests, only render the articles list
+		for _, article := range articles {
+			s.renderArticleCard(w, &article)
+		}
+		if len(articles) == 0 {
+			if _, err := w.Write([]byte(`<p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>`)); err != nil {
+				log.Printf("[ERROR] failed to write no articles message: %v", err)
+			}
+		}
+		return
+	}
+
+	// prepare template data for full page render
 	data := struct {
 		ActivePage    string
 		Articles      []types.ItemWithClassification
@@ -582,8 +641,9 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedTopic: topic,
 	}
 
-	if err := s.templates.ExecuteTemplate(w, "articles.html", data); err != nil {
-		log.Printf("[ERROR] failed to render template: %v", err)
+	// render full page with base template
+	if err := s.renderPage(w, "articles.html", data); err != nil {
+		log.Printf("[ERROR] failed to render articles page: %v", err)
 		http.Error(w, "Failed to render page", http.StatusInternalServerError)
 	}
 }
@@ -609,8 +669,9 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		Feeds:      feeds,
 	}
 
-	if err := s.templates.ExecuteTemplate(w, "feeds.html", data); err != nil {
-		log.Printf("[ERROR] failed to render template: %v", err)
+	// render page with base template
+	if err := s.renderPage(w, "feeds.html", data); err != nil {
+		log.Printf("[ERROR] failed to render feeds page: %v", err)
 		http.Error(w, "Failed to render page", http.StatusInternalServerError)
 	}
 }
