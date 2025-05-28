@@ -28,7 +28,9 @@ package domutil
 
 // allowedAttributes is list of all safe HTML attributes.
 // Taken from the Chromium source code in:
-//   third_party/blink/renderer/core/html/html_attribute_names.json5
+//
+//	third_party/blink/renderer/core/html/html_attribute_names.json5
+//
 // and manually filtered to exclude event handlers.
 // Last updated on June 12, 2020.
 var allowedAttributes = map[string]struct{}{

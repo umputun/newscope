@@ -163,9 +163,10 @@ func TestScheduler_ExtractItemContent(t *testing.T) {
 		}
 
 		extractResult := &content.ExtractResult{
-			Content: "This is the extracted content",
-			Title:   "Test Item",
-			URL:     "http://example.com/article",
+			Content:     "This is the extracted content",
+			RichContent: "<p>This is the extracted content</p>",
+			Title:       "Test Item",
+			URL:         "http://example.com/article",
 		}
 
 		mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
@@ -174,10 +175,11 @@ func TestScheduler_ExtractItemContent(t *testing.T) {
 		}
 
 		contentUpdated := false
-		mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content string, err error) error {
+		mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content, richContent string, err error) error {
 			contentUpdated = true
 			assert.Equal(t, testItem.ID, itemID)
 			assert.Equal(t, extractResult.Content, content)
+			assert.Equal(t, extractResult.RichContent, richContent)
 			assert.NoError(t, err)
 			return nil
 		}
@@ -204,10 +206,11 @@ func TestScheduler_ExtractItemContent(t *testing.T) {
 		}
 
 		errorStored := false
-		mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content string, err error) error {
+		mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content, richContent string, err error) error {
 			errorStored = true
 			assert.Equal(t, testItem.ID, itemID)
 			assert.Empty(t, content)
+			assert.Empty(t, richContent)
 			assert.Equal(t, extractErr, err)
 			return nil
 		}
@@ -276,7 +279,8 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 	}
 
 	extractResult := &content.ExtractResult{
-		Content: "Extracted content",
+		Content:     "Extracted content",
+		RichContent: "<p>Extracted content</p>",
 	}
 
 	mockDB.GetItemFunc = func(ctx context.Context, id int64) (*db.Item, error) {
@@ -289,9 +293,10 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		return extractResult, nil
 	}
 
-	mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content string, err error) error {
+	mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content, richContent string, err error) error {
 		assert.Equal(t, testItem.ID, itemID)
 		assert.Equal(t, extractResult.Content, content)
+		assert.Equal(t, extractResult.RichContent, richContent)
 		return nil
 	}
 
@@ -365,8 +370,9 @@ func TestScheduler_extractPendingContent(t *testing.T) {
 	}
 
 	extractedContent := &content.ExtractResult{
-		Content: "Extracted content",
-		Title:   "Article Title",
+		Content:     "Extracted content",
+		RichContent: "<p>Rich content</p>",
+		Title:       "Article Title",
 	}
 
 	mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
@@ -376,13 +382,15 @@ func TestScheduler_extractPendingContent(t *testing.T) {
 		return extractedContent, nil
 	}
 
-	mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content string, err error) error {
+	mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content, richContent string, err error) error {
 		switch itemID {
 		case 1:
 			assert.Equal(t, "Extracted content", content)
+			assert.Equal(t, "<p>Rich content</p>", richContent)
 			assert.NoError(t, err) //nolint:testifylint // inside mock function
 		case 2:
 			assert.Empty(t, content)
+			assert.Empty(t, richContent)
 			assert.NotNil(t, err) //nolint:testifylint // inside mock function
 			assert.Contains(t, err.Error(), "extraction failed")
 		}

@@ -1,6 +1,7 @@
 package content
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/markusmobius/go-trafilatura"
+	"golang.org/x/net/html"
 )
 
 // HTTPExtractor extracts article content from URLs using trafilatura
@@ -24,10 +26,11 @@ type HTTPExtractor struct {
 
 // ExtractResult contains the result of content extraction
 type ExtractResult struct {
-	Content string    // extracted content
-	Title   string    // article title if available
-	URL     string    // original URL
-	Date    time.Time // publication date if available
+	Content     string    // extracted content as plain text
+	RichContent string    // extracted content with simplified HTML formatting
+	Title       string    // article title if available
+	URL         string    // original URL
+	Date        time.Time // publication date if available
 }
 
 // NewHTTPExtractor creates a new content extractor
@@ -119,6 +122,12 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (*ExtractRes
 	// clean up content
 	content = strings.TrimSpace(content)
 
+	// extract rich content with simplified HTML if available
+	richContent := ""
+	if result.ContentNode != nil {
+		richContent = extractRichContent(result.ContentNode)
+	}
+
 	// check minimum text length
 	if len(content) < e.minTextLength {
 		return nil, fmt.Errorf("content too short: %d chars (minimum %d)", len(content), e.minTextLength)
@@ -126,9 +135,10 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (*ExtractRes
 
 	// build result
 	extractResult := &ExtractResult{
-		Content: content,
-		Title:   result.Metadata.Title,
-		URL:     urlStr,
+		Content:     content,
+		RichContent: richContent,
+		Title:       result.Metadata.Title,
+		URL:         urlStr,
 	}
 
 	// use metadata date if available
@@ -137,4 +147,108 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (*ExtractRes
 	}
 
 	return extractResult, nil
+}
+
+// extractRichContent extracts content from HTML node preserving simplified HTML structure
+func extractRichContent(node *html.Node) string {
+	var buf bytes.Buffer
+	extractRichContentRecursive(node, &buf)
+
+	// clean up the result
+	result := buf.String()
+	result = strings.TrimSpace(result)
+
+	return result
+}
+
+// extractRichContentRecursive recursively extracts content with simplified HTML
+func extractRichContentRecursive(node *html.Node, buf *bytes.Buffer) {
+	if node == nil {
+		return
+	}
+
+	// handle text nodes
+	if node.Type == html.TextNode {
+		text := strings.TrimSpace(node.Data)
+		if text != "" {
+			// escape HTML entities
+			text = html.EscapeString(text)
+			buf.WriteString(text)
+			if !strings.HasSuffix(text, ".") && !strings.HasSuffix(text, "!") && !strings.HasSuffix(text, "?") {
+				buf.WriteString(" ")
+			}
+		}
+		return
+	}
+
+	// handle element nodes
+	if node.Type == html.ElementNode {
+		// allowed tags for rich content
+		allowedTags := map[string]string{
+			"p":          "p",
+			"h1":         "h3", // downgrade headers for article display
+			"h2":         "h4",
+			"h3":         "h5",
+			"h4":         "h6",
+			"h5":         "h6",
+			"h6":         "h6",
+			"ul":         "ul",
+			"ol":         "ol",
+			"li":         "li",
+			"blockquote": "blockquote",
+			"strong":     "strong",
+			"b":          "strong",
+			"em":         "em",
+			"i":          "em",
+			"code":       "code",
+			"pre":        "pre",
+			"br":         "br",
+		}
+
+		outputTag, isAllowed := allowedTags[node.Data]
+
+		if isAllowed {
+			// write opening tag
+			buf.WriteString("<")
+			buf.WriteString(outputTag)
+			buf.WriteString(">")
+
+			// process children
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				extractRichContentRecursive(child, buf)
+			}
+
+			// write closing tag (except for self-closing tags)
+			if outputTag != "br" {
+				buf.WriteString("</")
+				buf.WriteString(outputTag)
+				buf.WriteString(">")
+			}
+		} else {
+			// for non-allowed tags, just process children
+			// but add paragraph breaks for block-level elements
+			blockElements := map[string]bool{
+				"div": true, "section": true, "article": true,
+				"table": true, "tr": true, "td": true, "th": true,
+			}
+
+			if blockElements[node.Data] {
+				buf.WriteString("<p>")
+			}
+
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				extractRichContentRecursive(child, buf)
+			}
+
+			if blockElements[node.Data] {
+				buf.WriteString("</p>")
+			}
+		}
+		return
+	}
+
+	// process other node types (document, etc.)
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		extractRichContentRecursive(child, buf)
+	}
 }

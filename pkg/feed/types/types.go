@@ -33,15 +33,16 @@ type ItemWithContent struct {
 // ItemWithClassification represents an item with LLM classification data
 type ItemWithClassification struct {
 	Item
-	ID               int64      // database ID for actions
-	FeedName         string     // name of the feed
-	ExtractedContent string     // extracted content if available
-	ExtractionError  string     // extraction error if any
-	RelevanceScore   float64    // LLM classification score (0-10)
-	Explanation      string     // LLM explanation for the score
-	Topics           []string   // topics identified by LLM
-	ClassifiedAt     *time.Time // when classified
-	UserFeedback     string     // user feedback: like, dislike
+	ID                   int64      // database ID for actions
+	FeedName             string     // name of the feed
+	ExtractedContent     string     // extracted content as plain text
+	ExtractedRichContent string     // extracted content with HTML formatting
+	ExtractionError      string     // extraction error if any
+	RelevanceScore       float64    // LLM classification score (0-10)
+	Explanation          string     // LLM explanation for the score
+	Topics               []string   // topics identified by LLM
+	ClassifiedAt         *time.Time // when classified
+	UserFeedback         string     // user feedback: like, dislike
 }
 
 // FeedInfo represents feed information for UI display

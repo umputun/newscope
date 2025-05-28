@@ -287,7 +287,7 @@ func (db *DB) GetItemsNeedingExtraction(ctx context.Context, limit int) ([]Item,
 }
 
 // UpdateItemExtraction updates item after content extraction
-func (db *DB) UpdateItemExtraction(ctx context.Context, itemID int64, content string, err error) error {
+func (db *DB) UpdateItemExtraction(ctx context.Context, itemID int64, content, richContent string, err error) error {
 	var query string
 	var args []interface{}
 
@@ -301,10 +301,10 @@ func (db *DB) UpdateItemExtraction(ctx context.Context, itemID int64, content st
 	} else {
 		query = `
 			UPDATE items 
-			SET extracted_content = ?, extracted_at = datetime('now')
+			SET extracted_content = ?, extracted_rich_content = ?, extracted_at = datetime('now')
 			WHERE id = ?
 		`
-		args = []interface{}{content, itemID}
+		args = []interface{}{content, richContent, itemID}
 	}
 
 	_, execErr := db.ExecContext(ctx, query, args...)

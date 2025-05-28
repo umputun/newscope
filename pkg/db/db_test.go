@@ -211,7 +211,7 @@ func TestItemOperations(t *testing.T) {
 
 	t.Run("update item extraction", func(t *testing.T) {
 		// successful extraction
-		err := db.UpdateItemExtraction(ctx, 1, "Extracted full content", nil)
+		err := db.UpdateItemExtraction(ctx, 1, "Extracted full content", "<p>Rich content</p>", nil)
 		require.NoError(t, err)
 
 		item, err := db.GetItem(ctx, 1)
@@ -221,7 +221,7 @@ func TestItemOperations(t *testing.T) {
 		assert.Empty(t, item.ExtractionError)
 
 		// failed extraction
-		err = db.UpdateItemExtraction(ctx, 2, "", assert.AnError)
+		err = db.UpdateItemExtraction(ctx, 2, "", "", assert.AnError)
 		require.NoError(t, err)
 
 		item, err = db.GetItem(ctx, 2)

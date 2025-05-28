@@ -40,7 +40,7 @@ type Database interface {
 	CreateItem(ctx context.Context, item *db.Item) error
 	ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
 	GetItemsNeedingExtraction(ctx context.Context, limit int) ([]db.Item, error)
-	UpdateItemExtraction(ctx context.Context, itemID int64, content string, err error) error
+	UpdateItemExtraction(ctx context.Context, itemID int64, content, richContent string, err error) error
 
 	GetUnclassifiedItems(ctx context.Context, limit int) ([]db.Item, error)
 	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
@@ -311,11 +311,11 @@ func (s *Scheduler) extractItemContent(ctx context.Context, item db.Item) {
 
 	extracted, err := s.extractor.Extract(ctx, item.Link)
 	if err != nil {
-		lgr.Printf("[ERROR] failed to extract content from %s: %v", item.Link, err)
+		lgr.Printf("[WARN] failed to extract content from %s: %v", item.Link, err)
 		// store extraction error
 		s.dbMutex.Lock()
-		if err := s.db.UpdateItemExtraction(ctx, item.ID, "", err); err != nil {
-			lgr.Printf("[ERROR] failed to store extraction error: %v", err)
+		if err := s.db.UpdateItemExtraction(ctx, item.ID, "", "", err); err != nil {
+			lgr.Printf("[WARN] failed to store extraction error: %v", err)
 		}
 		s.dbMutex.Unlock()
 		return
@@ -323,8 +323,8 @@ func (s *Scheduler) extractItemContent(ctx context.Context, item db.Item) {
 
 	// store extracted content
 	s.dbMutex.Lock()
-	if err := s.db.UpdateItemExtraction(ctx, item.ID, extracted.Content, nil); err != nil {
-		lgr.Printf("[ERROR] failed to store content: %v", err)
+	if err := s.db.UpdateItemExtraction(ctx, item.ID, extracted.Content, extracted.RichContent, nil); err != nil {
+		lgr.Printf("[WARN] failed to store content: %v", err)
 	}
 	s.dbMutex.Unlock()
 

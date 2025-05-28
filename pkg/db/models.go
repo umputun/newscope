@@ -34,9 +34,10 @@ type Item struct {
 	Published   time.Time `db:"published"`
 
 	// extracted content
-	ExtractedContent string     `db:"extracted_content"`
-	ExtractedAt      *time.Time `db:"extracted_at"`
-	ExtractionError  string     `db:"extraction_error"`
+	ExtractedContent     string     `db:"extracted_content"`
+	ExtractedRichContent string     `db:"extracted_rich_content"`
+	ExtractedAt          *time.Time `db:"extracted_at"`
+	ExtractionError      string     `db:"extraction_error"`
 
 	// LLM classification
 	RelevanceScore float64    `db:"relevance_score"`

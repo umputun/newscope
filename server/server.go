@@ -785,11 +785,24 @@ func (s *Server) articleContentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// return the content as HTML for HTMX
 	if article.ExtractedContent != "" {
-		fmt.Fprintf(w, `<div class="extracted-content">
-			<h4>Full Article</h4>
-			<div class="content-text">%s</div>
-			<button onclick="this.parentElement.style.display='none'" class="close-btn">Close</button>
-		</div>`, template.HTMLEscapeString(article.ExtractedContent))
+		// use rich content if available, otherwise fall back to plain text
+		contentToDisplay := article.ExtractedContent
+		if article.ExtractedRichContent != "" {
+			// rich content is already HTML, so we display it directly
+			contentToDisplay = article.ExtractedRichContent
+			fmt.Fprintf(w, `<div class="extracted-content">
+				<h4>Full Article</h4>
+				<div class="content-text">%s</div>
+				<button onclick="this.parentElement.style.display='none'" class="close-btn">Close</button>
+			</div>`, contentToDisplay)
+		} else {
+			// plain text needs HTML escaping
+			fmt.Fprintf(w, `<div class="extracted-content">
+				<h4>Full Article</h4>
+				<div class="content-text">%s</div>
+				<button onclick="this.parentElement.style.display='none'" class="close-btn">Close</button>
+			</div>`, template.HTMLEscapeString(contentToDisplay))
+		}
 	} else if article.ExtractionError != "" {
 		fmt.Fprintf(w, `<div class="extraction-error">
 			<p>Failed to extract content: %s</p>

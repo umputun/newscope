@@ -53,7 +53,7 @@ import (
 //			UpdateFeedFetchedFunc: func(ctx context.Context, feedID int64, nextFetch time.Time) error {
 //				panic("mock out the UpdateFeedFetched method")
 //			},
-//			UpdateItemExtractionFunc: func(ctx context.Context, itemID int64, content string, err error) error {
+//			UpdateItemExtractionFunc: func(ctx context.Context, itemID int64, content string, richContent string, err error) error {
 //				panic("mock out the UpdateItemExtraction method")
 //			},
 //		}
@@ -100,7 +100,7 @@ type DatabaseMock struct {
 	UpdateFeedFetchedFunc func(ctx context.Context, feedID int64, nextFetch time.Time) error
 
 	// UpdateItemExtractionFunc mocks the UpdateItemExtraction method.
-	UpdateItemExtractionFunc func(ctx context.Context, itemID int64, content string, err error) error
+	UpdateItemExtractionFunc func(ctx context.Context, itemID int64, content string, richContent string, err error) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -206,6 +206,8 @@ type DatabaseMock struct {
 			ItemID int64
 			// Content is the content argument value.
 			Content string
+			// RichContent is the richContent argument value.
+			RichContent string
 			// Err is the err argument value.
 			Err error
 		}
@@ -678,25 +680,27 @@ func (mock *DatabaseMock) UpdateFeedFetchedCalls() []struct {
 }
 
 // UpdateItemExtraction calls UpdateItemExtractionFunc.
-func (mock *DatabaseMock) UpdateItemExtraction(ctx context.Context, itemID int64, content string, err error) error {
+func (mock *DatabaseMock) UpdateItemExtraction(ctx context.Context, itemID int64, content string, richContent string, err error) error {
 	if mock.UpdateItemExtractionFunc == nil {
 		panic("DatabaseMock.UpdateItemExtractionFunc: method is nil but Database.UpdateItemExtraction was just called")
 	}
 	callInfo := struct {
-		Ctx     context.Context
-		ItemID  int64
-		Content string
-		Err     error
+		Ctx         context.Context
+		ItemID      int64
+		Content     string
+		RichContent string
+		Err         error
 	}{
-		Ctx:     ctx,
-		ItemID:  itemID,
-		Content: content,
-		Err:     err,
+		Ctx:         ctx,
+		ItemID:      itemID,
+		Content:     content,
+		RichContent: richContent,
+		Err:         err,
 	}
 	mock.lockUpdateItemExtraction.Lock()
 	mock.calls.UpdateItemExtraction = append(mock.calls.UpdateItemExtraction, callInfo)
 	mock.lockUpdateItemExtraction.Unlock()
-	return mock.UpdateItemExtractionFunc(ctx, itemID, content, err)
+	return mock.UpdateItemExtractionFunc(ctx, itemID, content, richContent, err)
 }
 
 // UpdateItemExtractionCalls gets all the calls that were made to UpdateItemExtraction.
@@ -704,16 +708,18 @@ func (mock *DatabaseMock) UpdateItemExtraction(ctx context.Context, itemID int64
 //
 //	len(mockedDatabase.UpdateItemExtractionCalls())
 func (mock *DatabaseMock) UpdateItemExtractionCalls() []struct {
-	Ctx     context.Context
-	ItemID  int64
-	Content string
-	Err     error
+	Ctx         context.Context
+	ItemID      int64
+	Content     string
+	RichContent string
+	Err         error
 } {
 	var calls []struct {
-		Ctx     context.Context
-		ItemID  int64
-		Content string
-		Err     error
+		Ctx         context.Context
+		ItemID      int64
+		Content     string
+		RichContent string
+		Err         error
 	}
 	mock.lockUpdateItemExtraction.RLock()
 	calls = mock.calls.UpdateItemExtraction

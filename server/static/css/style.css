@@ -322,6 +322,63 @@ main {
     white-space: pre-wrap;
 }
 
+/* Rich content formatting */
+.content-text p {
+    margin-bottom: 1em;
+    white-space: normal;
+}
+
+.content-text h3, .content-text h4, 
+.content-text h5, .content-text h6 {
+    margin: 1.5em 0 0.5em 0;
+    font-weight: 600;
+    white-space: normal;
+}
+
+.content-text h3 { font-size: 1.3em; }
+.content-text h4 { font-size: 1.2em; }
+.content-text h5 { font-size: 1.1em; }
+.content-text h6 { font-size: 1em; }
+
+.content-text ul, .content-text ol {
+    margin: 1em 0;
+    padding-left: 2em;
+}
+
+.content-text li {
+    margin: 0.5em 0;
+    white-space: normal;
+}
+
+.content-text blockquote {
+    border-left: 3px solid var(--gray-300);
+    padding-left: 1em;
+    margin: 1em 0;
+    color: var(--gray-600);
+    font-style: italic;
+}
+
+.content-text code {
+    background: var(--gray-200);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+.content-text pre {
+    background: var(--gray-200);
+    padding: 1em;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 1em 0;
+}
+
+.content-text pre code {
+    background: none;
+    padding: 0;
+}
+
 .close-btn {
     background: #6c757d;
     color: white;

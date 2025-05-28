@@ -61,9 +61,9 @@ func (d *DBAdapter) GetClassifiedItems(ctx context.Context, minScore float64, to
 		SELECT 
 			i.id, i.feed_id, i.guid, i.title, i.link, i.description,
 			i.content, i.author, i.published, i.extracted_content, 
-			i.extracted_at, i.extraction_error, i.relevance_score,
-			i.explanation, i.topics, i.classified_at, i.user_feedback,
-			i.feedback_at, i.created_at, i.updated_at,
+			i.extracted_rich_content, i.extracted_at, i.extraction_error, 
+			i.relevance_score, i.explanation, i.topics, i.classified_at, 
+			i.user_feedback, i.feedback_at, i.created_at, i.updated_at,
 			f.title as feed_title
 		FROM items i
 		JOIN feeds f ON i.feed_id = f.id
@@ -87,9 +87,9 @@ func (d *DBAdapter) GetClassifiedItems(ctx context.Context, minScore float64, to
 		err := rows.Scan(
 			&item.ID, &item.FeedID, &item.GUID, &item.Title, &item.Link,
 			&item.Description, &item.Content, &item.Author, &item.Published,
-			&item.ExtractedContent, &item.ExtractedAt, &item.ExtractionError,
-			&item.RelevanceScore, &item.Explanation, &item.Topics,
-			&item.ClassifiedAt, &item.UserFeedback, &item.FeedbackAt,
+			&item.ExtractedContent, &item.ExtractedRichContent, &item.ExtractedAt,
+			&item.ExtractionError, &item.RelevanceScore, &item.Explanation,
+			&item.Topics, &item.ClassifiedAt, &item.UserFeedback, &item.FeedbackAt,
 			&item.CreatedAt, &item.UpdatedAt, &feedTitle,
 		)
 		if err != nil {
@@ -119,15 +119,16 @@ func (d *DBAdapter) GetClassifiedItems(ctx context.Context, minScore float64, to
 				Author:      item.Author,
 				Published:   item.Published,
 			},
-			ID:               item.ID,
-			FeedName:         feedTitle,
-			ExtractedContent: item.ExtractedContent,
-			ExtractionError:  item.ExtractionError,
-			RelevanceScore:   item.RelevanceScore,
-			Explanation:      item.Explanation,
-			Topics:           []string(item.Topics),
-			ClassifiedAt:     item.ClassifiedAt,
-			UserFeedback:     item.UserFeedback,
+			ID:                   item.ID,
+			FeedName:             feedTitle,
+			ExtractedContent:     item.ExtractedContent,
+			ExtractedRichContent: item.ExtractedRichContent,
+			ExtractionError:      item.ExtractionError,
+			RelevanceScore:       item.RelevanceScore,
+			Explanation:          item.Explanation,
+			Topics:               []string(item.Topics),
+			ClassifiedAt:         item.ClassifiedAt,
+			UserFeedback:         item.UserFeedback,
 		})
 	}
 
@@ -149,9 +150,9 @@ func (d *DBAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*types
 		SELECT 
 			i.id, i.feed_id, i.guid, i.title, i.link, i.description,
 			i.content, i.author, i.published, i.extracted_content, 
-			i.extracted_at, i.extraction_error, i.relevance_score,
-			i.explanation, i.topics, i.classified_at, i.user_feedback,
-			i.feedback_at, i.created_at, i.updated_at,
+			i.extracted_rich_content, i.extracted_at, i.extraction_error, 
+			i.relevance_score, i.explanation, i.topics, i.classified_at, 
+			i.user_feedback, i.feedback_at, i.created_at, i.updated_at,
 			f.title as feed_title
 		FROM items i
 		JOIN feeds f ON i.feed_id = f.id
@@ -164,9 +165,9 @@ func (d *DBAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*types
 	err := d.QueryRowContext(ctx, query, itemID).Scan(
 		&item.ID, &item.FeedID, &item.GUID, &item.Title, &item.Link,
 		&item.Description, &item.Content, &item.Author, &item.Published,
-		&item.ExtractedContent, &item.ExtractedAt, &item.ExtractionError,
-		&item.RelevanceScore, &item.Explanation, &item.Topics,
-		&item.ClassifiedAt, &item.UserFeedback, &item.FeedbackAt,
+		&item.ExtractedContent, &item.ExtractedRichContent, &item.ExtractedAt,
+		&item.ExtractionError, &item.RelevanceScore, &item.Explanation,
+		&item.Topics, &item.ClassifiedAt, &item.UserFeedback, &item.FeedbackAt,
 		&item.CreatedAt, &item.UpdatedAt, &feedTitle,
 	)
 	if err != nil {
@@ -182,15 +183,16 @@ func (d *DBAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*types
 			Author:      item.Author,
 			Published:   item.Published,
 		},
-		ID:               item.ID,
-		FeedName:         feedTitle,
-		ExtractedContent: item.ExtractedContent,
-		ExtractionError:  item.ExtractionError,
-		RelevanceScore:   item.RelevanceScore,
-		Explanation:      item.Explanation,
-		Topics:           []string(item.Topics),
-		ClassifiedAt:     item.ClassifiedAt,
-		UserFeedback:     item.UserFeedback,
+		ID:                   item.ID,
+		FeedName:             feedTitle,
+		ExtractedContent:     item.ExtractedContent,
+		ExtractedRichContent: item.ExtractedRichContent,
+		ExtractionError:      item.ExtractionError,
+		RelevanceScore:       item.RelevanceScore,
+		Explanation:          item.Explanation,
+		Topics:               []string(item.Topics),
+		ClassifiedAt:         item.ClassifiedAt,
+		UserFeedback:         item.UserFeedback,
 	}
 
 	return result, nil

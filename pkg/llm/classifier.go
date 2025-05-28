@@ -52,7 +52,17 @@ Each classification should contain:
 - score: relevance score (0-10)
 - explanation: brief explanation (max 100 chars)
 - topics: array of 1-3 relevant topic keywords
-- summary: concise 2-3 sentence summary of the article (max 200 chars)
+- summary: comprehensive summary that captures the key points, findings, main story, and important details (300-500 chars). Write directly about the content itself. NEVER use phrases like "The article discusses", "The article explores", "The piece covers", "The author explains", etc. Start with the actual subject matter. IMPORTANT: Write the summary in the same language as the article content.
+
+Examples of good summaries:
+- "Go 1.22 introduces range-over-function iterators enabling more expressive code patterns. Compilation speeds improve by 50% for large projects through better parallelization. New toolchain management simplifies version control. Runtime gains 10-15% performance boost via enhanced garbage collection algorithms."
+- "Scientists discover extensive water ice deposits on Mars equator using orbital radar data from Mars Express spacecraft. Ice layers extend 3.7km deep beneath Medusae Fossae Formation. Discovery challenges understanding of Mars climate history and could support future human missions with accessible water resources."
+- "Новый вариант программы-вымогателя BlackCat сначала шифрует облачные резервные копии через API интеграции, затем атакует локальные системы. Использует двойное вымогательство с угрозой публикации данных. Требует оплату в Monero вместо Bitcoin для усложнения отслеживания транзакций." (for Russian content)
+
+Examples of bad summaries:
+- "The article discusses new features in Go 1.22..."
+- "This piece explores the discovery of water on Mars..."
+- "The author explains how ransomware works..."
 
 Consider the user's previous feedback when provided.`
 
@@ -101,12 +111,6 @@ func (c *Classifier) ClassifyArticles(ctx context.Context, articles []db.Item, f
 
 	// parse the response
 	content := resp.Choices[0].Message.Content
-	// log response length for debugging
-	if len(content) > 1000 {
-		fmt.Printf("[DEBUG] LLM response length: %d, truncated preview: %s...\n", len(content), content[:200])
-	} else {
-		fmt.Printf("[DEBUG] LLM response length: %d, content: %s\n", len(content), content)
-	}
 	return c.parseResponse(content, articles)
 }
 
@@ -176,8 +180,6 @@ func (c *Classifier) parseResponse(content string, articles []db.Item) ([]db.Cla
 
 		jsonStr := content[start : end+1]
 		if err := json.Unmarshal([]byte(jsonStr), &classifications); err != nil {
-			// log the problematic response for debugging
-			fmt.Printf("[DEBUG] Failed to parse JSON response (length: %d): %s\n", len(jsonStr), jsonStr)
 			return nil, fmt.Errorf("failed to parse json array response: %w", err)
 		}
 	}

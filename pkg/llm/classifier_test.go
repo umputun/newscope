@@ -35,14 +35,14 @@ func TestClassifier_ClassifyArticles(t *testing.T) {
     "score": 8.5,
     "explanation": "Highly relevant Go programming content",
     "topics": ["golang", "programming", "backend"],
-    "summary": "Go 1.22 introduces significant new features and improvements. The release focuses on enhanced performance and developer experience."
+    "summary": "Go 1.22 brings range-over-function iterators enabling cleaner iteration patterns over custom types. Compilation speeds increase 50% for large projects through parallel compilation improvements. New toolchain versioning system simplifies managing Go versions. Runtime optimizations reduce memory usage by 15% in typical web applications. Profile-guided optimization now supports more optimization patterns."
   },
   {
     "guid": "item2", 
     "score": 3.0,
     "explanation": "Not relevant to tech interests",
     "topics": ["sports", "news"],
-    "summary": "Latest football match results and sports updates. Teams competed in various leagues with surprising outcomes."
+    "summary": "Manchester United defeated Chelsea 3-1 in crucial Premier League clash with Bruno Fernandes scoring twice. Liverpool maintains top position after dramatic 2-2 draw with Arsenal at Emirates Stadium. Multiple red cards issued in heated matches across European leagues including Serie A and La Liga. Champions League spots remain highly contested with six teams within five points. Injury concerns mount for several top clubs ahead of international break."
   }
 ]`,
 					},
@@ -102,6 +102,8 @@ func TestClassifier_ClassifyArticles(t *testing.T) {
 	assert.Equal(t, []string{"golang", "programming", "backend"}, classifications[0].Topics)
 	assert.NotEmpty(t, classifications[0].Summary)
 	assert.Contains(t, classifications[0].Summary, "Go 1.22")
+	assert.NotContains(t, classifications[0].Summary, "The article")
+	assert.NotContains(t, classifications[0].Summary, "discusses")
 
 	// check second classification
 	assert.Equal(t, "item2", classifications[1].GUID)
@@ -109,7 +111,8 @@ func TestClassifier_ClassifyArticles(t *testing.T) {
 	assert.Equal(t, "Not relevant to tech interests", classifications[1].Explanation)
 	assert.Equal(t, []string{"sports", "news"}, classifications[1].Topics)
 	assert.NotEmpty(t, classifications[1].Summary)
-	assert.Contains(t, classifications[1].Summary, "football")
+	assert.Contains(t, classifications[1].Summary, "Manchester United")
+	assert.NotContains(t, classifications[1].Summary, "The article")
 }
 
 func TestClassifier_ClassifyArticles_EmptyInput(t *testing.T) {
@@ -331,8 +334,8 @@ func TestClassifier_JSONMode(t *testing.T) {
 
 		response := `{
 			"classifications": [
-				{"guid": "item1", "score": 8, "explanation": "Good", "topics": ["tech"], "summary": "Article about latest tech trends and innovations."},
-				{"guid": "item2", "score": 3, "explanation": "Bad", "topics": ["other"], "summary": "General news article with limited tech relevance."}
+				{"guid": "item1", "score": 8, "explanation": "Good", "topics": ["tech"], "summary": "Apple unveils Vision Pro headset featuring revolutionary spatial computing capabilities with dual 4K displays per eye. New M3 chips deliver 50% performance boost over M2 through enhanced neural engine and GPU cores. Priced at $3,499, targeting professional and creative markets. Developer SDK released with over 1,000 apps already optimized. Battery life reaches 2 hours with external pack, addressing early concerns about portability."},
+				{"guid": "item2", "score": 3, "explanation": "Bad", "topics": ["other"], "summary": "Local bakery Flour Power wins national award for innovative sourdough bread using ancient grain varieties. Owner Maria Chen credits success to 72-hour fermentation process inherited from grandmother. Bakery produces 500 loaves daily using locally sourced organic ingredients. Award includes $50,000 prize and cookbook deal. Plans expansion to three new locations across California by year end."}
 			]
 		}`
 

@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS items (
     
     -- Extracted content
     extracted_content TEXT DEFAULT '',   -- Full article text
+    extracted_rich_content TEXT DEFAULT '',  -- HTML formatted content
     extracted_at DATETIME,
     extraction_error TEXT DEFAULT '',
     

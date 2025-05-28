@@ -339,7 +339,7 @@ func TestDBAdapter_GetClassifiedItem(t *testing.T) {
 	require.NoError(t, err)
 
 	// add extracted content
-	err = testDB.UpdateItemExtraction(ctx, item.ID, "Full article content", nil)
+	err = testDB.UpdateItemExtraction(ctx, item.ID, "Full article content", "<p>Full article content</p>", nil)
 	require.NoError(t, err)
 
 	// classify it
