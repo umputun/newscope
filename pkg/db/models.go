@@ -52,6 +52,9 @@ type Item struct {
 	// metadata
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
+
+	// joined data (not stored in DB, populated by queries)
+	FeedTitle string `db:"feed_title"`
 }
 
 // Setting represents a key-value configuration

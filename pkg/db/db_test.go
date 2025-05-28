@@ -309,6 +309,54 @@ func TestItemOperations(t *testing.T) {
 		assert.InEpsilon(t, 7.0, item.RelevanceScore, 0.001)
 		assert.Equal(t, "Good match", item.Explanation)
 	})
+
+	t.Run("get classified items", func(t *testing.T) {
+		// get all classified items with score >= 7
+		items, err := db.GetClassifiedItems(ctx, 7.0, 10)
+		require.NoError(t, err)
+		
+		// find item3 in results
+		var item3Found bool
+		for _, item := range items {
+			if item.Title == "Article 3" {
+				item3Found = true
+				assert.Equal(t, "Test Feed", item.FeedTitle)
+				assert.InEpsilon(t, 7.0, item.RelevanceScore, 0.001)
+			}
+		}
+		assert.True(t, item3Found, "Article 3 should be in results")
+
+		// get classified items with lower score to include more items
+		items, err = db.GetClassifiedItems(ctx, 3.0, 10)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(items), 2) // at least item3 and item2 are classified
+	})
+
+	t.Run("get single classified item", func(t *testing.T) {
+		// get item3 with feed info
+		item, err := db.GetClassifiedItem(ctx, 3)
+		require.NoError(t, err)
+		assert.Equal(t, "Article 3", item.Title)
+		assert.Equal(t, "Test Feed", item.FeedTitle)
+		assert.InEpsilon(t, 7.0, item.RelevanceScore, 0.001)
+
+		// try to get non-existent item
+		_, err = db.GetClassifiedItem(ctx, 99999)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("get classified item with rich content", func(t *testing.T) {
+		// update item with rich content
+		err := db.UpdateItemExtraction(ctx, 3, "Plain content", "<p>Rich content</p>", nil)
+		require.NoError(t, err)
+
+		// get item and verify both content fields
+		item, err := db.GetClassifiedItem(ctx, 3)
+		require.NoError(t, err)
+		assert.Equal(t, "Plain content", item.ExtractedContent)
+		assert.Equal(t, "<p>Rich content</p>", item.ExtractedRichContent)
+	})
 }
 
 func TestSettingOperations(t *testing.T) {

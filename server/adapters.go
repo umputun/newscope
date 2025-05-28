@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed/types"
@@ -56,46 +55,15 @@ func (d *DBAdapter) GetItems(ctx context.Context, limit, _ int) ([]types.Item, e
 
 // GetClassifiedItems returns items with classification data
 func (d *DBAdapter) GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
-	// create a query that joins items with feeds to get feed names
-	query := `
-		SELECT 
-			i.id, i.feed_id, i.guid, i.title, i.link, i.description,
-			i.content, i.author, i.published, i.extracted_content, 
-			i.extracted_rich_content, i.extracted_at, i.extraction_error, 
-			i.relevance_score, i.explanation, i.topics, i.classified_at, 
-			i.user_feedback, i.feedback_at, i.created_at, i.updated_at,
-			f.title as feed_title
-		FROM items i
-		JOIN feeds f ON i.feed_id = f.id
-		WHERE i.relevance_score >= ?
-		AND i.classified_at IS NOT NULL
-		ORDER BY i.published DESC
-		LIMIT ?
-	`
-
-	rows, err := d.QueryContext(ctx, query, minScore, limit)
+	// get items from DB
+	items, err := d.DB.GetClassifiedItems(ctx, minScore, limit)
 	if err != nil {
-		return nil, fmt.Errorf("query classified items: %w", err)
+		return nil, err
 	}
-	defer rows.Close()
 
-	var result []types.ItemWithClassification
-	for rows.Next() {
-		var item db.Item
-		var feedTitle string
-
-		err := rows.Scan(
-			&item.ID, &item.FeedID, &item.GUID, &item.Title, &item.Link,
-			&item.Description, &item.Content, &item.Author, &item.Published,
-			&item.ExtractedContent, &item.ExtractedRichContent, &item.ExtractedAt,
-			&item.ExtractionError, &item.RelevanceScore, &item.Explanation,
-			&item.Topics, &item.ClassifiedAt, &item.UserFeedback, &item.FeedbackAt,
-			&item.CreatedAt, &item.UpdatedAt, &feedTitle,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("scan item: %w", err)
-		}
-
+	// convert to types and filter by topic if needed
+	result := make([]types.ItemWithClassification, 0, len(items))
+	for _, item := range items {
 		// filter by topic if specified
 		if topic != "" {
 			found := false
@@ -120,7 +88,7 @@ func (d *DBAdapter) GetClassifiedItems(ctx context.Context, minScore float64, to
 				Published:   item.Published,
 			},
 			ID:                   item.ID,
-			FeedName:             feedTitle,
+			FeedName:             item.FeedTitle,
 			ExtractedContent:     item.ExtractedContent,
 			ExtractedRichContent: item.ExtractedRichContent,
 			ExtractionError:      item.ExtractionError,
@@ -130,10 +98,6 @@ func (d *DBAdapter) GetClassifiedItems(ctx context.Context, minScore float64, to
 			ClassifiedAt:         item.ClassifiedAt,
 			UserFeedback:         item.UserFeedback,
 		})
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rows: %w", err)
 	}
 
 	return result, nil
@@ -146,32 +110,9 @@ func (d *DBAdapter) UpdateItemFeedback(ctx context.Context, itemID int64, feedba
 
 // GetClassifiedItem returns a single item with classification data
 func (d *DBAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
-	query := `
-		SELECT 
-			i.id, i.feed_id, i.guid, i.title, i.link, i.description,
-			i.content, i.author, i.published, i.extracted_content, 
-			i.extracted_rich_content, i.extracted_at, i.extraction_error, 
-			i.relevance_score, i.explanation, i.topics, i.classified_at, 
-			i.user_feedback, i.feedback_at, i.created_at, i.updated_at,
-			f.title as feed_title
-		FROM items i
-		JOIN feeds f ON i.feed_id = f.id
-		WHERE i.id = ?
-	`
-
-	var item db.Item
-	var feedTitle string
-
-	err := d.QueryRowContext(ctx, query, itemID).Scan(
-		&item.ID, &item.FeedID, &item.GUID, &item.Title, &item.Link,
-		&item.Description, &item.Content, &item.Author, &item.Published,
-		&item.ExtractedContent, &item.ExtractedRichContent, &item.ExtractedAt,
-		&item.ExtractionError, &item.RelevanceScore, &item.Explanation,
-		&item.Topics, &item.ClassifiedAt, &item.UserFeedback, &item.FeedbackAt,
-		&item.CreatedAt, &item.UpdatedAt, &feedTitle,
-	)
+	item, err := d.DB.GetClassifiedItem(ctx, itemID)
 	if err != nil {
-		return nil, fmt.Errorf("get classified item: %w", err)
+		return nil, err
 	}
 
 	result := &types.ItemWithClassification{
@@ -184,7 +125,7 @@ func (d *DBAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*types
 			Published:   item.Published,
 		},
 		ID:                   item.ID,
-		FeedName:             feedTitle,
+		FeedName:             item.FeedTitle,
 		ExtractedContent:     item.ExtractedContent,
 		ExtractedRichContent: item.ExtractedRichContent,
 		ExtractionError:      item.ExtractionError,

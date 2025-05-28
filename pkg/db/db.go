@@ -420,6 +420,48 @@ func (db *DB) SetSetting(ctx context.Context, key, value string) error {
 	return nil
 }
 
+// GetClassifiedItems returns classified items with feed information
+func (db *DB) GetClassifiedItems(ctx context.Context, minScore float64, limit int) ([]Item, error) {
+	query := `
+		SELECT 
+			i.*,
+			f.title as feed_title
+		FROM items i
+		JOIN feeds f ON i.feed_id = f.id
+		WHERE i.relevance_score >= ?
+		AND i.classified_at IS NOT NULL
+		ORDER BY i.published DESC
+		LIMIT ?
+	`
+
+	var items []Item
+	if err := db.SelectContext(ctx, &items, query, minScore, limit); err != nil {
+		return nil, fmt.Errorf("get classified items: %w", err)
+	}
+	return items, nil
+}
+
+// GetClassifiedItem returns a single classified item with feed information
+func (db *DB) GetClassifiedItem(ctx context.Context, itemID int64) (*Item, error) {
+	query := `
+		SELECT 
+			i.*,
+			f.title as feed_title
+		FROM items i
+		JOIN feeds f ON i.feed_id = f.id
+		WHERE i.id = ?
+	`
+
+	var item Item
+	if err := db.GetContext(ctx, &item, query, itemID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("item not found")
+		}
+		return nil, fmt.Errorf("get classified item: %w", err)
+	}
+	return &item, nil
+}
+
 // Batch operations
 
 // UpdateClassifications updates multiple items with classification results
