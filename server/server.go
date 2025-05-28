@@ -540,22 +540,17 @@ func (s *Server) deleteFeedHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// renderPage renders a page template with the base template
-func (s *Server) renderPage(w http.ResponseWriter, templateName string, data interface{}) error {
+// renderPage renders a page template with the base template and any additional component templates
+func (s *Server) renderPage(w http.ResponseWriter, templateName string, componentTemplates []string, data interface{}) error {
 	// create a new template instance for this request to avoid conflicts
 	tmpl := template.New("").Funcs(template.FuncMap{
 		"mul": func(a, b float64) float64 { return a * b },
 	})
 
-	// parse all templates needed for this page
+	// build template list: base + main template + components
 	templates := []string{"templates/base.html", "templates/" + templateName}
-
-	// add component templates based on which page is being rendered
-	switch templateName {
-	case "articles.html":
-		templates = append(templates, "templates/article-card.html")
-	case "feeds.html":
-		templates = append(templates, "templates/feed-card.html")
+	for _, component := range componentTemplates {
+		templates = append(templates, "templates/"+component)
 	}
 
 	tmpl, err := tmpl.ParseFS(templateFS, templates...)
@@ -641,8 +636,8 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedTopic: topic,
 	}
 
-	// render full page with base template
-	if err := s.renderPage(w, "articles.html", data); err != nil {
+	// render full page with base template and article card component
+	if err := s.renderPage(w, "articles.html", []string{"article-card.html"}, data); err != nil {
 		log.Printf("[ERROR] failed to render articles page: %v", err)
 		http.Error(w, "Failed to render page", http.StatusInternalServerError)
 	}
@@ -670,7 +665,7 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// render page with base template
-	if err := s.renderPage(w, "feeds.html", data); err != nil {
+	if err := s.renderPage(w, "feeds.html", []string{"feed-card.html"}, data); err != nil {
 		log.Printf("[ERROR] failed to render feeds page: %v", err)
 		http.Error(w, "Failed to render page", http.StatusInternalServerError)
 	}
