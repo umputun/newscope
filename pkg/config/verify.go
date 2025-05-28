@@ -65,9 +65,6 @@ func VerifyAgainstSchema(cfg *Config, schemaPath string) error {
 		return fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	// validate using jsonschema package
-	// note: for production use, consider using a dedicated JSON schema validator
-	// like github.com/xeipuuv/gojsonschema for full draft support
 
 	// basic validation - check required fields match
 	if err := validateRequiredFields(cfg); err != nil {
