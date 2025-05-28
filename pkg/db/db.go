@@ -190,6 +190,16 @@ func (db *DB) UpdateFeedError(ctx context.Context, feedID int64, errMsg string) 
 	return nil
 }
 
+// UpdateFeedStatus enables or disables a feed
+func (db *DB) UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error {
+	query := "UPDATE feeds SET enabled = ? WHERE id = ?"
+	_, err := db.ExecContext(ctx, query, enabled, feedID)
+	if err != nil {
+		return fmt.Errorf("update feed status: %w", err)
+	}
+	return nil
+}
+
 // DeleteFeed removes a feed and all its items
 func (db *DB) DeleteFeed(ctx context.Context, id int64) error {
 	_, err := db.ExecContext(ctx, "DELETE FROM feeds WHERE id = ?", id)
@@ -460,6 +470,25 @@ func (db *DB) GetClassifiedItem(ctx context.Context, itemID int64) (*Item, error
 		return nil, fmt.Errorf("get classified item: %w", err)
 	}
 	return &item, nil
+}
+
+// GetTopics returns all unique topics from classified items
+func (db *DB) GetTopics(ctx context.Context) ([]string, error) {
+	query := `
+		SELECT DISTINCT value 
+		FROM (
+			SELECT json_each.value 
+			FROM items, json_each(items.topics)
+			WHERE items.classified_at IS NOT NULL
+		)
+		ORDER BY value
+	`
+
+	var topics []string
+	if err := db.SelectContext(ctx, &topics, query); err != nil {
+		return nil, fmt.Errorf("get topics: %w", err)
+	}
+	return topics, nil
 }
 
 // Batch operations

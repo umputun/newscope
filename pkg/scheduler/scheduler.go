@@ -185,7 +185,11 @@ func (s *Scheduler) updateAllFeeds(ctx context.Context) {
 
 // updateFeed fetches and stores new items for a single feed
 func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed) {
-	lgr.Printf("[DEBUG] updating feed: %s", f.URL)
+	feedName := f.Title
+	if feedName == "" {
+		feedName = f.URL
+	}
+	lgr.Printf("[DEBUG] updating feed: %s", feedName)
 
 	parsedFeed, err := s.parser.Parse(ctx, f.URL)
 	if err != nil {
@@ -246,7 +250,11 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed) {
 	s.dbMutex.Unlock()
 
 	if newCount > 0 {
-		lgr.Printf("[INFO] added %d new items from feed: %s", newCount, f.Title)
+		feedName := f.Title
+		if feedName == "" {
+			feedName = f.URL
+		}
+		lgr.Printf("[INFO] added %d new items from feed: %s", newCount, feedName)
 	}
 }
 

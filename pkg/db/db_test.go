@@ -128,6 +128,24 @@ func TestFeedOperations(t *testing.T) {
 		assert.Equal(t, int64(1), feeds[0].ID)
 	})
 
+	t.Run("update feed status", func(t *testing.T) {
+		// disable feed
+		err := db.UpdateFeedStatus(ctx, 1, false)
+		require.NoError(t, err)
+
+		feed, err := db.GetFeed(ctx, 1)
+		require.NoError(t, err)
+		assert.False(t, feed.Enabled)
+
+		// enable feed
+		err = db.UpdateFeedStatus(ctx, 1, true)
+		require.NoError(t, err)
+
+		feed, err = db.GetFeed(ctx, 1)
+		require.NoError(t, err)
+		assert.True(t, feed.Enabled)
+	})
+
 	t.Run("delete feed", func(t *testing.T) {
 		err := db.DeleteFeed(ctx, 2)
 		require.NoError(t, err)
@@ -356,6 +374,30 @@ func TestItemOperations(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "Plain content", item.ExtractedContent)
 		assert.Equal(t, "<p>Rich content</p>", item.ExtractedRichContent)
+	})
+
+	t.Run("get topics", func(t *testing.T) {
+		// first, verify we have classified items with topics
+		var count int
+		err := db.GetContext(ctx, &count, "SELECT COUNT(*) FROM items WHERE classified_at IS NOT NULL AND topics IS NOT NULL")
+		require.NoError(t, err)
+		t.Logf("Found %d classified items with topics", count)
+		
+		// get topics from classified items
+		topics, err := db.GetTopics(ctx)
+		require.NoError(t, err)
+		t.Logf("Topics found: %v", topics)
+		
+		// based on the batch update classifications test above, we should have these topics
+		assert.Contains(t, topics, "tech")
+		assert.Contains(t, topics, "other")
+		
+		// verify they're sorted if we have any
+		if len(topics) > 1 {
+			for i := 1; i < len(topics); i++ {
+				assert.Less(t, topics[i-1], topics[i], "topics should be sorted")
+			}
+		}
 	})
 }
 

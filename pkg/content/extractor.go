@@ -183,6 +183,18 @@ func extractRichContentRecursive(node *html.Node, buf *bytes.Buffer) {
 
 	// handle element nodes
 	if node.Type == html.ElementNode {
+		handleElementNode(node, buf)
+		return
+	}
+
+	// process other node types (document, etc.)
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		extractRichContentRecursive(child, buf)
+	}
+}
+
+// handleElementNode processes HTML element nodes
+func handleElementNode(node *html.Node, buf *bytes.Buffer) {
 		// allowed tags for rich content
 		allowedTags := map[string]string{
 			"p":          "p",
@@ -244,11 +256,4 @@ func extractRichContentRecursive(node *html.Node, buf *bytes.Buffer) {
 				buf.WriteString("</p>")
 			}
 		}
-		return
-	}
-
-	// process other node types (document, etc.)
-	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		extractRichContentRecursive(child, buf)
-	}
 }

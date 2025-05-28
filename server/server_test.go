@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	"net"
 	"net/http"
@@ -14,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-pkgz/routegroup"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -23,99 +21,10 @@ import (
 	"github.com/umputun/newscope/server/mocks"
 )
 
-// testServer creates a server instance with loaded templates for testing
+// testServer creates a server instance using the actual New function
 func testServer(t *testing.T, cfg ConfigProvider, database Database, scheduler Scheduler) *Server {
-	srv := &Server{
-		config:    cfg,
-		db:        database,
-		scheduler: scheduler,
-		version:   "test",
-		debug:     false,
-		router:    routegroup.New(http.NewServeMux()),
-	}
-
-	// create simple test templates
-	tmpl := template.New("test")
-
-	// base.html template
-	tmpl = template.Must(tmpl.New("base.html").Parse(`
-<!DOCTYPE html>
-<html>
-<head><title>{{block "title" .}}Test{{end}}</title></head>
-<body>
-{{block "content" .}}{{end}}
-</body>
-</html>
-`))
-
-	// articles.html template
-	tmpl = template.Must(tmpl.New("articles.html").Parse(`
-{{template "base.html" .}}
-{{define "title"}}Articles{{end}}
-{{define "content"}}
-<div class="articles">
-{{range .Articles}}
-<div class="article">
-	<h3>{{.Title}}</h3>
-	<p>{{.FeedName}}</p>
-	<p>Score: {{.RelevanceScore}}/10</p>
-</div>
-{{end}}
-</div>
-{{end}}
-`))
-
-	// article-card.html template
-	tmpl = template.Must(tmpl.New("article-card.html").Parse(`
-<div class="article-card">
-	<h3>{{.Title}}</h3>
-	<p>{{.FeedName}}</p>
-	<span class="score-text">Score: {{printf "%.1f" .RelevanceScore}}/10</span>
-	{{if .UserFeedback}}<div class="btn-like active">{{.UserFeedback}}</div>{{end}}
-	{{if .ExtractedContent}}<button>Show Content</button>{{end}}
-</div>
-`))
-
-	// article-content.html template
-	tmpl = template.Must(tmpl.New("article-content.html").Parse(`
-<div class="content-modal">
-	<h2>Full Article</h2>
-	<p>{{.ExtractedContent}}</p>
-	<button>Close</button>
-</div>
-`))
-
-	// feeds.html template
-	tmpl = template.Must(tmpl.New("feeds.html").Parse(`
-{{template "base.html" .}}
-{{define "title"}}Feeds{{end}}
-{{define "content"}}
-<h2>Feed Management</h2>
-<div class="feeds-list">
-{{range .Feeds}}
-<div class="feed">
-	<h3>{{.Title}}</h3>
-	<p>{{.URL}}</p>
-	{{if .LastError}}<p class="error">{{.LastError}}</p>{{end}}
-</div>
-{{end}}
-</div>
-{{end}}
-`))
-
-	// feed-card.html template
-	tmpl = template.Must(tmpl.New("feed-card.html").Parse(`
-<div class="feed-card">
-	<h3>{{.Title}}</h3>
-	<p>{{.URL}}</p>
-</div>
-`))
-
-	srv.templates = tmpl
-	srv.setupMiddleware()
-	srv.setupRoutes()
-
-	return srv
+	// use the actual New function which properly loads and separates templates
+	return New(cfg, database, scheduler, "test", false)
 }
 
 func TestServer_New(t *testing.T) {
@@ -230,7 +139,7 @@ func TestServer_rssFeedHandler(t *testing.T) {
 		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
 			assert.InEpsilon(t, 5.0, minScore, 0.001) // default score
 			assert.Equal(t, "technology", topic)
-			assert.Equal(t, 50, limit)
+			assert.Equal(t, 100, limit)
 
 			return []types.ItemWithClassification{
 				{
@@ -257,7 +166,7 @@ func TestServer_rssFeedHandler(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// call handler directly
-	srv.rssFeedHandler(w, req)
+	srv.rssHandler(w, req)
 
 	// check response
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -626,7 +535,7 @@ func TestServer_rssHandler(t *testing.T) {
 	assert.Contains(t, rss, `<channel>`)
 	assert.Contains(t, rss, `<title>Newscope - technology (Score ≥ 7.0)</title>`)
 	assert.Contains(t, rss, `<link>http://localhost:8080/</link>`)
-	assert.Contains(t, rss, `<description>AI-curated articles with relevance score ≥ 7</description>`)
+	assert.Contains(t, rss, `<description>AI-curated articles with relevance score ≥ 7.0</description>`)
 
 	// check first item
 	assert.Contains(t, rss, `<title>[9.5] AI Breakthrough &amp; More</title>`)
@@ -688,27 +597,6 @@ func TestServer_generateRSSFeed(t *testing.T) {
 	// test empty topic
 	rss = srv.generateRSSFeed("", 7.5, items)
 	assert.Contains(t, rss, `<title>Newscope - All Topics (Score ≥ 7.5)</title>`)
-}
-
-func TestServer_escapeXML(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"Hello World", "Hello World"},
-		{"Hello & World", "Hello &amp; World"},
-		{"<tag>content</tag>", "&lt;tag&gt;content&lt;/tag&gt;"},
-		{`"quoted"`, `&quot;quoted&quot;`},
-		{"'single quotes'", "&apos;single quotes&apos;"},
-		{"Multiple & < > \" ' chars", "Multiple &amp; &lt; &gt; &quot; &apos; chars"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := escapeXML(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
 }
 
 func TestServer_feedsHandler(t *testing.T) {

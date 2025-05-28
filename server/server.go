@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"html/template"
@@ -11,8 +12,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
-	texttemplate "text/template"
 	"time"
 
 	"github.com/go-pkgz/lgr"
@@ -36,16 +35,14 @@ var staticFS embed.FS
 
 // Server represents HTTP server instance
 type Server struct {
-	config    ConfigProvider
-	db        Database
-	scheduler Scheduler
-	version   string
-	debug     bool
-	templates *template.Template
-
-	lock       sync.Mutex
-	httpServer *http.Server
-	router     *routegroup.Bundle
+	config        ConfigProvider
+	db            Database
+	scheduler     Scheduler
+	version       string
+	debug         bool
+	templates     *template.Template
+	pageTemplates map[string]*template.Template
+	router        *routegroup.Bundle
 }
 
 // Database interface for server operations
@@ -84,31 +81,44 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"printf": fmt.Sprintf,
 	}
 
-	// parse base template and components only
+	// parse component templates only
 	templates := template.New("").Funcs(funcMap)
 
-	// parse base template first
-	templates, err := templates.ParseFS(templateFS, "templates/base.html")
-	if err != nil {
-		log.Printf("[ERROR] failed to parse base template: %v", err)
-	}
-
-	// parse component templates (not page templates)
-	templates, err = templates.ParseFS(templateFS,
+	// parse component templates that can be reused
+	templates, err := templates.ParseFS(templateFS,
 		"templates/article-card.html",
 		"templates/feed-card.html")
 	if err != nil {
-		log.Printf("[ERROR] failed to parse component templates: %v", err)
+		log.Printf("[ERROR] failed to parse templates: %v", err)
+	}
+
+	// parse page templates
+	pageTemplates := make(map[string]*template.Template)
+	pageNames := []string{"articles.html", "feeds.html"}
+	
+	for _, pageName := range pageNames {
+		tmpl := template.New("").Funcs(funcMap)
+		tmpl, err = tmpl.ParseFS(templateFS,
+			"templates/base.html",
+			"templates/"+pageName,
+			"templates/article-card.html",
+			"templates/feed-card.html")
+		if err != nil {
+			log.Printf("[ERROR] failed to parse %s: %v", pageName, err)
+			continue
+		}
+		pageTemplates[pageName] = tmpl
 	}
 
 	s := &Server{
-		config:    cfg,
-		db:        database,
-		scheduler: scheduler,
-		version:   version,
-		debug:     debug,
-		router:    routegroup.New(http.NewServeMux()),
-		templates: templates,
+		config:        cfg,
+		db:            database,
+		scheduler:     scheduler,
+		version:       version,
+		debug:         debug,
+		router:        routegroup.New(http.NewServeMux()),
+		templates:     templates,
+		pageTemplates: pageTemplates,
 	}
 
 	s.setupMiddleware()
@@ -122,14 +132,12 @@ func (s *Server) Run(ctx context.Context) error {
 	listen, timeout := s.config.GetServerConfig()
 	log.Printf("[INFO] starting server on %s", listen)
 
-	s.lock.Lock()
-	s.httpServer = &http.Server{
+	httpServer := &http.Server{
 		Addr:         listen,
 		Handler:      s.router,
 		ReadTimeout:  timeout,
 		WriteTimeout: timeout,
 	}
-	s.lock.Unlock()
 
 	go func() {
 		<-ctx.Done()
@@ -137,12 +145,12 @@ func (s *Server) Run(ctx context.Context) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			log.Printf("[WARN] server shutdown error: %v", err)
 		}
 	}()
 
-	if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http server error: %w", err)
 	}
 
@@ -198,7 +206,7 @@ func (s *Server) setupRoutes() {
 	})
 
 	// RSS routes
-	s.router.HandleFunc("GET /rss/{topic}", s.rssFeedHandler)
+	s.router.HandleFunc("GET /rss/{topic}", s.rssHandler)
 	s.router.HandleFunc("GET /rss", s.rssHandler)
 }
 
@@ -212,43 +220,16 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 	RenderJSON(w, r, http.StatusOK, status)
 }
 
-// rssFeedHandler serves RSS feed for a specific topic
-func (s *Server) rssFeedHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	topic := r.PathValue("topic")
-
-	// get min score from query params, default to 5.0
-	minScore := 5.0
-	if scoreStr := r.URL.Query().Get("min_score"); scoreStr != "" {
-		if score, err := strconv.ParseFloat(scoreStr, 64); err == nil {
-			minScore = score
-		}
-	}
-
-	// get classified items
-	items, err := s.db.GetClassifiedItems(ctx, minScore, topic, 50)
-	if err != nil {
-		log.Printf("[ERROR] failed to get items for RSS: %v", err)
-		http.Error(w, "Failed to generate RSS feed", http.StatusInternalServerError)
-		return
-	}
-
-	// create RSS feed
-	rss := s.generateRSSFeed(topic, minScore, items)
-
-	// set content type and write RSS
-	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
-	if _, err := w.Write([]byte(rss)); err != nil {
-		log.Printf("[ERROR] failed to write RSS response: %v", err)
-	}
-}
-
-// rssHandler serves RSS feed with topic from query params
+// rssHandler serves RSS feed for articles
+// Supports both /rss/{topic} and /rss?topic=... patterns
 func (s *Server) rssHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// get topic from query params
-	topic := r.URL.Query().Get("topic")
+	// get topic from path or query params
+	topic := r.PathValue("topic")
+	if topic == "" {
+		topic = r.URL.Query().Get("topic")
+	}
 
 	// get min score from query params, default to 5.0
 	minScore := 5.0
@@ -276,48 +257,42 @@ func (s *Server) rssHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// rss structs for XML encoding
+type rssChannel struct {
+	XMLName       xml.Name   `xml:"channel"`
+	Title         string     `xml:"title"`
+	Link          string     `xml:"link"`
+	Description   string     `xml:"description"`
+	AtomLink      atomLink   `xml:"http://www.w3.org/2005/Atom link"`
+	LastBuildDate string     `xml:"lastBuildDate"`
+	Items         []rssItem  `xml:"item"`
+}
+
+type atomLink struct {
+	Href string `xml:"href,attr"`
+	Rel  string `xml:"rel,attr"`
+	Type string `xml:"type,attr"`
+}
+
+type rssItem struct {
+	Title       string   `xml:"title"`
+	Link        string   `xml:"link"`
+	GUID        string   `xml:"guid"`
+	Description string   `xml:"description"`
+	Author      string   `xml:"author,omitempty"`
+	PubDate     string   `xml:"pubDate"`
+	Categories  []string `xml:"category"`
+}
+
+type rss struct {
+	XMLName xml.Name   `xml:"rss"`
+	Version string     `xml:"version,attr"`
+	Atom    string     `xml:"xmlns:atom,attr"`
+	Channel rssChannel `xml:"channel"`
+}
+
 // generateRSSFeed creates an RSS 2.0 feed from classified items
 func (s *Server) generateRSSFeed(topic string, minScore float64, items []types.ItemWithClassification) string {
-	const rssTemplate = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
-<channel>
-  <title>{{.Title | escape}}</title>
-  <link>http://localhost:8080/</link>
-  <description>AI-curated articles with relevance score ≥ {{.MinScore}}</description>
-  <atom:link href="http://localhost:8080/rss/{{.Topic}}" rel="self" type="application/rss+xml" />
-  <lastBuildDate>{{.LastBuildDate}}</lastBuildDate>
-{{range .Items}}  <item>
-    <title>[{{.Score}}] {{.Title | escape}}</title>
-    <link>{{.Link | escape}}</link>
-    <guid>{{.GUID | escape}}</guid>
-    <description>{{.Description | escape}}</description>
-{{if .Author}}    <author>{{.Author | escape}}</author>
-{{end}}    <pubDate>{{.PubDate}}</pubDate>
-{{range .Topics}}    <category>{{. | escape}}</category>
-{{end}}  </item>
-{{end}}</channel>
-</rss>`
-
-	// prepare template data
-	type rssItem struct {
-		Title       string
-		Link        string
-		GUID        string
-		Description string
-		Author      string
-		PubDate     string
-		Topics      []string
-		Score       string
-	}
-
-	type rssData struct {
-		Title         string
-		Topic         string
-		MinScore      float64
-		LastBuildDate string
-		Items         []rssItem
-	}
-
 	// determine title
 	var title string
 	if topic != "" {
@@ -326,7 +301,13 @@ func (s *Server) generateRSSFeed(topic string, minScore float64, items []types.I
 		title = fmt.Sprintf("Newscope - All Topics (Score ≥ %.1f)", minScore)
 	}
 
-	// convert items to template data
+	// build self link
+	selfLink := "http://localhost:8080/rss"
+	if topic != "" {
+		selfLink = fmt.Sprintf("http://localhost:8080/rss/%s", topic)
+	}
+
+	// convert items to RSS items
 	rssItems := make([]rssItem, 0, len(items))
 	for _, item := range items {
 		// build description
@@ -339,48 +320,41 @@ func (s *Server) generateRSSFeed(topic string, minScore float64, items []types.I
 		}
 
 		rssItems = append(rssItems, rssItem{
-			Title:       item.Title,
+			Title:       fmt.Sprintf("[%.1f] %s", item.RelevanceScore, item.Title),
 			Link:        item.Link,
 			GUID:        item.GUID,
 			Description: desc,
 			Author:      item.Author,
 			PubDate:     item.Published.Format(time.RFC1123Z),
-			Topics:      item.Topics,
-			Score:       fmt.Sprintf("%.1f", item.RelevanceScore),
+			Categories:  item.Topics,
 		})
 	}
 
-	data := rssData{
-		Title:         title,
-		Topic:         topic,
-		MinScore:      minScore,
-		LastBuildDate: time.Now().Format(time.RFC1123Z),
-		Items:         rssItems,
+	// create RSS structure
+	feed := rss{
+		Version: "2.0",
+		Atom:    "http://www.w3.org/2005/Atom",
+		Channel: rssChannel{
+			Title:         title,
+			Link:          "http://localhost:8080/",
+			Description:   fmt.Sprintf("AI-curated articles with relevance score ≥ %.1f", minScore),
+			AtomLink:      atomLink{Href: selfLink, Rel: "self", Type: "application/rss+xml"},
+			LastBuildDate: time.Now().Format(time.RFC1123Z),
+			Items:         rssItems,
+		},
 	}
 
-	// execute template
-	tmpl := texttemplate.Must(texttemplate.New("rss").Funcs(texttemplate.FuncMap{
-		"escape": escapeXML,
-	}).Parse(rssTemplate))
-
-	var buf strings.Builder
-	if err := tmpl.Execute(&buf, data); err != nil {
-		log.Printf("[ERROR] failed to generate RSS: %v", err)
+	// marshal to XML
+	output, err := xml.MarshalIndent(feed, "", "  ")
+	if err != nil {
+		log.Printf("[ERROR] failed to marshal RSS: %v", err)
 		return ""
 	}
 
-	return buf.String()
+	// add XML declaration
+	return xml.Header + string(output)
 }
 
-// escapeXML escapes special characters for XML
-func escapeXML(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, "\"", "&quot;")
-	s = strings.ReplaceAll(s, "'", "&apos;")
-	return s
-}
 
 // RenderJSON sends JSON response
 func RenderJSON(w http.ResponseWriter, _ *http.Request, code int, data interface{}) {
@@ -540,24 +514,14 @@ func (s *Server) deleteFeedHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// renderPage renders a page template with the base template and any additional component templates
-func (s *Server) renderPage(w http.ResponseWriter, templateName string, componentTemplates []string, data interface{}) error {
-	// create a new template instance for this request to avoid conflicts
-	tmpl := template.New("").Funcs(template.FuncMap{
-		"mul": func(a, b float64) float64 { return a * b },
-	})
-
-	// build template list: base + main template + components
-	templates := []string{"templates/base.html", "templates/" + templateName}
-	for _, component := range componentTemplates {
-		templates = append(templates, "templates/"+component)
+// renderPage renders a pre-parsed page template
+func (s *Server) renderPage(w http.ResponseWriter, templateName string, data interface{}) error {
+	// get the pre-parsed template
+	tmpl, ok := s.pageTemplates[templateName]
+	if !ok {
+		return fmt.Errorf("template %s not found", templateName)
 	}
-
-	tmpl, err := tmpl.ParseFS(templateFS, templates...)
-	if err != nil {
-		return fmt.Errorf("parse templates: %w", err)
-	}
-
+	
 	// execute the template
 	return tmpl.ExecuteTemplate(w, templateName, data)
 }
@@ -637,7 +601,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// render full page with base template and article card component
-	if err := s.renderPage(w, "articles.html", []string{"article-card.html"}, data); err != nil {
+	if err := s.renderPage(w, "articles.html", data); err != nil {
 		log.Printf("[ERROR] failed to render articles page: %v", err)
 		http.Error(w, "Failed to render page", http.StatusInternalServerError)
 	}
@@ -665,7 +629,7 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// render page with base template
-	if err := s.renderPage(w, "feeds.html", []string{"feed-card.html"}, data); err != nil {
+	if err := s.renderPage(w, "feeds.html", data); err != nil {
 		log.Printf("[ERROR] failed to render feeds page: %v", err)
 		http.Error(w, "Failed to render page", http.StatusInternalServerError)
 	}

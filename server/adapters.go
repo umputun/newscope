@@ -141,24 +141,7 @@ func (d *DBAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*types
 
 // GetTopics returns all unique topics from classified items
 func (d *DBAdapter) GetTopics(ctx context.Context) ([]string, error) {
-	items, err := d.DB.GetItems(ctx, 1000, 0) // get many items
-	if err != nil {
-		return nil, err
-	}
-
-	topicMap := make(map[string]bool)
-	for _, item := range items {
-		for _, topic := range item.Topics {
-			topicMap[topic] = true
-		}
-	}
-
-	topics := make([]string, 0, len(topicMap))
-	for topic := range topicMap {
-		topics = append(topics, topic)
-	}
-
-	return topics, nil
+	return d.DB.GetTopics(ctx)
 }
 
 // GetAllFeeds returns all feeds with full details
@@ -168,19 +151,12 @@ func (d *DBAdapter) GetAllFeeds(ctx context.Context) ([]db.Feed, error) {
 
 // CreateFeed adds a new feed
 func (d *DBAdapter) CreateFeed(ctx context.Context, feed *db.Feed) error {
-	err := d.DB.CreateFeed(ctx, feed)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return d.DB.CreateFeed(ctx, feed)
 }
 
 // UpdateFeedStatus enables or disables a feed
 func (d *DBAdapter) UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error {
-	query := "UPDATE feeds SET enabled = ? WHERE id = ?"
-	_, err := d.ExecContext(ctx, query, enabled, feedID)
-	return err
+	return d.DB.UpdateFeedStatus(ctx, feedID, enabled)
 }
 
 // DeleteFeed removes a feed
