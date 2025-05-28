@@ -61,6 +61,7 @@ func New(ctx context.Context, cfg Config) (*DB, error) {
 		"PRAGMA synchronous = NORMAL",
 		"PRAGMA cache_size = -64000", // 64MB cache
 		"PRAGMA temp_store = MEMORY",
+		"PRAGMA busy_timeout = 5000", // 5 second timeout for locks
 	}
 
 	for _, pragma := range pragmas {

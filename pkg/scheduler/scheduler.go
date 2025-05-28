@@ -25,6 +25,7 @@ type Scheduler struct {
 	maxWorkers       int
 	wg               sync.WaitGroup
 	cancel           context.CancelFunc
+	dbMutex          sync.Mutex // serialize database writes
 }
 
 // Database interface for scheduler operations
@@ -189,9 +190,11 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed) {
 	parsedFeed, err := s.parser.Parse(ctx, f.URL)
 	if err != nil {
 		lgr.Printf("[ERROR] failed to parse feed %s: %v", f.URL, err)
+		s.dbMutex.Lock()
 		if err := s.db.UpdateFeedError(ctx, f.ID, err.Error()); err != nil {
 			lgr.Printf("[ERROR] failed to update feed error: %v", err)
 		}
+		s.dbMutex.Unlock()
 		return
 	}
 
@@ -222,10 +225,13 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed) {
 			Published:   item.Published,
 		}
 
+		s.dbMutex.Lock()
 		if err := s.db.CreateItem(ctx, dbItem); err != nil {
 			lgr.Printf("[ERROR] failed to create item: %v", err)
+			s.dbMutex.Unlock()
 			continue
 		}
+		s.dbMutex.Unlock()
 
 		newCount++
 
@@ -233,9 +239,11 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed) {
 
 	// update last fetched timestamp
 	nextFetch := time.Now().Add(time.Duration(f.FetchInterval) * time.Second)
+	s.dbMutex.Lock()
 	if err := s.db.UpdateFeedFetched(ctx, f.ID, nextFetch); err != nil {
 		lgr.Printf("[ERROR] failed to update last fetched: %v", err)
 	}
+	s.dbMutex.Unlock()
 
 	if newCount > 0 {
 		lgr.Printf("[INFO] added %d new items from feed: %s", newCount, f.Title)
@@ -305,17 +313,20 @@ func (s *Scheduler) extractItemContent(ctx context.Context, item db.Item) {
 	if err != nil {
 		lgr.Printf("[ERROR] failed to extract content from %s: %v", item.Link, err)
 		// store extraction error
+		s.dbMutex.Lock()
 		if err := s.db.UpdateItemExtraction(ctx, item.ID, "", err); err != nil {
 			lgr.Printf("[ERROR] failed to store extraction error: %v", err)
 		}
+		s.dbMutex.Unlock()
 		return
 	}
 
 	// store extracted content
+	s.dbMutex.Lock()
 	if err := s.db.UpdateItemExtraction(ctx, item.ID, extracted.Content, nil); err != nil {
 		lgr.Printf("[ERROR] failed to store content: %v", err)
-		return
 	}
+	s.dbMutex.Unlock()
 
 	lgr.Printf("[DEBUG] extracted %d characters from: %s", len(extracted.Content), item.Title)
 }
@@ -400,10 +411,13 @@ func (s *Scheduler) classifyBatch(ctx context.Context, items []db.Item, feedback
 	}
 
 	// update classifications in database
+	s.dbMutex.Lock()
 	if err := s.db.UpdateClassifications(ctx, classifications, itemsByGUID); err != nil {
 		lgr.Printf("[ERROR] failed to update classifications: %v", err)
+		s.dbMutex.Unlock()
 		return
 	}
+	s.dbMutex.Unlock()
 
 	lgr.Printf("[DEBUG] classified %d items", len(classifications))
 }
