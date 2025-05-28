@@ -47,7 +47,8 @@ llm:
   classification:
     score_threshold: 5.0       # Minimum score to include
     feedback_examples: 10      # Recent examples to include
-    batch_size: 5             # Articles to classify at once
+    batch_size: 5              # Articles to classify at once
+    use_json_mode: true        # Use JSON mode for classification
 
 extraction:
   enabled: true
@@ -59,15 +60,3 @@ extraction:
   include_images: false
   include_links: false
 
-feeds:
-  - url: "https://news.ycombinator.com/rss"
-    name: "Hacker News"
-    interval: "30m"
-    
-  - url: "https://lobste.rs/rss"
-    name: "Lobsters"  
-    interval: "1h"
-    
-  - url: "https://feeds.feedburner.com/codinghorror"
-    name: "Coding Horror"
-    interval: "2h"

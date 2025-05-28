@@ -87,17 +87,6 @@ func validateRequiredFields(cfg *Config) error {
 		return fmt.Errorf("server.timeout is required")
 	}
 
-	// check feeds
-	if len(cfg.Feeds) == 0 {
-		return fmt.Errorf("at least one feed is required")
-	}
-
-	for i, feed := range cfg.Feeds {
-		if feed.URL == "" {
-			return fmt.Errorf("feed[%d].url is required", i)
-		}
-	}
-
 	// check extraction config if enabled
 	if cfg.Extraction.Enabled {
 		if cfg.Extraction.Timeout == 0 {

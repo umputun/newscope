@@ -34,8 +34,6 @@ type Config struct {
 	LLM LLMConfig `yaml:"llm" json:"llm" jsonschema:"description=LLM configuration for article classification"`
 
 	Extraction ExtractionConfig `yaml:"extraction" json:"extraction" jsonschema:"description=Content extraction configuration"`
-
-	Feeds []Feed `yaml:"feeds" json:"feeds" jsonschema:"required,minItems=1,description=RSS/Atom feed sources"`
 }
 
 // ClassificationConfig holds classification-specific settings
@@ -69,13 +67,6 @@ type ExtractionConfig struct {
 	MinTextLength int           `yaml:"min_text_length" json:"min_text_length" jsonschema:"default=100,description=Minimum text length to consider valid"`
 	IncludeImages bool          `yaml:"include_images" json:"include_images" jsonschema:"default=false,description=Include images in extraction"`
 	IncludeLinks  bool          `yaml:"include_links" json:"include_links" jsonschema:"default=false,description=Include links in extraction"`
-}
-
-// Feed represents a single RSS/Atom feed
-type Feed struct {
-	URL      string        `yaml:"url" json:"url" jsonschema:"required,format=uri,description=Feed URL"`
-	Name     string        `yaml:"name" json:"name" jsonschema:"description=Feed name (defaults to URL)"`
-	Interval time.Duration `yaml:"interval" json:"interval" jsonschema:"default=30m,description=Feed refresh interval"`
 }
 
 // Load reads configuration from a YAML file
@@ -163,16 +154,6 @@ func Load(path string) (*Config, error) {
 		cfg.Extraction.MinTextLength = 100
 	}
 
-	// set defaults for feeds
-	for i := range cfg.Feeds {
-		if cfg.Feeds[i].Interval == 0 {
-			cfg.Feeds[i].Interval = 30 * time.Minute
-		}
-		if cfg.Feeds[i].Name == "" {
-			cfg.Feeds[i].Name = cfg.Feeds[i].URL
-		}
-	}
-
 	// validate configuration
 	if err := validate(&cfg); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
@@ -189,19 +170,6 @@ func Load(path string) (*Config, error) {
 
 // validate checks configuration for correctness
 func validate(cfg *Config) error {
-	// validate feeds
-	if len(cfg.Feeds) == 0 {
-		return fmt.Errorf("at least one feed is required")
-	}
-
-	for i, feed := range cfg.Feeds {
-		if feed.URL == "" {
-			return fmt.Errorf("feed[%d]: URL is required", i)
-		}
-		if feed.Interval < time.Minute {
-			return fmt.Errorf("feed[%d]: interval must be at least 1 minute", i)
-		}
-	}
 
 	// validate LLM config
 	if cfg.LLM.Endpoint == "" {
@@ -238,11 +206,6 @@ func validate(cfg *Config) error {
 	return nil
 }
 
-// GetFeeds returns all configured feeds
-func (c *Config) GetFeeds() []Feed {
-	return c.Feeds
-}
-
 // GetServerConfig returns server configuration
 func (c *Config) GetServerConfig() (listen string, timeout time.Duration) {
 	return c.Server.Listen, c.Server.Timeout
@@ -256,4 +219,9 @@ func (c *Config) GetExtractionConfig() ExtractionConfig {
 // GetLLMConfig returns LLM configuration
 func (c *Config) GetLLMConfig() LLMConfig {
 	return c.LLM
+}
+
+// GetFullConfig returns the full configuration
+func (c *Config) GetFullConfig() *Config {
+	return c
 }

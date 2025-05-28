@@ -6,6 +6,8 @@ package mocks
 import (
 	"sync"
 	"time"
+
+	"github.com/umputun/newscope/pkg/config"
 )
 
 // ConfigProviderMock is a mock implementation of server.ConfigProvider.
@@ -14,6 +16,9 @@ import (
 //
 //		// make and configure a mocked server.ConfigProvider
 //		mockedConfigProvider := &ConfigProviderMock{
+//			GetFullConfigFunc: func() *config.Config {
+//				panic("mock out the GetFullConfig method")
+//			},
 //			GetServerConfigFunc: func() (string, time.Duration) {
 //				panic("mock out the GetServerConfig method")
 //			},
@@ -24,16 +29,50 @@ import (
 //
 //	}
 type ConfigProviderMock struct {
+	// GetFullConfigFunc mocks the GetFullConfig method.
+	GetFullConfigFunc func() *config.Config
+
 	// GetServerConfigFunc mocks the GetServerConfig method.
 	GetServerConfigFunc func() (string, time.Duration)
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// GetFullConfig holds details about calls to the GetFullConfig method.
+		GetFullConfig []struct {
+		}
 		// GetServerConfig holds details about calls to the GetServerConfig method.
 		GetServerConfig []struct {
 		}
 	}
+	lockGetFullConfig   sync.RWMutex
 	lockGetServerConfig sync.RWMutex
+}
+
+// GetFullConfig calls GetFullConfigFunc.
+func (mock *ConfigProviderMock) GetFullConfig() *config.Config {
+	if mock.GetFullConfigFunc == nil {
+		panic("ConfigProviderMock.GetFullConfigFunc: method is nil but ConfigProvider.GetFullConfig was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockGetFullConfig.Lock()
+	mock.calls.GetFullConfig = append(mock.calls.GetFullConfig, callInfo)
+	mock.lockGetFullConfig.Unlock()
+	return mock.GetFullConfigFunc()
+}
+
+// GetFullConfigCalls gets all the calls that were made to GetFullConfig.
+// Check the length with:
+//
+//	len(mockedConfigProvider.GetFullConfigCalls())
+func (mock *ConfigProviderMock) GetFullConfigCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockGetFullConfig.RLock()
+	calls = mock.calls.GetFullConfig
+	mock.lockGetFullConfig.RUnlock()
+	return calls
 }
 
 // GetServerConfig calls GetServerConfigFunc.

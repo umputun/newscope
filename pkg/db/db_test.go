@@ -332,7 +332,7 @@ func TestItemOperations(t *testing.T) {
 		// get all classified items with score >= 7
 		items, err := db.GetClassifiedItems(ctx, 7.0, 10)
 		require.NoError(t, err)
-		
+
 		// find item3 in results
 		var item3Found bool
 		for _, item := range items {
@@ -382,16 +382,16 @@ func TestItemOperations(t *testing.T) {
 		err := db.GetContext(ctx, &count, "SELECT COUNT(*) FROM items WHERE classified_at IS NOT NULL AND topics IS NOT NULL")
 		require.NoError(t, err)
 		t.Logf("Found %d classified items with topics", count)
-		
+
 		// get topics from classified items
 		topics, err := db.GetTopics(ctx)
 		require.NoError(t, err)
 		t.Logf("Topics found: %v", topics)
-		
+
 		// based on the batch update classifications test above, we should have these topics
 		assert.Contains(t, topics, "tech")
 		assert.Contains(t, topics, "other")
-		
+
 		// verify they're sorted if we have any
 		if len(topics) > 1 {
 			for i := 1; i < len(topics); i++ {

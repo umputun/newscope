@@ -195,65 +195,65 @@ func extractRichContentRecursive(node *html.Node, buf *bytes.Buffer) {
 
 // handleElementNode processes HTML element nodes
 func handleElementNode(node *html.Node, buf *bytes.Buffer) {
-		// allowed tags for rich content
-		allowedTags := map[string]string{
-			"p":          "p",
-			"h1":         "h3", // downgrade headers for article display
-			"h2":         "h4",
-			"h3":         "h5",
-			"h4":         "h6",
-			"h5":         "h6",
-			"h6":         "h6",
-			"ul":         "ul",
-			"ol":         "ol",
-			"li":         "li",
-			"blockquote": "blockquote",
-			"strong":     "strong",
-			"b":          "strong",
-			"em":         "em",
-			"i":          "em",
-			"code":       "code",
-			"pre":        "pre",
-			"br":         "br",
+	// allowed tags for rich content
+	allowedTags := map[string]string{
+		"p":          "p",
+		"h1":         "h3", // downgrade headers for article display
+		"h2":         "h4",
+		"h3":         "h5",
+		"h4":         "h6",
+		"h5":         "h6",
+		"h6":         "h6",
+		"ul":         "ul",
+		"ol":         "ol",
+		"li":         "li",
+		"blockquote": "blockquote",
+		"strong":     "strong",
+		"b":          "strong",
+		"em":         "em",
+		"i":          "em",
+		"code":       "code",
+		"pre":        "pre",
+		"br":         "br",
+	}
+
+	outputTag, isAllowed := allowedTags[node.Data]
+
+	if isAllowed {
+		// write opening tag
+		buf.WriteString("<")
+		buf.WriteString(outputTag)
+		buf.WriteString(">")
+
+		// process children
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			extractRichContentRecursive(child, buf)
 		}
 
-		outputTag, isAllowed := allowedTags[node.Data]
-
-		if isAllowed {
-			// write opening tag
-			buf.WriteString("<")
+		// write closing tag (except for self-closing tags)
+		if outputTag != "br" {
+			buf.WriteString("</")
 			buf.WriteString(outputTag)
 			buf.WriteString(">")
-
-			// process children
-			for child := node.FirstChild; child != nil; child = child.NextSibling {
-				extractRichContentRecursive(child, buf)
-			}
-
-			// write closing tag (except for self-closing tags)
-			if outputTag != "br" {
-				buf.WriteString("</")
-				buf.WriteString(outputTag)
-				buf.WriteString(">")
-			}
-		} else {
-			// for non-allowed tags, just process children
-			// but add paragraph breaks for block-level elements
-			blockElements := map[string]bool{
-				"div": true, "section": true, "article": true,
-				"table": true, "tr": true, "td": true, "th": true,
-			}
-
-			if blockElements[node.Data] {
-				buf.WriteString("<p>")
-			}
-
-			for child := node.FirstChild; child != nil; child = child.NextSibling {
-				extractRichContentRecursive(child, buf)
-			}
-
-			if blockElements[node.Data] {
-				buf.WriteString("</p>")
-			}
 		}
+	} else {
+		// for non-allowed tags, just process children
+		// but add paragraph breaks for block-level elements
+		blockElements := map[string]bool{
+			"div": true, "section": true, "article": true,
+			"table": true, "tr": true, "td": true, "th": true,
+		}
+
+		if blockElements[node.Data] {
+			buf.WriteString("<p>")
+		}
+
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			extractRichContentRecursive(child, buf)
+		}
+
+		if blockElements[node.Data] {
+			buf.WriteString("</p>")
+		}
+	}
 }

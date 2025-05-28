@@ -1,0 +1,159 @@
+{{template "base.html" .}}
+
+{{define "title"}}Settings - Newscope{{end}}
+
+{{define "content"}}
+<div class="settings-page">
+    <h2>Configuration Settings</h2>
+    
+    <div class="settings-info">
+        <p class="note">These settings are read-only and loaded from the configuration file at startup.</p>
+    </div>
+
+    <div class="settings-section">
+        <h3>Application Information</h3>
+        <div class="settings-grid">
+            <div class="setting-item">
+                <label>Version:</label>
+                <span class="setting-value">{{.Version}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Debug Mode:</label>
+                <span class="setting-value">{{if .Debug}}Enabled{{else}}Disabled{{end}}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>Server Configuration</h3>
+        <div class="settings-grid">
+            <div class="setting-item">
+                <label>Listen Address:</label>
+                <span class="setting-value">{{.Config.Server.Listen}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Timeout:</label>
+                <span class="setting-value">{{.Config.Server.Timeout}}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>Database Configuration</h3>
+        <div class="settings-grid">
+            <div class="setting-item">
+                <label>Connection String:</label>
+                <span class="setting-value">{{.Config.Database.DSN}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Max Open Connections:</label>
+                <span class="setting-value">{{.Config.Database.MaxOpenConns}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Max Idle Connections:</label>
+                <span class="setting-value">{{.Config.Database.MaxIdleConns}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Connection Max Lifetime:</label>
+                <span class="setting-value">{{.Config.Database.ConnMaxLifetime}} seconds</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>Scheduler Configuration</h3>
+        <div class="settings-grid">
+            <div class="setting-item">
+                <label>Feed Update Interval:</label>
+                <span class="setting-value">{{.Config.Schedule.UpdateInterval}} minutes</span>
+            </div>
+            <div class="setting-item">
+                <label>Content Extraction Interval:</label>
+                <span class="setting-value">{{.Config.Schedule.ExtractInterval}} minutes</span>
+            </div>
+            <div class="setting-item">
+                <label>Classification Interval:</label>
+                <span class="setting-value">{{.Config.Schedule.ClassifyInterval}} minutes</span>
+            </div>
+            <div class="setting-item">
+                <label>Max Workers:</label>
+                <span class="setting-value">{{.Config.Schedule.MaxWorkers}}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>LLM Configuration</h3>
+        <div class="settings-grid">
+            <div class="setting-item">
+                <label>Endpoint:</label>
+                <span class="setting-value">{{.Config.LLM.Endpoint}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Model:</label>
+                <span class="setting-value">{{.Config.LLM.Model}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Temperature:</label>
+                <span class="setting-value">{{.Config.LLM.Temperature}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Max Tokens:</label>
+                <span class="setting-value">{{.Config.LLM.MaxTokens}}</span>
+            </div>
+            <div class="setting-item">
+                <label>API Key:</label>
+                <span class="setting-value">{{if .Config.LLM.APIKey}}**** (configured){{else}}Not configured{{end}}</span>
+            </div>
+        </div>
+        
+        <h4>Classification Settings</h4>
+        <div class="settings-grid">
+            <div class="setting-item">
+                <label>Score Threshold:</label>
+                <span class="setting-value">{{.Config.LLM.Classification.ScoreThreshold}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Feedback Examples:</label>
+                <span class="setting-value">{{.Config.LLM.Classification.FeedbackExamples}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Batch Size:</label>
+                <span class="setting-value">{{.Config.LLM.Classification.BatchSize}}</span>
+            </div>
+            <div class="setting-item">
+                <label>JSON Mode:</label>
+                <span class="setting-value">{{if .Config.LLM.Classification.UseJSONMode}}Enabled{{else}}Disabled{{end}}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>Content Extraction</h3>
+        <div class="settings-grid">
+            <div class="setting-item">
+                <label>Enabled:</label>
+                <span class="setting-value">{{if .Config.Extraction.Enabled}}Yes{{else}}No{{end}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Timeout:</label>
+                <span class="setting-value">{{.Config.Extraction.Timeout}}</span>
+            </div>
+            <div class="setting-item">
+                <label>Max Concurrent:</label>
+                <span class="setting-value">{{.Config.Extraction.MaxConcurrent}}</span>
+            </div>
+            <div class="setting-item">
+                <label>User Agent:</label>
+                <span class="setting-value">{{.Config.Extraction.UserAgent}}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h3>Configuration File</h3>
+        <p>To modify settings, edit the <code>config.yml</code> file and restart the server.</p>
+        <p>For detailed configuration options, see the documentation.</p>
+    </div>
+</div>
+{{end}}

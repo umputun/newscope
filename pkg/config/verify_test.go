@@ -47,13 +47,6 @@ func TestVerifyAgainstSchema(t *testing.T) {
 					MaxConcurrent: 5,
 					RateLimit:     100 * time.Millisecond,
 				},
-				Feeds: []Feed{
-					{
-						URL:      "https://example.com/feed.xml",
-						Name:     "Example Feed",
-						Interval: 30 * time.Minute,
-					},
-				},
 			},
 			wantErr: false,
 		},
@@ -67,27 +60,9 @@ func TestVerifyAgainstSchema(t *testing.T) {
 					Listen:  "",
 					Timeout: 30 * time.Second,
 				},
-				Feeds: []Feed{
-					{URL: "https://example.com/feed.xml"},
-				},
 			},
 			wantErr: true,
 			errMsg:  "server.listen is required",
-		},
-		{
-			name: "no feeds",
-			config: &Config{
-				Server: struct {
-					Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-					Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
-				}{
-					Listen:  ":8080",
-					Timeout: 30 * time.Second,
-				},
-				Feeds: []Feed{},
-			},
-			wantErr: true,
-			errMsg:  "at least one feed is required",
 		},
 		{
 			name: "extraction enabled without timeout",
@@ -104,9 +79,6 @@ func TestVerifyAgainstSchema(t *testing.T) {
 					Timeout:       0, // missing
 					MaxConcurrent: 5,
 					RateLimit:     100 * time.Millisecond,
-				},
-				Feeds: []Feed{
-					{URL: "https://example.com/feed.xml"},
 				},
 			},
 			wantErr: true,
@@ -146,28 +118,8 @@ func TestValidateRequiredFields(t *testing.T) {
 					Listen:  ":8080",
 					Timeout: 30 * time.Second,
 				},
-				Feeds: []Feed{
-					{URL: "https://example.com/feed.xml"},
-				},
 			},
 			wantErr: false,
-		},
-		{
-			name: "missing feed URL",
-			config: &Config{
-				Server: struct {
-					Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-					Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
-				}{
-					Listen:  ":8080",
-					Timeout: 30 * time.Second,
-				},
-				Feeds: []Feed{
-					{URL: ""},
-				},
-			},
-			wantErr: true,
-			errMsg:  "feed[0].url is required",
 		},
 		{
 			name: "extraction enabled with missing max_concurrent",
@@ -184,9 +136,6 @@ func TestValidateRequiredFields(t *testing.T) {
 					Timeout:       30 * time.Second,
 					MaxConcurrent: 0, // missing
 					RateLimit:     100 * time.Millisecond,
-				},
-				Feeds: []Feed{
-					{URL: "https://example.com/feed.xml"},
 				},
 			},
 			wantErr: true,
@@ -232,13 +181,6 @@ func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
 					MaxConcurrent: 5,
 					RateLimit:     100 * time.Millisecond,
 				},
-				Feeds: []Feed{
-					{
-						URL:      "https://example.com/feed.xml",
-						Name:     "Example Feed",
-						Interval: 30 * time.Minute,
-					},
-				},
 			},
 			wantErr: false,
 		},
@@ -251,9 +193,6 @@ func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
 				}{
 					Listen:  "",
 					Timeout: 30 * time.Second,
-				},
-				Feeds: []Feed{
-					{URL: "https://example.com/feed.xml"},
 				},
 			},
 			wantErr: true,
@@ -290,6 +229,5 @@ func TestGenerateSchema(t *testing.T) {
 	schemaStr := string(data)
 	assert.Contains(t, schemaStr, "Config")
 	assert.Contains(t, schemaStr, "server")
-	assert.Contains(t, schemaStr, "feeds")
 	assert.Contains(t, schemaStr, "extraction")
 }

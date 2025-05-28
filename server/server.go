@@ -19,6 +19,7 @@ import (
 	"github.com/go-pkgz/rest/logger"
 	"github.com/go-pkgz/routegroup"
 
+	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed/types"
 )
@@ -69,6 +70,7 @@ type Scheduler interface {
 // ConfigProvider provides server configuration
 type ConfigProvider interface {
 	GetServerConfig() (listen string, timeout time.Duration)
+	GetFullConfig() *config.Config // returns the full config struct for display
 }
 
 // New initializes a new server instance
@@ -94,8 +96,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 
 	// parse page templates
 	pageTemplates := make(map[string]*template.Template)
-	pageNames := []string{"articles.html", "feeds.html"}
-	
+	pageNames := []string{"articles.html", "feeds.html", "settings.html"}
+
 	for _, pageName := range pageNames {
 		tmpl := template.New("").Funcs(funcMap)
 		tmpl, err = tmpl.ParseFS(templateFS,
@@ -259,13 +261,13 @@ func (s *Server) rssHandler(w http.ResponseWriter, r *http.Request) {
 
 // rss structs for XML encoding
 type rssChannel struct {
-	XMLName       xml.Name   `xml:"channel"`
-	Title         string     `xml:"title"`
-	Link          string     `xml:"link"`
-	Description   string     `xml:"description"`
-	AtomLink      atomLink   `xml:"http://www.w3.org/2005/Atom link"`
-	LastBuildDate string     `xml:"lastBuildDate"`
-	Items         []rssItem  `xml:"item"`
+	XMLName       xml.Name  `xml:"channel"`
+	Title         string    `xml:"title"`
+	Link          string    `xml:"link"`
+	Description   string    `xml:"description"`
+	AtomLink      atomLink  `xml:"http://www.w3.org/2005/Atom link"`
+	LastBuildDate string    `xml:"lastBuildDate"`
+	Items         []rssItem `xml:"item"`
 }
 
 type atomLink struct {
@@ -354,7 +356,6 @@ func (s *Server) generateRSSFeed(topic string, minScore float64, items []types.I
 	// add XML declaration
 	return xml.Header + string(output)
 }
-
 
 // RenderJSON sends JSON response
 func RenderJSON(w http.ResponseWriter, _ *http.Request, code int, data interface{}) {
@@ -521,7 +522,7 @@ func (s *Server) renderPage(w http.ResponseWriter, templateName string, data int
 	if !ok {
 		return fmt.Errorf("template %s not found", templateName)
 	}
-	
+
 	// execute the template
 	return tmpl.ExecuteTemplate(w, templateName, data)
 }
@@ -637,8 +638,27 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 
 // settingsHandler displays the settings page
 func (s *Server) settingsHandler(w http.ResponseWriter, _ *http.Request) {
-	// TODO: implement settings page
-	http.Error(w, "Settings page not implemented yet", http.StatusNotImplemented)
+	// get full configuration
+	cfg := s.config.GetFullConfig()
+
+	// prepare data for display
+	data := struct {
+		ActivePage string
+		Config     *config.Config
+		Version    string
+		Debug      bool
+	}{
+		ActivePage: "settings",
+		Config:     cfg,
+		Version:    s.version,
+		Debug:      s.debug,
+	}
+
+	// render settings page
+	if err := s.renderPage(w, "settings.html", data); err != nil {
+		log.Printf("[ERROR] failed to render settings page: %v", err)
+		http.Error(w, "Failed to render page", http.StatusInternalServerError)
+	}
 }
 
 // feedbackHandler handles user feedback (like/dislike)
