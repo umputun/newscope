@@ -97,6 +97,7 @@ type Classification struct {
 	Score       float64  `json:"score"`
 	Explanation string   `json:"explanation"`
 	Topics      []string `json:"topics"`
+	Summary     string   `json:"summary"` // generated article summary
 }
 
 // FeedbackExample for LLM prompt context

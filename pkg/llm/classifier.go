@@ -52,6 +52,7 @@ Each classification should contain:
 - score: relevance score (0-10)
 - explanation: brief explanation (max 100 chars)
 - topics: array of 1-3 relevant topic keywords
+- summary: concise 2-3 sentence summary of the article (max 200 chars)
 
 Consider the user's previous feedback when provided.`
 

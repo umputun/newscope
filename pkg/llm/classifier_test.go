@@ -34,13 +34,15 @@ func TestClassifier_ClassifyArticles(t *testing.T) {
     "guid": "item1",
     "score": 8.5,
     "explanation": "Highly relevant Go programming content",
-    "topics": ["golang", "programming", "backend"]
+    "topics": ["golang", "programming", "backend"],
+    "summary": "Go 1.22 introduces significant new features and improvements. The release focuses on enhanced performance and developer experience."
   },
   {
     "guid": "item2", 
     "score": 3.0,
     "explanation": "Not relevant to tech interests",
-    "topics": ["sports", "news"]
+    "topics": ["sports", "news"],
+    "summary": "Latest football match results and sports updates. Teams competed in various leagues with surprising outcomes."
   }
 ]`,
 					},
@@ -98,12 +100,16 @@ func TestClassifier_ClassifyArticles(t *testing.T) {
 	assert.InEpsilon(t, 8.5, classifications[0].Score, 0.001)
 	assert.Equal(t, "Highly relevant Go programming content", classifications[0].Explanation)
 	assert.Equal(t, []string{"golang", "programming", "backend"}, classifications[0].Topics)
+	assert.NotEmpty(t, classifications[0].Summary)
+	assert.Contains(t, classifications[0].Summary, "Go 1.22")
 
 	// check second classification
 	assert.Equal(t, "item2", classifications[1].GUID)
 	assert.InEpsilon(t, 3.0, classifications[1].Score, 0.001)
 	assert.Equal(t, "Not relevant to tech interests", classifications[1].Explanation)
 	assert.Equal(t, []string{"sports", "news"}, classifications[1].Topics)
+	assert.NotEmpty(t, classifications[1].Summary)
+	assert.Contains(t, classifications[1].Summary, "football")
 }
 
 func TestClassifier_ClassifyArticles_EmptyInput(t *testing.T) {
@@ -325,8 +331,8 @@ func TestClassifier_JSONMode(t *testing.T) {
 
 		response := `{
 			"classifications": [
-				{"guid": "item1", "score": 8, "explanation": "Good", "topics": ["tech"]},
-				{"guid": "item2", "score": 3, "explanation": "Bad", "topics": ["other"]}
+				{"guid": "item1", "score": 8, "explanation": "Good", "topics": ["tech"], "summary": "Article about latest tech trends and innovations."},
+				{"guid": "item2", "score": 3, "explanation": "Bad", "topics": ["other"], "summary": "General news article with limited tech relevance."}
 			]
 		}`
 

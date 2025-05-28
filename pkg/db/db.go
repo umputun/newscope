@@ -442,6 +442,17 @@ func (db *DB) UpdateClassifications(ctx context.Context, classifications []Class
 	}
 	defer stmt.Close()
 
+	// prepare statement for updating description with summary
+	stmtDesc, err := tx.PrepareContext(ctx, `
+		UPDATE items 
+		SET description = ?
+		WHERE id = ?
+	`)
+	if err != nil {
+		return fmt.Errorf("prepare description statement: %w", err)
+	}
+	defer stmtDesc.Close()
+
 	for _, class := range classifications {
 		itemID, ok := itemsByGUID[class.GUID]
 		if !ok {
@@ -451,6 +462,14 @@ func (db *DB) UpdateClassifications(ctx context.Context, classifications []Class
 		_, err := stmt.ExecContext(ctx, class.Score, class.Explanation, Topics(class.Topics), itemID)
 		if err != nil {
 			return fmt.Errorf("update classification for %s: %w", class.GUID, err)
+		}
+
+		// update description with generated summary
+		if class.Summary != "" {
+			_, err := stmtDesc.ExecContext(ctx, class.Summary, itemID)
+			if err != nil {
+				return fmt.Errorf("update description for %s: %w", class.GUID, err)
+			}
 		}
 	}
 
