@@ -101,6 +101,12 @@ func (c *Classifier) ClassifyArticles(ctx context.Context, articles []db.Item, f
 
 	// parse the response
 	content := resp.Choices[0].Message.Content
+	// log response length for debugging
+	if len(content) > 1000 {
+		fmt.Printf("[DEBUG] LLM response length: %d, truncated preview: %s...\n", len(content), content[:200])
+	} else {
+		fmt.Printf("[DEBUG] LLM response length: %d, content: %s\n", len(content), content)
+	}
 	return c.parseResponse(content, articles)
 }
 
@@ -170,6 +176,8 @@ func (c *Classifier) parseResponse(content string, articles []db.Item) ([]db.Cla
 
 		jsonStr := content[start : end+1]
 		if err := json.Unmarshal([]byte(jsonStr), &classifications); err != nil {
+			// log the problematic response for debugging
+			fmt.Printf("[DEBUG] Failed to parse JSON response (length: %d): %s\n", len(jsonStr), jsonStr)
 			return nil, fmt.Errorf("failed to parse json array response: %w", err)
 		}
 	}

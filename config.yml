@@ -26,7 +26,7 @@ llm:
   api_key: "${OPENAI_API_KEY}"  # From environment
   model: "gpt-4o-mini"                # or "gpt-4o-mini"
   temperature: 0.3               # Lower = more consistent
-  max_tokens: 500
+  max_tokens: 2000               # Increased for summaries
   timeout: "30s"
   
   # Optional: Custom system prompt for classification
