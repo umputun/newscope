@@ -65,6 +65,7 @@ SQLite-based persistence using pure Go driver (modernc.org/sqlite) with sqlx for
    - author (TEXT) - Author name
    - published (DATETIME) - Publication date
    - extracted_content (TEXT) - Full extracted article text
+   - extracted_rich_content (TEXT) - HTML formatted extracted content
    - extracted_at (DATETIME) - When content was extracted
    - extraction_error (TEXT) - Any extraction error
    - relevance_score (REAL DEFAULT 0) - LLM score (0-10)
@@ -93,6 +94,12 @@ SQLite-based persistence using pure Go driver (modernc.org/sqlite) with sqlx for
 - idx_items_feedback ON items(feedback_at DESC)
 - idx_items_extraction ON items(extracted_at)
 ```
+
+**Performance Optimizations:**
+- JSON operations using SQLite's json_each for efficient topic queries
+- Pre-joined queries to minimize N+1 problems
+- WAL mode for better concurrent read performance
+- Batch operations for classification updates
 
 ### 3. Feed System (`pkg/feed`)
 
@@ -127,14 +134,18 @@ type Fetcher interface {
 
 ### 4. Content Extraction (`pkg/content`)
 
-Extracts full article content from web pages using go-trafilatura.
+Extracts full article content from web pages using go-trafilatura with rich HTML formatting support.
 
 - **HTTPExtractor**: Main extractor implementation
   - Configurable timeout and user agent
   - Options: minimum text length, include images/links
   - Returns structured ExtractResult with metadata
   
-- **ExtractResult**: Contains extracted text, metadata, and errors
+- **ExtractResult**: Contains both plain text and rich HTML content
+  - `Content`: Plain text version
+  - `RichContent`: HTML formatted version with preserved structure
+  - Supports common HTML tags (p, h1-h6, ul, ol, li, blockquote, strong, em, code, pre)
+  - Automatic HTML escaping for security
 
 ### 5. LLM Classification (`pkg/llm`)
 
@@ -170,6 +181,8 @@ Manages periodic feed updates, content extraction, and classification with worke
 - Graceful shutdown with context cancellation
 - LLM classification integration
 - On-demand operations (UpdateFeedNow, ExtractContentNow, ClassifyNow)
+- Intelligent feed name logging (falls back to URL when title is empty)
+- Database mutex for safe concurrent operations
 
 **Workflow:**
 1. **Feed Updates**: Fetch new articles from RSS feeds
@@ -185,6 +198,10 @@ type Database interface {
     GetUnclassifiedItems(ctx context.Context, limit int) ([]db.Item, error)
     GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
     UpdateClassifications(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error
+    UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
+    GetTopics(ctx context.Context) ([]string, error)
+    GetClassifiedItems(ctx context.Context, minScore float64, limit int) ([]Item, error)
+    GetClassifiedItem(ctx context.Context, itemID int64) (*Item, error)
     // ... and more
 }
 
@@ -197,6 +214,28 @@ type Classifier interface {
 
 HTTP server providing REST API and web UI with server-side rendering.
 
+**Interfaces** (defined by server):
+```go
+type Database interface {
+    GetFeeds(ctx context.Context) ([]types.Feed, error)
+    GetItems(ctx context.Context, limit, offset int) ([]types.Item, error)
+    GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error)
+    GetClassifiedItem(ctx context.Context, itemID int64) (*types.ItemWithClassification, error)
+    UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error
+    GetTopics(ctx context.Context) ([]string, error)
+    GetAllFeeds(ctx context.Context) ([]db.Feed, error)
+    CreateFeed(ctx context.Context, feed *db.Feed) error
+    UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
+    DeleteFeed(ctx context.Context, feedID int64) error
+}
+
+type Scheduler interface {
+    UpdateFeedNow(ctx context.Context, feedID int64) error
+    ExtractContentNow(ctx context.Context, itemID int64) error
+    ClassifyNow(ctx context.Context) error
+}
+```
+
 **Components:**
 - **Server**: Main HTTP server using routegroup
   - Middleware support (recovery, throttling, auth)
@@ -207,8 +246,10 @@ HTTP server providing REST API and web UI with server-side rendering.
 - **DBAdapter**: Adapts database types to domain types
   - Converts SQL null types to Go types
   - Implements server's Database interface
-  - Joins with feeds table for enriched data
+  - Delegates all database operations to db package
+  - Joins with feeds table for enriched data (FeedTitle field)
   - Supports filtering by score and topic
+  - Efficient GetTopics using SQL json_each for unique topic extraction
 
 **Web UI Features:**
 - **Articles Page**: Main view showing classified articles
@@ -216,14 +257,30 @@ HTTP server providing REST API and web UI with server-side rendering.
   - Topic tags and filtering
   - Real-time score filtering with range slider
   - Like/dislike feedback buttons
-  - Extracted content display
+  - Extracted content display with rich HTML formatting
   - HTMX for dynamic updates without page reload
+
+- **Feeds Page**: Feed management interface
+  - List all feeds with status indicators
+  - Add new feeds with custom fetch intervals
+  - Enable/disable feeds
+  - Trigger immediate feed updates
+  - Delete feeds
+  - Error display for failed feeds
+
+- **RSS Export**: Machine-readable RSS feeds
+  - Filter by minimum score
+  - Filter by topic
+  - Uses proper XML encoding for safety
+  - Includes article scores and topics in feed
 
 **Current Endpoints:**
 - `GET /` - Articles page (redirects to /articles)
 - `GET /articles` - Main articles view with filtering
-- `GET /feeds` - Feed management (planned)
-- `GET /settings` - Settings page (planned)
+- `GET /feeds` - Feed management page
+- `GET /settings` - Settings page (not implemented)
+- `GET /rss` - RSS feed of classified articles (supports min_score parameter)
+- `GET /rss/{topic}` - RSS feed filtered by topic
 
 **API Endpoints:**
 - `GET /api/v1/status` - Server status
@@ -231,11 +288,23 @@ HTTP server providing REST API and web UI with server-side rendering.
 - `POST /api/v1/extract/{id}` - Trigger content extraction for an item
 - `POST /api/v1/classify-now` - Trigger immediate classification
 - `GET /api/v1/articles/{id}/content` - Get extracted content for display
+- `POST /api/v1/feeds` - Create a new feed
+- `POST /api/v1/feeds/{id}/enable` - Enable a feed
+- `POST /api/v1/feeds/{id}/disable` - Disable a feed
+- `POST /api/v1/feeds/{id}/fetch` - Trigger immediate feed fetch
+- `DELETE /api/v1/feeds/{id}` - Delete a feed
 
 **Templates:**
 - `base.html` - Base layout with navigation
 - `articles.html` - Articles listing with filters
 - `article-card.html` - Reusable article card component
+- `feeds.html` - Feed management page
+- `feed-card.html` - Reusable feed card component
+
+**Template Optimization:**
+- Templates are pre-parsed at startup for better performance
+- Page templates are cached separately to avoid naming conflicts
+- Component templates can be reused across pages
 
 ### 8. Main Application (`cmd/newscope`)
 
@@ -314,6 +383,8 @@ Unclassified Items → Build Batch Prompt:
 5. **Testability**: Mock generation with moq, high test coverage
 6. **Pure Go**: No CGO dependencies for easy cross-compilation
 7. **LLM Flexibility**: Support for any OpenAI-compatible API
+8. **Performance First**: Pre-parsed templates, efficient SQL queries, proper indexing
+9. **Type Safety**: Strong typing throughout, minimal interface{} usage
 
 ## Configuration Example
 
@@ -358,6 +429,15 @@ extraction:
 - Input validation and sanitization
 - Secure defaults in configuration
 
+## Recent Improvements
+
+- **Rich Content Support**: Articles now preserve HTML formatting during extraction
+- **RSS Feed Generation**: Proper XML encoding using encoding/xml package
+- **Template Performance**: Pre-parsed templates at startup for faster rendering
+- **Database Optimizations**: Efficient topic queries using SQLite json_each
+- **Code Quality**: Reduced complexity, removed redundant code, improved type safety
+- **Feed Management**: Complete CRUD operations for feeds via web UI
+
 ## Future Enhancements
 
 - Multiple LLM provider support
@@ -367,3 +447,6 @@ extraction:
 - Export functionality for training data
 - WebSub support for instant updates
 - Multi-user support with personalized models
+- OPML import/export for feed lists
+- Keyboard shortcuts for power users
+- Dark mode support
