@@ -141,8 +141,6 @@ func (d *DBAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*types
 
 // GetTopics returns all unique topics from classified items
 func (d *DBAdapter) GetTopics(ctx context.Context) ([]string, error) {
-	// for now, query all classified items and extract unique topics
-	// in a real implementation, this could be a specific DB query
 	items, err := d.DB.GetItems(ctx, 1000, 0) // get many items
 	if err != nil {
 		return nil, err
