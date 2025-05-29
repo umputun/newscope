@@ -4,156 +4,210 @@
 
 {{define "content"}}
 <div class="settings-page">
-    <h2>Configuration Settings</h2>
+    <div class="page-header">
+        <h2>Settings</h2>
+        <p class="text-muted">Application configuration overview</p>
+    </div>
     
-    <div class="settings-info">
-        <p class="note">These settings are read-only and loaded from the configuration file at startup.</p>
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        <span>These settings are loaded from <code>config.yml</code> at startup. To modify them, edit the configuration file and restart the server.</span>
     </div>
 
-    <div class="settings-section">
-        <h3>Application Information</h3>
-        <div class="settings-grid">
-            <div class="setting-item">
-                <label>Version:</label>
-                <span class="setting-value">{{.Version}}</span>
+    <div class="settings-group">
+        <div class="settings-section">
+            <div class="section-header">
+                <i class="fas fa-info-circle"></i>
+                <h3>Application</h3>
             </div>
-            <div class="setting-item">
-                <label>Debug Mode:</label>
-                <span class="setting-value">{{if .Debug}}Enabled{{else}}Disabled{{end}}</span>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Version</label>
+                    <span class="setting-value">{{.Version}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Debug Mode</label>
+                    <span class="setting-value {{if .Debug}}text-success{{else}}text-muted{{end}}">
+                        {{if .Debug}}<i class="fas fa-check"></i> Enabled{{else}}<i class="fas fa-times"></i> Disabled{{end}}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <div class="section-header">
+                <i class="fas fa-server"></i>
+                <h3>Server</h3>
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Listen Address</label>
+                    <span class="setting-value">{{.Config.Server.Listen}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Request Timeout</label>
+                    <span class="setting-value">{{.Config.Server.Timeout}}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <div class="section-header">
+                <i class="fas fa-database"></i>
+                <h3>Database</h3>
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Connection String</label>
+                    <span class="setting-value text-mono">{{.Config.Database.DSN}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Max Open Connections</label>
+                    <span class="setting-value">{{.Config.Database.MaxOpenConns}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Max Idle Connections</label>
+                    <span class="setting-value">{{.Config.Database.MaxIdleConns}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Connection Max Lifetime</label>
+                    <span class="setting-value">{{.Config.Database.ConnMaxLifetime}} seconds</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <div class="section-header">
+                <i class="fas fa-clock"></i>
+                <h3>Scheduler</h3>
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Feed Update Interval</label>
+                    <span class="setting-value">{{.Config.Schedule.UpdateInterval}} minutes</span>
+                </div>
+                <div class="setting-item">
+                    <label>Max Workers</label>
+                    <span class="setting-value">{{.Config.Schedule.MaxWorkers}}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <div class="section-header">
+                <i class="fas fa-brain"></i>
+                <h3>AI Model (LLM)</h3>
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Endpoint</label>
+                    <span class="setting-value text-mono">{{.Config.LLM.Endpoint}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Model</label>
+                    <span class="setting-value">{{.Config.LLM.Model}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Temperature</label>
+                    <span class="setting-value">{{.Config.LLM.Temperature}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Max Tokens</label>
+                    <span class="setting-value">{{.Config.LLM.MaxTokens}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Request Timeout</label>
+                    <span class="setting-value">{{.Config.LLM.Timeout}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>API Key</label>
+                    <span class="setting-value {{if .Config.LLM.APIKey}}text-success{{else}}text-danger{{end}}">
+                        {{if .Config.LLM.APIKey}}<i class="fas fa-key"></i> Configured{{else}}<i class="fas fa-exclamation-triangle"></i> Not configured{{end}}
+                    </span>
+                </div>
+            </div>
+            
+            <h4 class="subsection-header">Classification Settings</h4>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Score Threshold</label>
+                    <span class="setting-value">{{.Config.LLM.Classification.ScoreThreshold}} / 10</span>
+                </div>
+                <div class="setting-item">
+                    <label>Feedback Examples</label>
+                    <span class="setting-value">{{.Config.LLM.Classification.FeedbackExamples}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Batch Size</label>
+                    <span class="setting-value">{{.Config.LLM.Classification.BatchSize}} articles</span>
+                </div>
+                <div class="setting-item">
+                    <label>JSON Mode</label>
+                    <span class="setting-value {{if .Config.LLM.Classification.UseJSONMode}}text-success{{else}}text-muted{{end}}">
+                        {{if .Config.LLM.Classification.UseJSONMode}}<i class="fas fa-check"></i> Enabled{{else}}<i class="fas fa-times"></i> Disabled{{end}}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <div class="section-header">
+                <i class="fas fa-file-alt"></i>
+                <h3>Content Extraction</h3>
+            </div>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Status</label>
+                    <span class="setting-value {{if .Config.Extraction.Enabled}}text-success{{else}}text-muted{{end}}">
+                        {{if .Config.Extraction.Enabled}}<i class="fas fa-check"></i> Enabled{{else}}<i class="fas fa-times"></i> Disabled{{end}}
+                    </span>
+                </div>
+                <div class="setting-item">
+                    <label>Timeout</label>
+                    <span class="setting-value">{{.Config.Extraction.Timeout}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Max Concurrent</label>
+                    <span class="setting-value">{{.Config.Extraction.MaxConcurrent}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Rate Limit</label>
+                    <span class="setting-value">{{.Config.Extraction.RateLimit}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Min Text Length</label>
+                    <span class="setting-value">{{.Config.Extraction.MinTextLength}} characters</span>
+                </div>
+                <div class="setting-item">
+                    <label>User Agent</label>
+                    <span class="setting-value text-mono">{{.Config.Extraction.UserAgent}}</span>
+                </div>
+                {{if .Config.Extraction.FallbackURL}}
+                <div class="setting-item">
+                    <label>Fallback API</label>
+                    <span class="setting-value text-mono">{{.Config.Extraction.FallbackURL}}</span>
+                </div>
+                {{end}}
+                <div class="setting-item">
+                    <label>Include Images</label>
+                    <span class="setting-value {{if .Config.Extraction.IncludeImages}}text-success{{else}}text-muted{{end}}">
+                        {{if .Config.Extraction.IncludeImages}}<i class="fas fa-check"></i> Yes{{else}}<i class="fas fa-times"></i> No{{end}}
+                    </span>
+                </div>
+                <div class="setting-item">
+                    <label>Include Links</label>
+                    <span class="setting-value {{if .Config.Extraction.IncludeLinks}}text-success{{else}}text-muted{{end}}">
+                        {{if .Config.Extraction.IncludeLinks}}<i class="fas fa-check"></i> Yes{{else}}<i class="fas fa-times"></i> No{{end}}
+                    </span>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="settings-section">
-        <h3>Server Configuration</h3>
-        <div class="settings-grid">
-            <div class="setting-item">
-                <label>Listen Address:</label>
-                <span class="setting-value">{{.Config.Server.Listen}}</span>
-            </div>
-            <div class="setting-item">
-                <label>Timeout:</label>
-                <span class="setting-value">{{.Config.Server.Timeout}}</span>
-            </div>
+    <div class="settings-footer">
+        <div class="help-text">
+            <p><i class="fas fa-question-circle"></i> Need help? Check the <a href="https://github.com/umputun/newscope" target="_blank">documentation</a> for detailed configuration options.</p>
         </div>
-    </div>
-
-    <div class="settings-section">
-        <h3>Database Configuration</h3>
-        <div class="settings-grid">
-            <div class="setting-item">
-                <label>Connection String:</label>
-                <span class="setting-value">{{.Config.Database.DSN}}</span>
-            </div>
-            <div class="setting-item">
-                <label>Max Open Connections:</label>
-                <span class="setting-value">{{.Config.Database.MaxOpenConns}}</span>
-            </div>
-            <div class="setting-item">
-                <label>Max Idle Connections:</label>
-                <span class="setting-value">{{.Config.Database.MaxIdleConns}}</span>
-            </div>
-            <div class="setting-item">
-                <label>Connection Max Lifetime:</label>
-                <span class="setting-value">{{.Config.Database.ConnMaxLifetime}} seconds</span>
-            </div>
-        </div>
-    </div>
-
-    <div class="settings-section">
-        <h3>Scheduler Configuration</h3>
-        <div class="settings-grid">
-            <div class="setting-item">
-                <label>Feed Update Interval:</label>
-                <span class="setting-value">{{.Config.Schedule.UpdateInterval}} minutes</span>
-            </div>
-            <div class="setting-item">
-                <label>Content Extraction Interval:</label>
-                <span class="setting-value">{{.Config.Schedule.ExtractInterval}} minutes</span>
-            </div>
-            <div class="setting-item">
-                <label>Classification Interval:</label>
-                <span class="setting-value">{{.Config.Schedule.ClassifyInterval}} minutes</span>
-            </div>
-            <div class="setting-item">
-                <label>Max Workers:</label>
-                <span class="setting-value">{{.Config.Schedule.MaxWorkers}}</span>
-            </div>
-        </div>
-    </div>
-
-    <div class="settings-section">
-        <h3>LLM Configuration</h3>
-        <div class="settings-grid">
-            <div class="setting-item">
-                <label>Endpoint:</label>
-                <span class="setting-value">{{.Config.LLM.Endpoint}}</span>
-            </div>
-            <div class="setting-item">
-                <label>Model:</label>
-                <span class="setting-value">{{.Config.LLM.Model}}</span>
-            </div>
-            <div class="setting-item">
-                <label>Temperature:</label>
-                <span class="setting-value">{{.Config.LLM.Temperature}}</span>
-            </div>
-            <div class="setting-item">
-                <label>Max Tokens:</label>
-                <span class="setting-value">{{.Config.LLM.MaxTokens}}</span>
-            </div>
-            <div class="setting-item">
-                <label>API Key:</label>
-                <span class="setting-value">{{if .Config.LLM.APIKey}}**** (configured){{else}}Not configured{{end}}</span>
-            </div>
-        </div>
-        
-        <h4>Classification Settings</h4>
-        <div class="settings-grid">
-            <div class="setting-item">
-                <label>Score Threshold:</label>
-                <span class="setting-value">{{.Config.LLM.Classification.ScoreThreshold}}</span>
-            </div>
-            <div class="setting-item">
-                <label>Feedback Examples:</label>
-                <span class="setting-value">{{.Config.LLM.Classification.FeedbackExamples}}</span>
-            </div>
-            <div class="setting-item">
-                <label>Batch Size:</label>
-                <span class="setting-value">{{.Config.LLM.Classification.BatchSize}}</span>
-            </div>
-            <div class="setting-item">
-                <label>JSON Mode:</label>
-                <span class="setting-value">{{if .Config.LLM.Classification.UseJSONMode}}Enabled{{else}}Disabled{{end}}</span>
-            </div>
-        </div>
-    </div>
-
-    <div class="settings-section">
-        <h3>Content Extraction</h3>
-        <div class="settings-grid">
-            <div class="setting-item">
-                <label>Enabled:</label>
-                <span class="setting-value">{{if .Config.Extraction.Enabled}}Yes{{else}}No{{end}}</span>
-            </div>
-            <div class="setting-item">
-                <label>Timeout:</label>
-                <span class="setting-value">{{.Config.Extraction.Timeout}}</span>
-            </div>
-            <div class="setting-item">
-                <label>Max Concurrent:</label>
-                <span class="setting-value">{{.Config.Extraction.MaxConcurrent}}</span>
-            </div>
-            <div class="setting-item">
-                <label>User Agent:</label>
-                <span class="setting-value">{{.Config.Extraction.UserAgent}}</span>
-            </div>
-        </div>
-    </div>
-
-    <div class="settings-section">
-        <h3>Configuration File</h3>
-        <p>To modify settings, edit the <code>config.yml</code> file and restart the server.</p>
-        <p>For detailed configuration options, see the documentation.</p>
     </div>
 </div>
 {{end}}
