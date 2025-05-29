@@ -378,25 +378,25 @@ main {
 
 /* Article content display */
 .extracted-content {
-    background: var(--bg-tertiary);
+    margin-top: 1rem;
+    padding: 1rem;
+    background-color: var(--bg-tertiary);
+    border-radius: 0.25rem;
     border: 1px solid var(--border-primary);
-    border-radius: 8px;
-    padding: 20px;
-    margin-top: 15px;
-    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .extracted-content h4 {
     margin-top: 0;
+    margin-bottom: 1rem;
     color: var(--text-secondary);
 }
 
 .content-text {
     max-height: 400px;
     overflow-y: auto;
-    margin: 15px 0;
+    margin: 0 0 1rem 0;
+    padding: 0;
     line-height: 1.6;
-    white-space: pre-wrap;
     color: var(--text-primary);
 }
 
@@ -404,6 +404,10 @@ main {
 .content-text p {
     margin-bottom: 1em;
     white-space: normal;
+}
+
+.content-text p:first-child {
+    margin-top: 0;
 }
 
 .content-text h3, .content-text h4, 

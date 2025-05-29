@@ -1,0 +1,24 @@
+{{if .ExtractedContent}}
+<div class="extracted-content">
+    <h4>{{.Title}}</h4>
+    <div class="content-text">
+        {{if .ExtractedRichContent}}
+            {{.ExtractedRichContent | safeHTML}}
+        {{else}}
+            {{.ExtractedContent}}
+        {{end}}
+    </div>
+    <button hx-get="/api/v1/articles/{{.ID}}/hide"
+            hx-target="#content-{{.ID}}"
+            hx-swap="innerHTML"
+            class="close-btn">Close</button>
+</div>
+{{else if .ExtractionError}}
+<div class="extraction-error">
+    <p>Failed to extract content: {{.ExtractionError}}</p>
+</div>
+{{else}}
+<div class="no-content">
+    <p>No extracted content available. Click "Extract Content" to fetch the full article.</p>
+</div>
+{{end}}

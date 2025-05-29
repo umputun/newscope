@@ -157,6 +157,12 @@ func extractRichContent(node *html.Node) string {
 	// clean up the result
 	result := buf.String()
 	result = strings.TrimSpace(result)
+	
+	// remove any leading empty paragraphs
+	for strings.HasPrefix(result, "<p></p>") {
+		result = strings.TrimPrefix(result, "<p></p>")
+		result = strings.TrimSpace(result)
+	}
 
 	return result
 }
@@ -245,15 +251,24 @@ func handleElementNode(node *html.Node, buf *bytes.Buffer) {
 		}
 
 		if blockElements[node.Data] {
-			buf.WriteString("<p>")
-		}
-
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			extractRichContentRecursive(child, buf)
-		}
-
-		if blockElements[node.Data] {
-			buf.WriteString("</p>")
+			// temporarily buffer the content to check if it's empty
+			var tempBuf bytes.Buffer
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				extractRichContentRecursive(child, &tempBuf)
+			}
+			
+			// only wrap in <p> tags if there's actual content
+			content := strings.TrimSpace(tempBuf.String())
+			if content != "" {
+				buf.WriteString("<p>")
+				buf.WriteString(content)
+				buf.WriteString("</p>")
+			}
+		} else {
+			// for non-block elements, process children normally
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				extractRichContentRecursive(child, buf)
+			}
 		}
 	}
 }

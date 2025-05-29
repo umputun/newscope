@@ -373,6 +373,111 @@ func TestHTTPExtractor_Extract_Encoding(t *testing.T) {
 	}
 }
 
+func TestHTTPExtractor_Extract_EmptyParagraphHandling(t *testing.T) {
+	tests := []struct {
+		name         string
+		html         string
+		expectNoEmpty bool
+		description  string
+	}{
+		{
+			name: "empty div at beginning",
+			html: `<html><body>
+				<article>
+					<div></div>
+					<p>This blog is inspired by Jordan Tigani's blog</p>
+					<p>More content here</p>
+				</article>
+			</body></html>`,
+			expectNoEmpty: true,
+			description:  "should not have empty paragraph from empty div",
+		},
+		{
+			name: "empty section at beginning",
+			html: `<html><body>
+				<section></section>
+				<article>
+					<p>The good old days ('70s)</p>
+					<p>Back in the '70s, one relational database did everything.</p>
+				</article>
+			</body></html>`,
+			expectNoEmpty: true,
+			description:  "should not have empty paragraph from empty section",
+		},
+		{
+			name: "multiple empty blocks",
+			html: `<html><body>
+				<div></div>
+				<section>   </section>
+				<article>
+					<div>  </div>
+					<p>Actual content starts here</p>
+				</article>
+			</body></html>`,
+			expectNoEmpty: true,
+			description:  "should not have empty paragraphs from multiple empty blocks",
+		},
+		{
+			name: "nested empty divs",
+			html: `<html><body>
+				<div>
+					<div>
+						<div></div>
+					</div>
+				</div>
+				<p>Real content</p>
+			</body></html>`,
+			expectNoEmpty: true,
+			description:  "should not create empty paragraphs from nested empty divs",
+		},
+		{
+			name: "div with whitespace only",
+			html: `<html><body>
+				<div>
+					
+					
+				</div>
+				<p>Content after whitespace</p>
+			</body></html>`,
+			expectNoEmpty: true,
+			description:  "should not create empty paragraphs from divs with only whitespace",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.Write([]byte(tt.html))
+			}))
+			defer server.Close()
+
+			extractor := NewHTTPExtractor(5*time.Second, "Newscope/1.0")
+			extractor.SetOptions(10, false, false) // set lower min text length for test
+
+			ctx := context.Background()
+			result, err := extractor.Extract(ctx, server.URL)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			// check rich content specifically
+			if result.RichContent != "" {
+				t.Logf("Rich content: %s", result.RichContent)
+				
+				// should not start with empty paragraph
+				assert.False(t, strings.HasPrefix(result.RichContent, "<p></p>"), 
+					"rich content should not start with empty paragraph: %s", tt.description)
+				
+				// should not have empty paragraphs anywhere
+				if tt.expectNoEmpty {
+					assert.NotContains(t, result.RichContent, "<p></p>", 
+						"rich content should not contain empty paragraphs: %s", tt.description)
+				}
+			}
+		})
+	}
+}
+
 // benchmark extraction performance
 func BenchmarkHTTPExtractor_Extract(b *testing.B) {
 	// read test HTML file

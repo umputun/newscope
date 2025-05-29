@@ -80,6 +80,9 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			return a * b
 		},
 		"printf": fmt.Sprintf,
+		"safeHTML": func(s string) template.HTML {
+			return template.HTML(s) //nolint:gosec // we trust extracted content
+		},
 	}
 
 	// parse component templates only
@@ -88,7 +91,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 	// parse component templates that can be reused
 	templates, err := templates.ParseFS(templateFS,
 		"templates/article-card.html",
-		"templates/feed-card.html")
+		"templates/feed-card.html",
+		"templates/article-content.html")
 	if err != nil {
 		log.Printf("[ERROR] failed to parse templates: %v", err)
 	}
@@ -196,6 +200,7 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("POST /feedback/{id}/{action}", s.feedbackHandler)
 		r.HandleFunc("POST /extract/{id}", s.extractHandler)
 		r.HandleFunc("GET /articles/{id}/content", s.articleContentHandler)
+		r.HandleFunc("GET /articles/{id}/hide", s.hideContentHandler)
 
 		// feed management
 		r.HandleFunc("POST /feeds", s.createFeedHandler)
@@ -746,33 +751,45 @@ func (s *Server) articleContentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// return the content as HTML for HTMX
-	if article.ExtractedContent != "" {
-		// use rich content if available, otherwise fall back to plain text
-		contentToDisplay := article.ExtractedContent
-		if article.ExtractedRichContent != "" {
-			// rich content is already HTML, so we display it directly
-			contentToDisplay = article.ExtractedRichContent
-			fmt.Fprintf(w, `<div class="extracted-content">
-				<h4>Full Article</h4>
-				<div class="content-text">%s</div>
-				<button onclick="this.parentElement.style.display='none'" class="close-btn">Close</button>
-			</div>`, contentToDisplay)
-		} else {
-			// plain text needs HTML escaping
-			fmt.Fprintf(w, `<div class="extracted-content">
-				<h4>Full Article</h4>
-				<div class="content-text">%s</div>
-				<button onclick="this.parentElement.style.display='none'" class="close-btn">Close</button>
-			</div>`, template.HTMLEscapeString(contentToDisplay))
-		}
-	} else if article.ExtractionError != "" {
-		fmt.Fprintf(w, `<div class="extraction-error">
-			<p>Failed to extract content: %s</p>
-		</div>`, template.HTMLEscapeString(article.ExtractionError))
-	} else {
-		fmt.Fprint(w, `<div class="no-content">
-			<p>No extracted content available. Click "Extract Content" to fetch the full article.</p>
-		</div>`)
+	// render the content template
+	if err := s.templates.ExecuteTemplate(w, "article-content.html", article); err != nil {
+		log.Printf("[ERROR] failed to render article content: %v", err)
+		http.Error(w, "Failed to render content", http.StatusInternalServerError)
+		return
 	}
+
+	// also send out-of-band update for the button
+	fmt.Fprintf(w, `<span id="content-toggle-%d" hx-swap-oob="true">
+		<button class="btn-content"
+			hx-get="/api/v1/articles/%d/hide"
+			hx-target="#content-%d"
+			hx-swap="innerHTML">
+			Hide Content
+		</button>
+	</span>`, id, id, id)
+}
+
+// hideContentHandler returns the hidden state for article content
+func (s *Server) hideContentHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		return
+	}
+
+	// clear the content div
+	if _, err := w.Write([]byte("")); err != nil {
+		log.Printf("[ERROR] failed to write response: %v", err)
+	}
+
+	// also send out-of-band update for the button
+	fmt.Fprintf(w, `<span id="content-toggle-%d" hx-swap-oob="true">
+		<button class="btn-content"
+			hx-get="/api/v1/articles/%d/content"
+			hx-target="#content-%d"
+			hx-swap="innerHTML">
+			Show Content
+		</button>
+	</span>`, id, id, id)
 }

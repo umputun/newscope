@@ -46,12 +46,14 @@
             👎 Dislike
         </button>
         {{if .ExtractedContent}}
-        <button class="btn-content"
-                hx-get="/api/v1/articles/{{.ID}}/content"
-                hx-target="#content-{{.ID}}"
-                hx-swap="innerHTML">
-            Show Content
-        </button>
+        <span id="content-toggle-{{.ID}}">
+            <button class="btn-content"
+                    hx-get="/api/v1/articles/{{.ID}}/content"
+                    hx-target="#content-{{.ID}}"
+                    hx-swap="innerHTML">
+                Show Content
+            </button>
+        </span>
         {{else if not .ExtractionError}}
         <button class="btn-extract"
                 hx-post="/api/v1/extract/{{.ID}}"
@@ -62,5 +64,5 @@
         {{end}}
     </div>
     
-    <div id="content-{{.ID}}" class="article-content"></div>
+    <div id="content-{{.ID}}"></div>
 </article>
