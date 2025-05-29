@@ -295,8 +295,8 @@ func TestItemOperations(t *testing.T) {
 		assert.Equal(t, []string{"golang", "programming"}, examples[0].Topics)
 	})
 
-	t.Run("batch update classifications", func(t *testing.T) {
-		// create more items
+	t.Run("classify items for later tests", func(t *testing.T) {
+		// create more items and classify them for subsequent tests
 		item3 := &Item{
 			FeedID:           feed.ID,
 			GUID:             "guid-3",
@@ -308,17 +308,24 @@ func TestItemOperations(t *testing.T) {
 		err := db.CreateItem(ctx, item3)
 		require.NoError(t, err)
 
-		classifications := []Classification{
-			{GUID: "guid-3", Score: 7.0, Explanation: "Good match", Topics: []string{"tech"}},
-			{GUID: "guid-needs-extraction", Score: 3.0, Explanation: "Not relevant", Topics: []string{"other"}},
+		// update items with classification for later tests
+		classification1 := Classification{
+			GUID:        "guid-3",
+			Score:       7.0,
+			Explanation: "Good match",
+			Topics:      []string{"tech"},
 		}
+		err = db.UpdateItemProcessed(ctx, item3.ID, "Content 3", "", classification1)
+		require.NoError(t, err)
 
-		itemsByGUID := map[string]int64{
-			"guid-3":                3,
-			"guid-needs-extraction": 2,
+		// also classify the earlier item for topics test
+		classification2 := Classification{
+			GUID:        "guid-needs-extraction",
+			Score:       3.0,
+			Explanation: "Not relevant",
+			Topics:      []string{"other"},
 		}
-
-		err = db.UpdateClassifications(ctx, classifications, itemsByGUID)
+		err = db.UpdateItemProcessed(ctx, 2, "Some content", "", classification2)
 		require.NoError(t, err)
 
 		// verify updates
@@ -388,7 +395,7 @@ func TestItemOperations(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("Topics found: %v", topics)
 
-		// based on the batch update classifications test above, we should have these topics
+		// based on the classify items test above, we should have these topics
 		assert.Contains(t, topics, "tech")
 		assert.Contains(t, topics, "other")
 
@@ -398,6 +405,76 @@ func TestItemOperations(t *testing.T) {
 				assert.Less(t, topics[i-1], topics[i], "topics should be sorted")
 			}
 		}
+	})
+
+	t.Run("update item processed with summary", func(t *testing.T) {
+		// create a new item with original description
+		item := &Item{
+			FeedID:      feed.ID,
+			GUID:        "guid-process-test",
+			Title:       "Process Test Article",
+			Link:        "https://example.com/process",
+			Description: "Original RSS description that is quite long and contains full content from the feed",
+			Published:   time.Now(),
+		}
+		err := db.CreateItem(ctx, item)
+		require.NoError(t, err)
+
+		// update with extraction and classification including summary
+		classification := Classification{
+			GUID:        "guid-process-test",
+			Score:       8.5,
+			Explanation: "Highly relevant to our interests",
+			Topics:      []string{"ai", "technology"},
+			Summary:     "A concise summary of the article that captures key points in 300-500 chars",
+		}
+
+		err = db.UpdateItemProcessed(ctx, item.ID, "Full extracted content here", "<p>Rich HTML content</p>", classification)
+		require.NoError(t, err)
+
+		// verify all fields were updated correctly
+		updated, err := db.GetItem(ctx, item.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "Full extracted content here", updated.ExtractedContent)
+		assert.Equal(t, "<p>Rich HTML content</p>", updated.ExtractedRichContent)
+		assert.InEpsilon(t, 8.5, updated.RelevanceScore, 0.001)
+		assert.Equal(t, "Highly relevant to our interests", updated.Explanation)
+		assert.NotNil(t, updated.ExtractedAt)
+		assert.NotNil(t, updated.ClassifiedAt)
+		// most importantly, check that description was updated with summary
+		assert.Equal(t, "A concise summary of the article that captures key points in 300-500 chars", updated.Description)
+		assert.NotEqual(t, "Original RSS description that is quite long and contains full content from the feed", updated.Description)
+	})
+
+	t.Run("update item processed without summary", func(t *testing.T) {
+		// create another item
+		item := &Item{
+			FeedID:      feed.ID,
+			GUID:        "guid-no-summary",
+			Title:       "No Summary Article",
+			Link:        "https://example.com/nosummary",
+			Description: "Original description",
+			Published:   time.Now(),
+		}
+		err := db.CreateItem(ctx, item)
+		require.NoError(t, err)
+
+		// update without summary
+		classification := Classification{
+			GUID:        "guid-no-summary",
+			Score:       5.0,
+			Explanation: "Moderately relevant",
+			Topics:      []string{"general"},
+			Summary:     "", // no summary provided
+		}
+
+		err = db.UpdateItemProcessed(ctx, item.ID, "Content", "<p>HTML</p>", classification)
+		require.NoError(t, err)
+
+		// verify description was NOT changed
+		updated, err := db.GetItem(ctx, item.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "Original description", updated.Description)
 	})
 }
 

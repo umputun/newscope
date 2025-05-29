@@ -341,6 +341,53 @@ func (db *DB) UpdateItemClassification(ctx context.Context, itemID int64, score 
 	return nil
 }
 
+// UpdateItemProcessed updates item with both extraction and classification results
+func (db *DB) UpdateItemProcessed(ctx context.Context, itemID int64, content, richContent string, classification Classification) error {
+	// build query based on whether we have a summary
+	var query string
+	var args []interface{}
+
+	if classification.Summary != "" {
+		// update all fields including description in a single atomic operation
+		query = `
+			UPDATE items 
+			SET extracted_content = ?, 
+			    extracted_rich_content = ?, 
+			    extracted_at = datetime('now'),
+			    relevance_score = ?, 
+			    explanation = ?,
+			    topics = ?,
+			    classified_at = datetime('now'),
+			    description = ?
+			WHERE id = ?
+		`
+		args = []interface{}{content, richContent, classification.Score, classification.Explanation,
+			Topics(classification.Topics), classification.Summary, itemID}
+	} else {
+		// update without changing description
+		query = `
+			UPDATE items 
+			SET extracted_content = ?, 
+			    extracted_rich_content = ?, 
+			    extracted_at = datetime('now'),
+			    relevance_score = ?, 
+			    explanation = ?,
+			    topics = ?,
+			    classified_at = datetime('now')
+			WHERE id = ?
+		`
+		args = []interface{}{content, richContent, classification.Score, classification.Explanation,
+			Topics(classification.Topics), itemID}
+	}
+
+	_, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("update item processed: %w", err)
+	}
+
+	return nil
+}
+
 // UpdateItemFeedback updates user feedback on an item
 func (db *DB) UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error {
 	query := `
@@ -489,67 +536,6 @@ func (db *DB) GetTopics(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("get topics: %w", err)
 	}
 	return topics, nil
-}
-
-// Batch operations
-
-// UpdateClassifications updates multiple items with classification results
-func (db *DB) UpdateClassifications(ctx context.Context, classifications []Classification, itemsByGUID map[string]int64) error {
-	tx, err := db.BeginTxx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.PrepareContext(ctx, `
-		UPDATE items 
-		SET relevance_score = ?, 
-		    explanation = ?,
-		    topics = ?,
-		    classified_at = datetime('now')
-		WHERE id = ?
-	`)
-	if err != nil {
-		return fmt.Errorf("prepare statement: %w", err)
-	}
-	defer stmt.Close()
-
-	// prepare statement for updating description with summary
-	stmtDesc, err := tx.PrepareContext(ctx, `
-		UPDATE items 
-		SET description = ?
-		WHERE id = ?
-	`)
-	if err != nil {
-		return fmt.Errorf("prepare description statement: %w", err)
-	}
-	defer stmtDesc.Close()
-
-	for _, class := range classifications {
-		itemID, ok := itemsByGUID[class.GUID]
-		if !ok {
-			continue
-		}
-
-		_, err := stmt.ExecContext(ctx, class.Score, class.Explanation, Topics(class.Topics), itemID)
-		if err != nil {
-			return fmt.Errorf("update classification for %s: %w", class.GUID, err)
-		}
-
-		// update description with generated summary
-		if class.Summary != "" {
-			_, err := stmtDesc.ExecContext(ctx, class.Summary, itemID)
-			if err != nil {
-				return fmt.Errorf("update description for %s: %w", class.GUID, err)
-			}
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
-	}
-
-	return nil
 }
 
 // Close closes the database connection

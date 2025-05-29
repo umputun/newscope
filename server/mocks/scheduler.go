@@ -14,9 +14,6 @@ import (
 //
 //		// make and configure a mocked server.Scheduler
 //		mockedScheduler := &SchedulerMock{
-//			ClassifyNowFunc: func(ctx context.Context) error {
-//				panic("mock out the ClassifyNow method")
-//			},
 //			ExtractContentNowFunc: func(ctx context.Context, itemID int64) error {
 //				panic("mock out the ExtractContentNow method")
 //			},
@@ -30,9 +27,6 @@ import (
 //
 //	}
 type SchedulerMock struct {
-	// ClassifyNowFunc mocks the ClassifyNow method.
-	ClassifyNowFunc func(ctx context.Context) error
-
 	// ExtractContentNowFunc mocks the ExtractContentNow method.
 	ExtractContentNowFunc func(ctx context.Context, itemID int64) error
 
@@ -41,11 +35,6 @@ type SchedulerMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// ClassifyNow holds details about calls to the ClassifyNow method.
-		ClassifyNow []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-		}
 		// ExtractContentNow holds details about calls to the ExtractContentNow method.
 		ExtractContentNow []struct {
 			// Ctx is the ctx argument value.
@@ -61,41 +50,8 @@ type SchedulerMock struct {
 			FeedID int64
 		}
 	}
-	lockClassifyNow       sync.RWMutex
 	lockExtractContentNow sync.RWMutex
 	lockUpdateFeedNow     sync.RWMutex
-}
-
-// ClassifyNow calls ClassifyNowFunc.
-func (mock *SchedulerMock) ClassifyNow(ctx context.Context) error {
-	if mock.ClassifyNowFunc == nil {
-		panic("SchedulerMock.ClassifyNowFunc: method is nil but Scheduler.ClassifyNow was just called")
-	}
-	callInfo := struct {
-		Ctx context.Context
-	}{
-		Ctx: ctx,
-	}
-	mock.lockClassifyNow.Lock()
-	mock.calls.ClassifyNow = append(mock.calls.ClassifyNow, callInfo)
-	mock.lockClassifyNow.Unlock()
-	return mock.ClassifyNowFunc(ctx)
-}
-
-// ClassifyNowCalls gets all the calls that were made to ClassifyNow.
-// Check the length with:
-//
-//	len(mockedScheduler.ClassifyNowCalls())
-func (mock *SchedulerMock) ClassifyNowCalls() []struct {
-	Ctx context.Context
-} {
-	var calls []struct {
-		Ctx context.Context
-	}
-	mock.lockClassifyNow.RLock()
-	calls = mock.calls.ClassifyNow
-	mock.lockClassifyNow.RUnlock()
-	return calls
 }
 
 // ExtractContentNow calls ExtractContentNowFunc.

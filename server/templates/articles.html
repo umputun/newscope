@@ -28,15 +28,6 @@
             <option value="{{.}}" {{if eq $.SelectedTopic .}}selected{{end}}>{{.}}</option>
             {{end}}
         </select>
-        
-        <!-- Refresh button -->
-        <button hx-post="/api/v1/classify-now" 
-                hx-swap="none"
-                hx-indicator="#loading"
-                class="btn-refresh">
-            Classify New Articles
-        </button>
-        <span id="loading" class="htmx-indicator">Processing...</span>
     </div>
 </div>
 

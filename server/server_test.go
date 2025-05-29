@@ -404,33 +404,6 @@ func TestServer_extractHandler(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "Show Content") // button should change
 }
 
-func TestServer_classifyNowHandler(t *testing.T) {
-	cfg := &mocks.ConfigProviderMock{
-		GetServerConfigFunc: func() (string, time.Duration) {
-			return ":8080", 30 * time.Second
-		},
-	}
-
-	classifyCalled := false
-	scheduler := &mocks.SchedulerMock{
-		ClassifyNowFunc: func(ctx context.Context) error {
-			classifyCalled = true
-			return nil
-		},
-	}
-
-	database := &mocks.DatabaseMock{}
-	srv := New(cfg, database, scheduler, "1.0.0", false)
-
-	req := httptest.NewRequest("POST", "/api/v1/classify-now", http.NoBody)
-	w := httptest.NewRecorder()
-
-	srv.classifyNowHandler(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.True(t, classifyCalled)
-}
-
 func TestServer_articleContentHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) {

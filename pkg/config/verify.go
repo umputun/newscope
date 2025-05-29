@@ -65,7 +65,6 @@ func VerifyAgainstSchema(cfg *Config, schemaPath string) error {
 		return fmt.Errorf("unmarshal config: %w", err)
 	}
 
-
 	// basic validation - check required fields match
 	if err := validateRequiredFields(cfg); err != nil {
 		return fmt.Errorf("validation failed: %w", err)

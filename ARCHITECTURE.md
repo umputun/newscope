@@ -172,37 +172,35 @@ Articles + Feedback → Build Prompt → LLM API → Parse Response → Classifi
 
 ### 6. Scheduler (`pkg/scheduler`)
 
-Manages periodic feed updates, content extraction, and classification with worker pools.
+Manages periodic feed updates and content processing with a channel-based architecture.
 
 **Key Features:**
-- Separate intervals for feed updates, extraction, and classification
-- Configurable worker pool sizes
-- Rate limiting support
+- Single feed update interval with concurrent processing
+- Channel-based item processing pipeline
+- Combined extraction and classification in one step
+- errgroup with concurrency limit for worker management
 - Graceful shutdown with context cancellation
-- LLM classification integration
-- On-demand operations (UpdateFeedNow, ExtractContentNow, ClassifyNow)
-- Intelligent feed name logging (falls back to URL when title is empty)
-- Database mutex for safe concurrent operations
+- On-demand operations (UpdateFeedNow, ExtractContentNow)
 
 **Workflow:**
-1. **Feed Updates**: Fetch new articles from RSS feeds
-2. **Content Extraction**: Extract full text from article URLs
-3. **Classification**: Send articles to LLM for scoring
-4. **Storage**: Save classifications to database
+1. **Feed Updates**: Periodically fetch new articles from RSS feeds
+2. **Channel Pipeline**: New items are sent to a processing channel
+3. **Processing Worker**: Consumes items from channel, extracts content and classifies in one operation
+4. **Concurrent Processing**: Uses errgroup.SetLimit() for concurrency control
 
-**Interfaces** (defined by consumers):
+**Interfaces** (defined by scheduler):
 ```go
 type Database interface {
-    GetFeedsToFetch(ctx context.Context, limit int) ([]db.Feed, error)
-    GetItemsNeedingExtraction(ctx context.Context, limit int) ([]db.Item, error)
-    GetUnclassifiedItems(ctx context.Context, limit int) ([]db.Item, error)
+    GetFeed(ctx context.Context, id int64) (*db.Feed, error)
+    GetFeeds(ctx context.Context, enabledOnly bool) ([]db.Feed, error)
+    UpdateFeedFetched(ctx context.Context, feedID int64, nextFetch time.Time) error
+    UpdateFeedError(ctx context.Context, feedID int64, errMsg string) error
+    
+    GetItem(ctx context.Context, id int64) (*db.Item, error)
+    CreateItem(ctx context.Context, item *db.Item) error
+    ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
+    UpdateItemProcessed(ctx context.Context, itemID int64, content, richContent string, classification db.Classification) error
     GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
-    UpdateClassifications(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error
-    UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
-    GetTopics(ctx context.Context) ([]string, error)
-    GetClassifiedItems(ctx context.Context, minScore float64, limit int) ([]Item, error)
-    GetClassifiedItem(ctx context.Context, itemID int64) (*Item, error)
-    // ... and more
 }
 
 type Classifier interface {
@@ -285,8 +283,7 @@ type Scheduler interface {
 **API Endpoints:**
 - `GET /api/v1/status` - Server status
 - `POST /api/v1/feedback/{id}/{action}` - Submit user feedback (like/dislike)
-- `POST /api/v1/extract/{id}` - Trigger content extraction for an item
-- `POST /api/v1/classify-now` - Trigger immediate classification
+- `POST /api/v1/extract/{id}` - Trigger content extraction and classification for an item
 - `GET /api/v1/articles/{id}/content` - Get extracted content for display
 - `POST /api/v1/feeds` - Create a new feed
 - `POST /api/v1/feeds/{id}/enable` - Enable a feed
@@ -322,25 +319,20 @@ Entry point that wires all components together.
 
 ## Data Flow
 
-### Feed Update and Classification Flow:
+### Feed Update and Processing Flow:
 
 ```
 1. Scheduler triggers feed update
    └─> Parser fetches RSS feeds
        └─> New items saved to items table
+       └─> Items sent to processing channel
 
-2. Content extraction (if enabled)
-   └─> Extractor fetches article full text
-       └─> Updates items.extracted_content field
+2. Processing Pipeline (per item)
+   └─> Extract article full text
+   └─> Classify with LLM immediately
+   └─> Store both results in single DB update
 
-3. LLM Classification
-   └─> Batch unclassified articles
-   └─> Include recent user feedback as examples
-   └─> Send to LLM API (with JSON mode if supported)
-   └─> Parse scores, explanations, and topics
-   └─> Update items table with classification data
-
-4. Web UI Display
+3. Web UI Display
    └─> Query items with JOIN on feeds for feed names
    └─> Filter by minimum score and topics
    └─> Display with HTMX for dynamic updates
@@ -402,10 +394,8 @@ llm:
     use_json_mode: true
 
 scheduler:
-  feed_update_interval: 30m
-  extraction_interval: 5m
-  classification_interval: 10m
-  workers: 5
+  update_interval: 30    # minutes
+  max_workers: 5
 
 extraction:
   enabled: true

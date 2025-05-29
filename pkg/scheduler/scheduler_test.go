@@ -8,7 +8,7 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,23 +32,17 @@ func TestNewScheduler(t *testing.T) {
 		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, cfg)
 
 		assert.Equal(t, 30*time.Minute, s.updateInterval)
-		assert.Equal(t, 5*time.Minute, s.extractInterval)
-		assert.Equal(t, 10*time.Minute, s.classifyInterval)
 		assert.Equal(t, 5, s.maxWorkers)
 	})
 
 	t.Run("with custom config", func(t *testing.T) {
 		cfg := Config{
-			UpdateInterval:   1 * time.Hour,
-			ExtractInterval:  10 * time.Minute,
-			ClassifyInterval: 15 * time.Minute,
-			MaxWorkers:       10,
+			UpdateInterval: 1 * time.Hour,
+			MaxWorkers:     10,
 		}
 		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, cfg)
 
 		assert.Equal(t, 1*time.Hour, s.updateInterval)
-		assert.Equal(t, 10*time.Minute, s.extractInterval)
-		assert.Equal(t, 15*time.Minute, s.classifyInterval)
 		assert.Equal(t, 10, s.maxWorkers)
 	})
 }
@@ -111,10 +105,16 @@ func TestScheduler_UpdateFeed(t *testing.T) {
 			return nil
 		}
 
+		// create a channel to capture items
+		processCh := make(chan db.Item, 10)
+		defer close(processCh)
+
 		s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
-		s.updateFeed(ctx, testFeed)
+		s.updateFeed(ctx, testFeed, processCh)
 
 		assert.Equal(t, 2, createItemCount)
+		// check that items were sent to channel
+		assert.Len(t, processCh, 2)
 	})
 
 	t.Run("parse error", func(t *testing.T) {
@@ -141,20 +141,26 @@ func TestScheduler_UpdateFeed(t *testing.T) {
 			return nil
 		}
 
+		processCh := make(chan db.Item, 10)
+		defer close(processCh)
+
 		s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
-		s.updateFeed(ctx, testFeed)
+		s.updateFeed(ctx, testFeed, processCh)
 
 		assert.True(t, errorUpdated)
+		// no items should be sent to channel
+		assert.Empty(t, processCh)
 	})
 }
 
-func TestScheduler_ExtractItemContent(t *testing.T) {
+func TestScheduler_ProcessItem(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("successful extraction", func(t *testing.T) {
+	t.Run("successful extraction and classification", func(t *testing.T) {
 		mockDB := &mocks.DatabaseMock{}
 		mockParser := &mocks.ParserMock{}
 		mockExtractor := &mocks.ExtractorMock{}
+		mockClassifier := &mocks.ClassifierMock{}
 
 		testItem := db.Item{
 			ID:    1,
@@ -174,26 +180,43 @@ func TestScheduler_ExtractItemContent(t *testing.T) {
 			return extractResult, nil
 		}
 
-		contentUpdated := false
-		mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content, richContent string, err error) error {
-			contentUpdated = true
+		classification := db.Classification{
+			GUID:        testItem.GUID,
+			Score:       8.5,
+			Explanation: "Highly relevant",
+			Topics:      []string{"tech", "news"},
+		}
+
+		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+			assert.Len(t, articles, 1)
+			assert.Equal(t, extractResult.Content, articles[0].ExtractedContent)
+			return []db.Classification{classification}, nil
+		}
+
+		processedUpdated := false
+		mockDB.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, content, richContent string, c db.Classification) error {
+			processedUpdated = true
 			assert.Equal(t, testItem.ID, itemID)
 			assert.Equal(t, extractResult.Content, content)
 			assert.Equal(t, extractResult.RichContent, richContent)
-			assert.NoError(t, err)
+			assert.InEpsilon(t, classification.Score, c.Score, 0.001)
+			assert.Equal(t, classification.Explanation, c.Explanation)
+			assert.Equal(t, classification.Topics, c.Topics)
 			return nil
 		}
 
-		s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
-		s.extractItemContent(ctx, testItem)
+		feedbacks := []db.FeedbackExample{}
+		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+		s.processItem(ctx, testItem, feedbacks)
 
-		assert.True(t, contentUpdated)
+		assert.True(t, processedUpdated)
 	})
 
 	t.Run("extraction error", func(t *testing.T) {
 		mockDB := &mocks.DatabaseMock{}
 		mockParser := &mocks.ParserMock{}
 		mockExtractor := &mocks.ExtractorMock{}
+		mockClassifier := &mocks.ClassifierMock{}
 
 		testItem := db.Item{
 			ID:   1,
@@ -205,47 +228,88 @@ func TestScheduler_ExtractItemContent(t *testing.T) {
 			return nil, extractErr
 		}
 
-		errorStored := false
-		mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content, richContent string, err error) error {
-			errorStored = true
-			assert.Equal(t, testItem.ID, itemID)
-			assert.Empty(t, content)
-			assert.Empty(t, richContent)
-			assert.Equal(t, extractErr, err)
+		// should not call classifier or update database
+		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+			t.Fatal("classifier should not be called on extraction error")
+			return nil, nil
+		}
+
+		mockDB.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, content, richContent string, classification db.Classification) error {
+			t.Fatal("database should not be updated on extraction error")
 			return nil
 		}
 
-		s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
-		s.extractItemContent(ctx, testItem)
+		feedbacks := []db.FeedbackExample{}
+		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+		s.processItem(ctx, testItem, feedbacks)
+	})
 
-		assert.True(t, errorStored)
+	t.Run("classification error", func(t *testing.T) {
+		mockDB := &mocks.DatabaseMock{}
+		mockParser := &mocks.ParserMock{}
+		mockExtractor := &mocks.ExtractorMock{}
+		mockClassifier := &mocks.ClassifierMock{}
+
+		testItem := db.Item{
+			ID:   1,
+			Link: "http://example.com/article",
+		}
+
+		extractResult := &content.ExtractResult{
+			Content:     "This is the extracted content",
+			RichContent: "<p>This is the extracted content</p>",
+		}
+
+		mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
+			return extractResult, nil
+		}
+
+		classifyErr := errors.New("classification failed")
+		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+			return nil, classifyErr
+		}
+
+		// should not update database on classification error
+		mockDB.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, content, richContent string, classification db.Classification) error {
+			t.Fatal("database should not be updated on classification error")
+			return nil
+		}
+
+		feedbacks := []db.FeedbackExample{}
+		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+		s.processItem(ctx, testItem, feedbacks)
 	})
 }
 
 func TestScheduler_UpdateFeedNow(t *testing.T) {
 	ctx := context.Background()
+
 	mockDB := &mocks.DatabaseMock{}
 	mockParser := &mocks.ParserMock{}
 	mockExtractor := &mocks.ExtractorMock{}
+	mockClassifier := &mocks.ClassifierMock{}
 
+	feedID := int64(123)
 	testFeed := &db.Feed{
-		ID:            1,
-		URL:           "http://example.com/feed.xml",
-		FetchInterval: 300, // 5 minutes in seconds
-	}
-
-	parsedFeed := &types.Feed{
+		ID:    feedID,
+		URL:   "http://example.com/feed.xml",
 		Title: "Test Feed",
-		Items: []types.Item{},
 	}
 
 	mockDB.GetFeedFunc = func(ctx context.Context, id int64) (*db.Feed, error) {
-		assert.Equal(t, int64(1), id)
+		assert.Equal(t, feedID, id)
 		return testFeed, nil
 	}
 
+	parsedFeed := &types.Feed{
+		Items: []types.Item{{
+			GUID:  "item1",
+			Title: "New Item",
+			Link:  "http://example.com/new",
+		}},
+	}
+
 	mockParser.ParseFunc = func(ctx context.Context, url string) (*types.Feed, error) {
-		assert.Equal(t, testFeed.URL, url)
 		return parsedFeed, nil
 	}
 
@@ -254,28 +318,65 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 	}
 
 	mockDB.CreateItemFunc = func(ctx context.Context, item *db.Item) error {
+		item.ID = 1
 		return nil
 	}
 
 	mockDB.UpdateFeedFetchedFunc = func(ctx context.Context, feedID int64, nextFetch time.Time) error {
-		assert.Equal(t, testFeed.ID, feedID)
 		return nil
 	}
 
-	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
-	err := s.UpdateFeedNow(ctx, 1)
+	// mock processing - add extractor and classifier mocks
+	mockDB.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error) {
+		return []db.FeedbackExample{}, nil
+	}
+
+	mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
+		return &content.ExtractResult{
+			Content:     "Test content",
+			RichContent: "<p>Test content</p>",
+		}, nil
+	}
+
+	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+		return []db.Classification{{
+			Score:       7.0,
+			Explanation: "Test",
+			Topics:      []string{"test"},
+		}}, nil
+	}
+
+	mockDB.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, content, richContent string, c db.Classification) error {
+		return nil
+	}
+
+	s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+	err := s.UpdateFeedNow(ctx, feedID)
 	require.NoError(t, err)
 }
 
 func TestScheduler_ExtractContentNow(t *testing.T) {
 	ctx := context.Background()
+
 	mockDB := &mocks.DatabaseMock{}
 	mockParser := &mocks.ParserMock{}
 	mockExtractor := &mocks.ExtractorMock{}
+	mockClassifier := &mocks.ClassifierMock{}
 
+	itemID := int64(456)
 	testItem := &db.Item{
-		ID:   1,
-		Link: "http://example.com/article",
+		ID:    itemID,
+		Title: "Test Item",
+		Link:  "http://example.com/article",
+	}
+
+	mockDB.GetItemFunc = func(ctx context.Context, id int64) (*db.Item, error) {
+		assert.Equal(t, itemID, id)
+		return testItem, nil
+	}
+
+	mockDB.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error) {
+		return []db.FeedbackExample{}, nil
 	}
 
 	extractResult := &content.ExtractResult{
@@ -283,341 +384,251 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		RichContent: "<p>Extracted content</p>",
 	}
 
-	mockDB.GetItemFunc = func(ctx context.Context, id int64) (*db.Item, error) {
-		assert.Equal(t, int64(1), id)
-		return testItem, nil
-	}
-
 	mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
-		assert.Equal(t, testItem.Link, url)
 		return extractResult, nil
 	}
 
-	mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content, richContent string, err error) error {
-		assert.Equal(t, testItem.ID, itemID)
-		assert.Equal(t, extractResult.Content, content)
-		assert.Equal(t, extractResult.RichContent, richContent)
+	classification := db.Classification{
+		Score:       7.5,
+		Explanation: "Relevant",
+		Topics:      []string{"tech"},
+	}
+
+	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+		return []db.Classification{classification}, nil
+	}
+
+	mockDB.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, content, richContent string, c db.Classification) error {
 		return nil
 	}
 
-	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
-	err := s.ExtractContentNow(ctx, 1)
+	s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+	err := s.ExtractContentNow(ctx, itemID)
 	require.NoError(t, err)
 }
 
 func TestScheduler_StartStop(t *testing.T) {
+	// setup mocks
 	mockDB := &mocks.DatabaseMock{}
 	mockParser := &mocks.ParserMock{}
 	mockExtractor := &mocks.ExtractorMock{}
+	mockClassifier := &mocks.ClassifierMock{}
 
-	// mock expectations for the initial feed update
+	// track what happened
+	var mu sync.Mutex
+	feedsFetched := 0
+	itemsCreated := 0
+	itemsProcessed := 0
+
+	// mock feed list
 	mockDB.GetFeedsFunc = func(ctx context.Context, enabledOnly bool) ([]db.Feed, error) {
-		return []db.Feed{}, nil
-	}
-	mockDB.GetItemsNeedingExtractionFunc = func(ctx context.Context, limit int) ([]db.Item, error) {
-		return []db.Item{}, nil
-	}
-
-	cfg := Config{
-		UpdateInterval:  100 * time.Millisecond,
-		ExtractInterval: 100 * time.Millisecond,
-	}
-	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, cfg)
-
-	ctx := context.Background()
-	s.Start(ctx)
-
-	// let it run briefly
-	time.Sleep(50 * time.Millisecond)
-
-	// stop should complete without hanging
-	done := make(chan struct{})
-	go func() {
-		s.Stop()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// success
-	case <-time.After(1 * time.Second):
-		t.Fatal("Stop() timed out")
-	}
-}
-
-func TestScheduler_extractPendingContent(t *testing.T) {
-	ctx := context.Background()
-	mockDB := &mocks.DatabaseMock{}
-	mockParser := &mocks.ParserMock{}
-	mockExtractor := &mocks.ExtractorMock{}
-
-	pendingItems := []db.Item{
-		{
-			ID:    1,
-			Title: "Item 1",
-			Link:  "http://example.com/1",
-		},
-		{
-			ID:    2,
-			Title: "Item 2",
-			Link:  "http://example.com/2",
-		},
+		return []db.Feed{
+			{ID: 1, URL: "http://feed1.com/rss", Title: "Feed 1", Enabled: true, FetchInterval: 1800},
+			{ID: 2, URL: "http://feed2.com/rss", Title: "Feed 2", Enabled: true, FetchInterval: 1800},
+		}, nil
 	}
 
-	mockDB.GetItemsNeedingExtractionFunc = func(ctx context.Context, limit int) ([]db.Item, error) {
-		assert.Equal(t, 5, limit) // default max workers
-		return pendingItems, nil
-	}
+	// mock feed parsing
+	mockParser.ParseFunc = func(ctx context.Context, url string) (*types.Feed, error) {
+		mu.Lock()
+		feedsFetched++
+		mu.Unlock()
 
-	extractedContent := &content.ExtractResult{
-		Content:     "Extracted content",
-		RichContent: "<p>Rich content</p>",
-		Title:       "Article Title",
-	}
-
-	mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
-		if url == "http://example.com/2" {
-			return nil, fmt.Errorf("extraction failed")
+		switch url {
+		case "http://feed1.com/rss":
+			return &types.Feed{
+				Title: "Feed 1",
+				Items: []types.Item{
+					{GUID: "item1", Title: "Article 1", Link: "http://feed1.com/1"},
+					{GUID: "item2", Title: "Article 2", Link: "http://feed1.com/2"},
+				},
+			}, nil
+		case "http://feed2.com/rss":
+			return &types.Feed{
+				Title: "Feed 2",
+				Items: []types.Item{
+					{GUID: "item3", Title: "Article 3", Link: "http://feed2.com/3"},
+				},
+			}, nil
 		}
-		return extractedContent, nil
+		return nil, assert.AnError
 	}
 
-	mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content, richContent string, err error) error {
-		switch itemID {
-		case 1:
-			assert.Equal(t, "Extracted content", content)
-			assert.Equal(t, "<p>Rich content</p>", richContent)
-			assert.NoError(t, err) //nolint:testifylint // inside mock function
-		case 2:
-			assert.Empty(t, content)
-			assert.Empty(t, richContent)
-			assert.NotNil(t, err) //nolint:testifylint // inside mock function
-			assert.Contains(t, err.Error(), "extraction failed")
+	// mock item existence check - track what we've seen
+	seenItems := make(map[string]bool)
+	mockDB.ItemExistsFunc = func(ctx context.Context, feedID int64, guid string) (bool, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if seenItems[guid] {
+			return true, nil
 		}
+		seenItems[guid] = true
+		return false, nil
+	}
+
+	// mock item creation
+	createdItems := make([]db.Item, 0)
+	mockDB.CreateItemFunc = func(ctx context.Context, item *db.Item) error {
+		mu.Lock()
+		itemsCreated++
+		item.ID = int64(itemsCreated)
+		createdItems = append(createdItems, *item)
+		mu.Unlock()
 		return nil
 	}
 
-	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
-	s.extractPendingContent(ctx)
+	// mock feed update
+	mockDB.UpdateFeedFetchedFunc = func(ctx context.Context, feedID int64, nextFetch time.Time) error {
+		return nil
+	}
 
-	assert.Len(t, mockExtractor.ExtractCalls(), 2)
-	assert.Len(t, mockDB.UpdateItemExtractionCalls(), 2)
+	// mock feedback
+	mockDB.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error) {
+		return []db.FeedbackExample{
+			{Title: "Good article", Feedback: "like", Topics: []string{"tech"}},
+		}, nil
+	}
+
+	// mock extraction
+	mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
+		return &content.ExtractResult{
+			Content:     "Extracted content for " + url,
+			RichContent: "<p>Extracted content for " + url + "</p>",
+		}, nil
+	}
+
+	// mock classification
+	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+		return []db.Classification{{
+			GUID:        articles[0].GUID,
+			Score:       8.5,
+			Explanation: "Highly relevant",
+			Topics:      []string{"tech", "news"},
+		}}, nil
+	}
+
+	// mock processing update
+	processedItems := make(map[int64]bool)
+	mockDB.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, content, richContent string, classification db.Classification) error {
+		mu.Lock()
+		itemsProcessed++
+		processedItems[itemID] = true
+		mu.Unlock()
+		return nil
+	}
+
+	// create scheduler with short update interval for testing
+	cfg := Config{
+		UpdateInterval: 100 * time.Millisecond,
+		MaxWorkers:     2,
+	}
+	scheduler := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, cfg)
+
+	// start scheduler
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	scheduler.Start(ctx)
+
+	// wait for initial feed update and processing
+	time.Sleep(150 * time.Millisecond)
+
+	// verify initial processing
+	mu.Lock()
+	assert.GreaterOrEqual(t, feedsFetched, 2, "should fetch both feeds at least once")
+	assert.Equal(t, 3, itemsCreated, "should create 3 items")
+	assert.Equal(t, 3, itemsProcessed, "should process all 3 items")
+	mu.Unlock()
+
+	// stop scheduler
+	scheduler.Stop()
+
+	// verify all created items were processed
+	for _, item := range createdItems {
+		assert.True(t, processedItems[item.ID], "item %d should be processed", item.ID)
+	}
 }
 
-func TestScheduler_updateAllFeeds(t *testing.T) {
-	ctx := context.Background()
+func TestScheduler_GracefulShutdown(t *testing.T) {
 	mockDB := &mocks.DatabaseMock{}
 	mockParser := &mocks.ParserMock{}
 	mockExtractor := &mocks.ExtractorMock{}
+	mockClassifier := &mocks.ClassifierMock{}
 
-	testFeeds := []db.Feed{
-		{
-			ID:    1,
-			URL:   "http://example.com/feed1.xml",
-			Title: "Feed 1",
-		},
-		{
-			ID:    2,
-			URL:   "http://example.com/feed2.xml",
-			Title: "Feed 2",
-		},
-	}
+	processingStarted := make(chan struct{})
+	processingBlocked := make(chan struct{})
+	processingComplete := false
 
+	// setup slow processing to test graceful shutdown
 	mockDB.GetFeedsFunc = func(ctx context.Context, enabledOnly bool) ([]db.Feed, error) {
-		return testFeeds, nil
-	}
-
-	parsedFeed := &types.Feed{
-		Title:       "Updated Feed",
-		Description: "Updated Description",
-		Items: []types.Item{
-			{
-				GUID:      "item1",
-				Title:     "New Item",
-				Link:      "http://example.com/new",
-				Published: time.Now(),
-			},
-		},
+		return []db.Feed{{ID: 1, URL: "http://test.com", Enabled: true}}, nil
 	}
 
 	mockParser.ParseFunc = func(ctx context.Context, url string) (*types.Feed, error) {
-		if url == "http://example.com/feed2.xml" {
-			return nil, fmt.Errorf("parse error")
-		}
-		return parsedFeed, nil
-	}
-
-	mockDB.UpdateFeedErrorFunc = func(ctx context.Context, feedID int64, errMsg string) error {
-		assert.Equal(t, int64(2), feedID)
-		assert.Contains(t, errMsg, "parse error")
-		return nil
-	}
-
-	mockDB.CreateItemFunc = func(ctx context.Context, item *db.Item) error {
-		item.ID = 1 // simulate successful creation
-		return nil
+		return &types.Feed{
+			Items: []types.Item{{GUID: "item1", Title: "Test", Link: "http://test.com/1"}},
+		}, nil
 	}
 
 	mockDB.ItemExistsFunc = func(ctx context.Context, feedID int64, guid string) (bool, error) {
 		return false, nil
 	}
 
+	mockDB.CreateItemFunc = func(ctx context.Context, item *db.Item) error {
+		item.ID = 1
+		return nil
+	}
+
 	mockDB.UpdateFeedFetchedFunc = func(ctx context.Context, feedID int64, nextFetch time.Time) error {
 		return nil
 	}
 
-	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{MaxWorkers: 2})
-	s.updateAllFeeds(ctx)
-
-	assert.Len(t, mockParser.ParseCalls(), 2)
-}
-
-func TestScheduler_periodicUpdates(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	mockDB := &mocks.DatabaseMock{}
-	mockParser := &mocks.ParserMock{}
-	mockExtractor := &mocks.ExtractorMock{}
-
-	mockDB.GetFeedsFunc = func(ctx context.Context, enabledOnly bool) ([]db.Feed, error) {
-		return []db.Feed{}, nil
-	}
-
-	s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{
-		UpdateInterval:  50 * time.Millisecond,
-		ExtractInterval: 1 * time.Hour, // don't run extraction
-	})
-
-	// start the scheduler
-	go s.Start(ctx)
-
-	// wait for at least 2 updates
-	time.Sleep(150 * time.Millisecond)
-	cancel()
-
-	// wait for graceful shutdown
-	time.Sleep(50 * time.Millisecond)
-
-	assert.GreaterOrEqual(t, len(mockDB.GetFeedsCalls()), 2)
-}
-
-func TestScheduler_classifyPendingItems(t *testing.T) {
-	ctx := context.Background()
-	mockDB := &mocks.DatabaseMock{}
-	mockParser := &mocks.ParserMock{}
-	mockExtractor := &mocks.ExtractorMock{}
-	mockClassifier := &mocks.ClassifierMock{}
-
-	testItems := []db.Item{
-		{
-			ID:               1,
-			GUID:             "guid1",
-			Title:            "Article 1",
-			ExtractedContent: "Content 1",
-		},
-		{
-			ID:               2,
-			GUID:             "guid2",
-			Title:            "Article 2",
-			ExtractedContent: "Content 2",
-		},
-	}
-
-	mockDB.GetUnclassifiedItemsFunc = func(ctx context.Context, limit int) ([]db.Item, error) {
-		return testItems, nil
-	}
-
-	mockDB.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error) {
-		return []db.FeedbackExample{
-			{
-				Title:    "Previous Article",
-				Feedback: "like",
-				Topics:   []string{"tech"},
-			},
-		}, nil
-	}
-
-	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
-		assert.Len(t, articles, 2)
-		assert.Len(t, feedbacks, 1)
-
-		return []db.Classification{
-			{
-				GUID:        "guid1",
-				Score:       8.5,
-				Explanation: "Relevant article",
-				Topics:      []string{"tech", "programming"},
-			},
-			{
-				GUID:        "guid2",
-				Score:       3.0,
-				Explanation: "Not relevant",
-				Topics:      []string{"sports"},
-			},
-		}, nil
-	}
-
-	mockDB.UpdateClassificationsFunc = func(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error {
-		assert.Len(t, classifications, 2)
-		assert.Len(t, itemsByGUID, 2)
-		assert.Equal(t, int64(1), itemsByGUID["guid1"])
-		assert.Equal(t, int64(2), itemsByGUID["guid2"])
-		return nil
-	}
-
-	s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
-	s.classifyPendingItems(ctx)
-
-	assert.Len(t, mockClassifier.ClassifyArticlesCalls(), 1)
-	assert.Len(t, mockDB.UpdateClassificationsCalls(), 1)
-}
-
-func TestScheduler_ClassifyNow(t *testing.T) {
-	ctx := context.Background()
-	mockDB := &mocks.DatabaseMock{}
-	mockParser := &mocks.ParserMock{}
-	mockExtractor := &mocks.ExtractorMock{}
-	mockClassifier := &mocks.ClassifierMock{}
-
-	// set up expectations
 	mockDB.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error) {
 		return []db.FeedbackExample{}, nil
 	}
 
-	mockDB.GetUnclassifiedItemsFunc = func(ctx context.Context, limit int) ([]db.Item, error) {
-		return []db.Item{
-			{
-				ID:    1,
-				GUID:  "guid1",
-				Title: "Test Article",
-			},
-		}, nil
+	// slow extraction to simulate work in progress
+	mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
+		select {
+		case <-processingStarted:
+			// already signaled
+		default:
+			close(processingStarted)
+		}
+
+		<-processingBlocked // block until test releases
+		return &content.ExtractResult{Content: "Test"}, nil
 	}
 
-	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, items []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
-		return []db.Classification{
-			{
-				GUID:        "guid1",
-				Score:       7.5,
-				Explanation: "Relevant",
-				Topics:      []string{"tech"},
-			},
-		}, nil
+	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+		return []db.Classification{{Score: 5.0}}, nil
 	}
 
-	mockDB.UpdateClassificationsFunc = func(ctx context.Context, classifications []db.Classification, itemsByGUID map[string]int64) error {
+	mockDB.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, content, richContent string, c db.Classification) error {
+		processingComplete = true
 		return nil
 	}
 
-	s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+	scheduler := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{
+		UpdateInterval: 50 * time.Millisecond,
+		MaxWorkers:     1,
+	})
 
-	// test ClassifyNow
-	err := s.ClassifyNow(ctx)
-	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	scheduler.Start(ctx)
 
-	// verify classification was triggered
-	assert.Len(t, mockDB.GetUnclassifiedItemsCalls(), 1)
-	assert.Len(t, mockClassifier.ClassifyArticlesCalls(), 1)
-	assert.Len(t, mockDB.UpdateClassificationsCalls(), 1)
+	// wait for processing to start
+	<-processingStarted
+
+	// cancel context (simulate shutdown)
+	cancel()
+
+	// release the blocked processing
+	close(processingBlocked)
+
+	// stop should wait for in-flight work
+	scheduler.Stop()
+
+	// verify processing completed despite shutdown
+	assert.True(t, processingComplete, "in-flight processing should complete")
 }

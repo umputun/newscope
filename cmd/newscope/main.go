@@ -111,10 +111,8 @@ func main() {
 
 	// setup and start scheduler
 	schedulerCfg := scheduler.Config{
-		UpdateInterval:   time.Duration(cfg.Schedule.UpdateInterval) * time.Minute,
-		ExtractInterval:  time.Duration(cfg.Schedule.ExtractInterval) * time.Minute,
-		ClassifyInterval: time.Duration(cfg.Schedule.ClassifyInterval) * time.Minute,
-		MaxWorkers:       cfg.Schedule.MaxWorkers,
+		UpdateInterval: time.Duration(cfg.Schedule.UpdateInterval) * time.Minute,
+		MaxWorkers:     cfg.Schedule.MaxWorkers,
 	}
 	sched := scheduler.NewScheduler(dbConn, feedParser, contentExtractor, classifier, schedulerCfg)
 	sched.Start(ctx)

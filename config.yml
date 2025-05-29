@@ -14,8 +14,6 @@ database:
 
 schedule:
   update_interval: 30    # minutes
-  extract_interval: 1    # minutes
-  classify_interval: 1  # minutes
   max_workers: 20
 
 llm:

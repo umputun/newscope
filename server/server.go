@@ -64,7 +64,6 @@ type Database interface {
 type Scheduler interface {
 	UpdateFeedNow(ctx context.Context, feedID int64) error
 	ExtractContentNow(ctx context.Context, itemID int64) error
-	ClassifyNow(ctx context.Context) error
 }
 
 // ConfigProvider provides server configuration
@@ -196,7 +195,6 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("GET /status", s.statusHandler)
 		r.HandleFunc("POST /feedback/{id}/{action}", s.feedbackHandler)
 		r.HandleFunc("POST /extract/{id}", s.extractHandler)
-		r.HandleFunc("POST /classify-now", s.classifyNowHandler)
 		r.HandleFunc("GET /articles/{id}/content", s.articleContentHandler)
 
 		// feed management
@@ -727,20 +725,6 @@ func (s *Server) extractHandler(w http.ResponseWriter, r *http.Request) {
 
 	// for HTMX, return the updated article card HTML
 	s.renderArticleCard(w, article)
-}
-
-// classifyNowHandler triggers immediate classification
-func (s *Server) classifyNowHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// trigger classification
-	if err := s.scheduler.ClassifyNow(ctx); err != nil {
-		log.Printf("[ERROR] failed to trigger classification: %v", err)
-		RenderError(w, r, err, http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
 }
 
 // articleContentHandler returns extracted content for an article
