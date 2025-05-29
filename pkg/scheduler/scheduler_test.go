@@ -228,6 +228,15 @@ func TestScheduler_ProcessItem(t *testing.T) {
 			return nil, extractErr
 		}
 
+		// should save extraction error to database
+		mockDB.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, content, richContent string, err error) error {
+			assert.Equal(t, int64(1), itemID)
+			assert.Empty(t, content)
+			assert.Empty(t, richContent)
+			assert.Equal(t, extractErr, err)
+			return nil
+		}
+
 		// should not call classifier or update database
 		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
 			t.Fatal("classifier should not be called on extraction error")

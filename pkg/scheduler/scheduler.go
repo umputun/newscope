@@ -39,6 +39,7 @@ type Database interface {
 	CreateItem(ctx context.Context, item *db.Item) error
 	ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
 	UpdateItemProcessed(ctx context.Context, itemID int64, content, richContent string, classification db.Classification) error
+	UpdateItemExtraction(ctx context.Context, itemID int64, content, richContent string, err error) error
 	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
 }
 
@@ -145,6 +146,10 @@ func (s *Scheduler) processItem(ctx context.Context, item db.Item, feedbacks []d
 	extracted, err := s.extractor.Extract(ctx, item.Link)
 	if err != nil {
 		lgr.Printf("[WARN] failed to extract content from %s: %v", item.Link, err)
+		// save extraction error to database
+		if updateErr := s.db.UpdateItemExtraction(ctx, item.ID, "", "", err); updateErr != nil {
+			lgr.Printf("[WARN] failed to update extraction error: %v", updateErr)
+		}
 		// don't fail the whole process, just skip classification
 		return
 	}
