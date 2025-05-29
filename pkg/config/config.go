@@ -92,7 +92,7 @@ func Load(path string) (*Config, error) {
 
 	// set defaults for database
 	if cfg.Database.DSN == "" {
-		cfg.Database.DSN = "file:newscope.db?cache=shared&mode=rwc"
+		cfg.Database.DSN = "file:newscope.db?cache=shared&mode=rwc&_txlock=immediate"
 	}
 	if cfg.Database.MaxOpenConns == 0 {
 		cfg.Database.MaxOpenConns = 10

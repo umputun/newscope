@@ -6,8 +6,10 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/go-pkgz/repeater/v2"
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite" // pure Go SQLite driver
 )
@@ -18,6 +20,15 @@ var schemaFS embed.FS
 // DB wraps sqlx.DB with our custom methods
 type DB struct {
 	*sqlx.DB
+}
+
+// criticalError wraps an error to signal repeater to stop retrying
+type criticalError struct {
+	err error
+}
+
+func (e *criticalError) Error() string {
+	return e.err.Error()
 }
 
 // Config represents database configuration
@@ -31,7 +42,7 @@ type Config struct {
 // New creates a new database connection
 func New(ctx context.Context, cfg Config) (*DB, error) {
 	if cfg.DSN == "" {
-		cfg.DSN = "file:newscope.db?cache=shared&mode=rwc"
+		cfg.DSN = "file:newscope.db?cache=shared&mode=rwc&_txlock=immediate"
 	}
 
 	db, err := sqlx.Open("sqlite", cfg.DSN)
@@ -160,34 +171,49 @@ func (db *DB) GetFeedsToFetch(ctx context.Context, limit int) ([]Feed, error) {
 
 // UpdateFeedFetched updates feed after successful fetch
 func (db *DB) UpdateFeedFetched(ctx context.Context, feedID int64, nextFetch time.Time) error {
-	query := `
-		UPDATE feeds 
-		SET last_fetched = datetime('now'), 
-		    next_fetch = ?,
-		    error_count = 0,
-		    last_error = ''
-		WHERE id = ?
-	`
-	_, err := db.ExecContext(ctx, query, nextFetch, feedID)
-	if err != nil {
-		return fmt.Errorf("update feed fetched: %w", err)
-	}
-	return nil
+	r := repeater.NewBackoff(5, 50*time.Millisecond, repeater.WithMaxDelay(2*time.Second))
+
+	return r.Do(ctx, func() error {
+		query := `
+			UPDATE feeds 
+			SET last_fetched = datetime('now'), 
+			    next_fetch = ?,
+			    error_count = 0,
+			    last_error = ''
+			WHERE id = ?
+		`
+		_, err := db.ExecContext(ctx, query, nextFetch, feedID)
+		if err != nil {
+			if isLockError(err) {
+				return err // retry
+			}
+			// for other errors, stop retrying
+			return &criticalError{err: fmt.Errorf("update feed fetched: %w", err)}
+		}
+		return nil
+	})
 }
 
 // UpdateFeedError updates feed after fetch error
 func (db *DB) UpdateFeedError(ctx context.Context, feedID int64, errMsg string) error {
-	query := `
-		UPDATE feeds 
-		SET error_count = error_count + 1,
-		    last_error = ?
-		WHERE id = ?
-	`
-	_, err := db.ExecContext(ctx, query, errMsg, feedID)
-	if err != nil {
-		return fmt.Errorf("update feed error: %w", err)
-	}
-	return nil
+	r := repeater.NewBackoff(5, 50*time.Millisecond, repeater.WithMaxDelay(2*time.Second))
+
+	return r.Do(ctx, func() error {
+		query := `
+			UPDATE feeds 
+			SET error_count = error_count + 1,
+			    last_error = ?
+			WHERE id = ?
+		`
+		_, err := db.ExecContext(ctx, query, errMsg, feedID)
+		if err != nil {
+			if isLockError(err) {
+				return err // retry
+			}
+			return &criticalError{err: fmt.Errorf("update feed error: %w", err)}
+		}
+		return nil
+	})
 }
 
 // UpdateFeedStatus enables or disables a feed
@@ -343,49 +369,71 @@ func (db *DB) UpdateItemClassification(ctx context.Context, itemID int64, score 
 
 // UpdateItemProcessed updates item with both extraction and classification results
 func (db *DB) UpdateItemProcessed(ctx context.Context, itemID int64, content, richContent string, classification Classification) error {
-	// build query based on whether we have a summary
-	var query string
-	var args []interface{}
+	// create a repeater with exponential backoff for handling SQLite busy errors
+	// starts at 50ms, doubles each time, max 5 attempts
+	r := repeater.NewBackoff(5, 50*time.Millisecond, repeater.WithMaxDelay(2*time.Second))
 
-	if classification.Summary != "" {
-		// update all fields including description in a single atomic operation
-		query = `
-			UPDATE items 
-			SET extracted_content = ?, 
-			    extracted_rich_content = ?, 
-			    extracted_at = datetime('now'),
-			    relevance_score = ?, 
-			    explanation = ?,
-			    topics = ?,
-			    classified_at = datetime('now'),
-			    description = ?
-			WHERE id = ?
-		`
-		args = []interface{}{content, richContent, classification.Score, classification.Explanation,
-			Topics(classification.Topics), classification.Summary, itemID}
-	} else {
-		// update without changing description
-		query = `
-			UPDATE items 
-			SET extracted_content = ?, 
-			    extracted_rich_content = ?, 
-			    extracted_at = datetime('now'),
-			    relevance_score = ?, 
-			    explanation = ?,
-			    topics = ?,
-			    classified_at = datetime('now')
-			WHERE id = ?
-		`
-		args = []interface{}{content, richContent, classification.Score, classification.Explanation,
-			Topics(classification.Topics), itemID}
+	return r.Do(ctx, func() error {
+		// build query based on whether we have a summary
+		var query string
+		var args []interface{}
+
+		if classification.Summary != "" {
+			// update all fields including description in a single atomic operation
+			query = `
+				UPDATE items 
+				SET extracted_content = ?, 
+				    extracted_rich_content = ?, 
+				    extracted_at = datetime('now'),
+				    relevance_score = ?, 
+				    explanation = ?,
+				    topics = ?,
+				    classified_at = datetime('now'),
+				    description = ?
+				WHERE id = ?
+			`
+			args = []interface{}{content, richContent, classification.Score, classification.Explanation,
+				Topics(classification.Topics), classification.Summary, itemID}
+		} else {
+			// update without changing description
+			query = `
+				UPDATE items 
+				SET extracted_content = ?, 
+				    extracted_rich_content = ?, 
+				    extracted_at = datetime('now'),
+				    relevance_score = ?, 
+				    explanation = ?,
+				    topics = ?,
+				    classified_at = datetime('now')
+				WHERE id = ?
+			`
+			args = []interface{}{content, richContent, classification.Score, classification.Explanation,
+				Topics(classification.Topics), itemID}
+		}
+
+		_, err := db.ExecContext(ctx, query, args...)
+		if err != nil {
+			// check if this is a lock error that we should retry
+			if isLockError(err) {
+				return err // repeater will retry this
+			}
+			// for other errors, wrap and stop retrying
+			return &criticalError{err: fmt.Errorf("update item processed: %w", err)}
+		}
+
+		return nil
+	})
+}
+
+// isLockError checks if an error is a SQLite lock/busy error
+func isLockError(err error) bool {
+	if err == nil {
+		return false
 	}
-
-	_, err := db.ExecContext(ctx, query, args...)
-	if err != nil {
-		return fmt.Errorf("update item processed: %w", err)
-	}
-
-	return nil
+	errStr := err.Error()
+	return strings.Contains(errStr, "SQLITE_BUSY") ||
+		strings.Contains(errStr, "database is locked") ||
+		strings.Contains(errStr, "database table is locked")
 }
 
 // UpdateItemFeedback updates user feedback on an item
