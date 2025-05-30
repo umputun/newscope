@@ -138,10 +138,6 @@
                     <span class="setting-value">{{.Config.LLM.Classification.FeedbackExamples}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Batch Size</label>
-                    <span class="setting-value">{{.Config.LLM.Classification.BatchSize}} articles</span>
-                </div>
-                <div class="setting-item">
                     <label>JSON Mode</label>
                     <span class="setting-value {{if .Config.LLM.Classification.UseJSONMode}}text-success{{else}}text-muted{{end}}">
                         {{if .Config.LLM.Classification.UseJSONMode}}<i class="fas fa-check"></i> Enabled{{else}}<i class="fas fa-times"></i> Disabled{{end}}

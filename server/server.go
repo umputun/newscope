@@ -494,6 +494,22 @@ func (s *Server) fetchFeedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// get updated feed to show new fetch time
+	feeds, err := s.db.GetAllFeeds(ctx)
+	if err != nil {
+		log.Printf("[ERROR] failed to get feed after fetch: %v", err)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// find the updated feed
+	for _, feed := range feeds {
+		if feed.ID == id {
+			s.renderFeedCard(w, &feed)
+			return
+		}
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
