@@ -487,8 +487,8 @@ func (s *Server) fetchFeedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// trigger fetch
-	if err := s.scheduler.UpdateFeedNow(ctx, id); err != nil {
+	// trigger fetch with background context to avoid cancellation when HTTP request completes
+	if err := s.scheduler.UpdateFeedNow(context.Background(), id); err != nil {
 		log.Printf("[ERROR] failed to fetch feed: %v", err)
 		RenderError(w, r, err, http.StatusInternalServerError)
 		return
