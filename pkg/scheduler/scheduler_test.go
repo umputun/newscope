@@ -21,6 +21,22 @@ import (
 	"github.com/umputun/newscope/pkg/scheduler/mocks"
 )
 
+// setupTestDB sets up a database mock with default implementations
+func setupTestDB() *mocks.DatabaseMock {
+	mockDB := &mocks.DatabaseMock{}
+
+	// default implementations that tests can override
+	mockDB.ItemExistsFunc = func(ctx context.Context, feedID int64, guid string) (bool, error) {
+		return false, nil
+	}
+
+	mockDB.ItemExistsByTitleOrURLFunc = func(ctx context.Context, title, url string) (bool, error) {
+		return false, nil
+	}
+
+	return mockDB
+}
+
 func TestNewScheduler(t *testing.T) {
 	mockDB := &mocks.DatabaseMock{}
 	mockParser := &mocks.ParserMock{}
@@ -93,6 +109,11 @@ func TestScheduler_UpdateFeed(t *testing.T) {
 			return false, nil
 		}
 
+		// mock ItemExistsByTitleOrURL to return false for all items
+		mockDB.ItemExistsByTitleOrURLFunc = func(ctx context.Context, title, url string) (bool, error) {
+			return false, nil
+		}
+
 		createItemCount := 0
 		mockDB.CreateItemFunc = func(ctx context.Context, item *db.Item) error {
 			createItemCount++
@@ -150,6 +171,64 @@ func TestScheduler_UpdateFeed(t *testing.T) {
 		assert.True(t, errorUpdated)
 		// no items should be sent to channel
 		assert.Empty(t, processCh)
+	})
+
+	t.Run("duplicate item by title or URL", func(t *testing.T) {
+		mockDB := &mocks.DatabaseMock{}
+		mockParser := &mocks.ParserMock{}
+		mockExtractor := &mocks.ExtractorMock{}
+
+		testFeed := db.Feed{
+			ID:            1,
+			URL:           "http://example.com/feed.xml",
+			FetchInterval: 1800,
+		}
+
+		parsedFeed := &types.Feed{
+			Title: "Test Feed",
+			Items: []types.Item{
+				{GUID: "item1", Title: "Duplicate Article", Link: "http://example.com/1"},
+				{GUID: "item2", Title: "New Article", Link: "http://example.com/2"},
+			},
+		}
+
+		mockParser.ParseFunc = func(ctx context.Context, url string) (*types.Feed, error) {
+			return parsedFeed, nil
+		}
+
+		// mock ItemExists to return false for all items
+		mockDB.ItemExistsFunc = func(ctx context.Context, feedID int64, guid string) (bool, error) {
+			return false, nil
+		}
+
+		// mock ItemExistsByTitleOrURL to return true for first item (duplicate)
+		mockDB.ItemExistsByTitleOrURLFunc = func(ctx context.Context, title, url string) (bool, error) {
+			if title == "Duplicate Article" || url == "http://example.com/1" {
+				return true, nil
+			}
+			return false, nil
+		}
+
+		createItemCount := 0
+		mockDB.CreateItemFunc = func(ctx context.Context, item *db.Item) error {
+			createItemCount++
+			item.ID = int64(createItemCount)
+			return nil
+		}
+
+		mockDB.UpdateFeedFetchedFunc = func(ctx context.Context, feedID int64, nextFetch time.Time) error {
+			return nil
+		}
+
+		processCh := make(chan db.Item, 10)
+		defer close(processCh)
+
+		s := NewScheduler(mockDB, mockParser, mockExtractor, nil, Config{})
+		s.updateFeed(ctx, testFeed, processCh)
+
+		// only one item should be created (the non-duplicate)
+		assert.Equal(t, 1, createItemCount)
+		assert.Len(t, processCh, 1)
 	})
 }
 
@@ -296,7 +375,7 @@ func TestScheduler_ProcessItem(t *testing.T) {
 func TestScheduler_UpdateFeedNow(t *testing.T) {
 	ctx := context.Background()
 
-	mockDB := &mocks.DatabaseMock{}
+	mockDB := setupTestDB()
 	mockParser := &mocks.ParserMock{}
 	mockExtractor := &mocks.ExtractorMock{}
 	mockClassifier := &mocks.ClassifierMock{}
@@ -429,7 +508,7 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 
 func TestScheduler_StartStop(t *testing.T) {
 	// setup mocks
-	mockDB := &mocks.DatabaseMock{}
+	mockDB := setupTestDB()
 	mockParser := &mocks.ParserMock{}
 	mockExtractor := &mocks.ExtractorMock{}
 	mockClassifier := &mocks.ClassifierMock{}
@@ -574,7 +653,7 @@ func TestScheduler_StartStop(t *testing.T) {
 }
 
 func TestScheduler_GracefulShutdown(t *testing.T) {
-	mockDB := &mocks.DatabaseMock{}
+	mockDB := setupTestDB()
 	mockParser := &mocks.ParserMock{}
 	mockExtractor := &mocks.ExtractorMock{}
 	mockClassifier := &mocks.ClassifierMock{}

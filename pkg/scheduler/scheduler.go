@@ -38,6 +38,7 @@ type Database interface {
 	GetItem(ctx context.Context, id int64) (*db.Item, error)
 	CreateItem(ctx context.Context, item *db.Item) error
 	ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
+	ItemExistsByTitleOrURL(ctx context.Context, title, url string) (bool, error)
 	UpdateItemProcessed(ctx context.Context, itemID int64, content, richContent string, classification db.Classification) error
 	UpdateItemExtraction(ctx context.Context, itemID int64, content, richContent string, err error) error
 	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
@@ -167,7 +168,7 @@ func (s *Scheduler) processItem(ctx context.Context, item db.Item, feedbacks []d
 
 	classifications, err := s.classifier.ClassifyArticles(ctx, []db.Item{item}, feedbacks, topics)
 	if err != nil {
-		lgr.Printf("[ERROR] failed to classify item: %v", err)
+		lgr.Printf("[WARN] failed to classify item: %v", err)
 		return
 	}
 
@@ -179,7 +180,7 @@ func (s *Scheduler) processItem(ctx context.Context, item db.Item, feedbacks []d
 	// 3. Update item with both extraction and classification results
 	classification := classifications[0]
 	if err := s.db.UpdateItemProcessed(ctx, item.ID, extracted.Content, extracted.RichContent, classification); err != nil {
-		lgr.Printf("[ERROR] failed to update item processing: %v", err)
+		lgr.Printf("[WARN] failed to update item processing: %v", err)
 		return
 	}
 
@@ -245,9 +246,9 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 
 	parsedFeed, err := s.parser.Parse(ctx, f.URL)
 	if err != nil {
-		lgr.Printf("[ERROR] failed to parse feed %s: %v", f.URL, err)
+		lgr.Printf("[WARN] failed to parse feed %s: %v", f.URL, err)
 		if err := s.db.UpdateFeedError(ctx, f.ID, err.Error()); err != nil {
-			lgr.Printf("[ERROR] failed to update feed error: %v", err)
+			lgr.Printf("[WARN] failed to update feed error: %v", err)
 		}
 		return
 	}
@@ -255,12 +256,24 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 	// store new items
 	newCount := 0
 	for _, item := range parsedFeed.Items {
+		// first check if item exists in this feed
 		exists, err := s.db.ItemExists(ctx, f.ID, item.GUID)
 		if err != nil {
-			lgr.Printf("[ERROR] failed to check item existence: %v", err)
+			lgr.Printf("[WARN] failed to check item existence: %v", err)
 			continue
 		}
 		if exists {
+			continue
+		}
+
+		// check if item with same title or URL exists in any feed
+		duplicateExists, err := s.db.ItemExistsByTitleOrURL(ctx, item.Title, item.Link)
+		if err != nil {
+			lgr.Printf("[WARN] failed to check duplicate item: %v", err)
+			continue
+		}
+		if duplicateExists {
+			lgr.Printf("[DEBUG] skipping duplicate item: %s", item.Title)
 			continue
 		}
 
@@ -276,7 +289,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 		}
 
 		if err := s.db.CreateItem(ctx, dbItem); err != nil {
-			lgr.Printf("[ERROR] failed to create item: %v", err)
+			lgr.Printf("[WARN] failed to create item: %v", err)
 			continue
 		}
 
@@ -293,7 +306,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 	// update last fetched timestamp
 	nextFetch := time.Now().Add(time.Duration(f.FetchInterval) * time.Second)
 	if err := s.db.UpdateFeedFetched(ctx, f.ID, nextFetch); err != nil {
-		lgr.Printf("[ERROR] failed to update last fetched: %v", err)
+		lgr.Printf("[WARN] failed to update last fetched: %v", err)
 	}
 
 	if newCount > 0 {

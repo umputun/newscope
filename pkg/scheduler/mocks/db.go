@@ -38,6 +38,9 @@ import (
 //			ItemExistsFunc: func(ctx context.Context, feedID int64, guid string) (bool, error) {
 //				panic("mock out the ItemExists method")
 //			},
+//			ItemExistsByTitleOrURLFunc: func(ctx context.Context, title string, url string) (bool, error) {
+//				panic("mock out the ItemExistsByTitleOrURL method")
+//			},
 //			UpdateFeedErrorFunc: func(ctx context.Context, feedID int64, errMsg string) error {
 //				panic("mock out the UpdateFeedError method")
 //			},
@@ -77,6 +80,9 @@ type DatabaseMock struct {
 
 	// ItemExistsFunc mocks the ItemExists method.
 	ItemExistsFunc func(ctx context.Context, feedID int64, guid string) (bool, error)
+
+	// ItemExistsByTitleOrURLFunc mocks the ItemExistsByTitleOrURL method.
+	ItemExistsByTitleOrURLFunc func(ctx context.Context, title string, url string) (bool, error)
 
 	// UpdateFeedErrorFunc mocks the UpdateFeedError method.
 	UpdateFeedErrorFunc func(ctx context.Context, feedID int64, errMsg string) error
@@ -143,6 +149,15 @@ type DatabaseMock struct {
 			// GUID is the guid argument value.
 			GUID string
 		}
+		// ItemExistsByTitleOrURL holds details about calls to the ItemExistsByTitleOrURL method.
+		ItemExistsByTitleOrURL []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Title is the title argument value.
+			Title string
+			// URL is the url argument value.
+			URL string
+		}
 		// UpdateFeedError holds details about calls to the UpdateFeedError method.
 		UpdateFeedError []struct {
 			// Ctx is the ctx argument value.
@@ -188,17 +203,18 @@ type DatabaseMock struct {
 			Classification db.Classification
 		}
 	}
-	lockCreateItem           sync.RWMutex
-	lockGetFeed              sync.RWMutex
-	lockGetFeeds             sync.RWMutex
-	lockGetItem              sync.RWMutex
-	lockGetRecentFeedback    sync.RWMutex
-	lockGetTopics            sync.RWMutex
-	lockItemExists           sync.RWMutex
-	lockUpdateFeedError      sync.RWMutex
-	lockUpdateFeedFetched    sync.RWMutex
-	lockUpdateItemExtraction sync.RWMutex
-	lockUpdateItemProcessed  sync.RWMutex
+	lockCreateItem             sync.RWMutex
+	lockGetFeed                sync.RWMutex
+	lockGetFeeds               sync.RWMutex
+	lockGetItem                sync.RWMutex
+	lockGetRecentFeedback      sync.RWMutex
+	lockGetTopics              sync.RWMutex
+	lockItemExists             sync.RWMutex
+	lockItemExistsByTitleOrURL sync.RWMutex
+	lockUpdateFeedError        sync.RWMutex
+	lockUpdateFeedFetched      sync.RWMutex
+	lockUpdateItemExtraction   sync.RWMutex
+	lockUpdateItemProcessed    sync.RWMutex
 }
 
 // CreateItem calls CreateItemFunc.
@@ -454,6 +470,46 @@ func (mock *DatabaseMock) ItemExistsCalls() []struct {
 	mock.lockItemExists.RLock()
 	calls = mock.calls.ItemExists
 	mock.lockItemExists.RUnlock()
+	return calls
+}
+
+// ItemExistsByTitleOrURL calls ItemExistsByTitleOrURLFunc.
+func (mock *DatabaseMock) ItemExistsByTitleOrURL(ctx context.Context, title string, url string) (bool, error) {
+	if mock.ItemExistsByTitleOrURLFunc == nil {
+		panic("DatabaseMock.ItemExistsByTitleOrURLFunc: method is nil but Database.ItemExistsByTitleOrURL was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Title string
+		URL   string
+	}{
+		Ctx:   ctx,
+		Title: title,
+		URL:   url,
+	}
+	mock.lockItemExistsByTitleOrURL.Lock()
+	mock.calls.ItemExistsByTitleOrURL = append(mock.calls.ItemExistsByTitleOrURL, callInfo)
+	mock.lockItemExistsByTitleOrURL.Unlock()
+	return mock.ItemExistsByTitleOrURLFunc(ctx, title, url)
+}
+
+// ItemExistsByTitleOrURLCalls gets all the calls that were made to ItemExistsByTitleOrURL.
+// Check the length with:
+//
+//	len(mockedDatabase.ItemExistsByTitleOrURLCalls())
+func (mock *DatabaseMock) ItemExistsByTitleOrURLCalls() []struct {
+	Ctx   context.Context
+	Title string
+	URL   string
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Title string
+		URL   string
+	}
+	mock.lockItemExistsByTitleOrURL.RLock()
+	calls = mock.calls.ItemExistsByTitleOrURL
+	mock.lockItemExistsByTitleOrURL.RUnlock()
 	return calls
 }
 

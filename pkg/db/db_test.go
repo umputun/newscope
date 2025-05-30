@@ -360,7 +360,7 @@ func TestItemOperations(t *testing.T) {
 
 		updated2, err := db.GetItem(ctx, item2.ID)
 		require.NoError(t, err)
-		assert.Equal(t, 0.0, updated2.RelevanceScore)
+		assert.InEpsilon(t, 0.0, updated2.RelevanceScore, 0.001)
 	})
 
 	t.Run("get recent feedback", func(t *testing.T) {

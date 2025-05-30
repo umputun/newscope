@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"net/url"
+	"strings"
 
 	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed/types"
@@ -88,7 +90,7 @@ func (d *DBAdapter) GetClassifiedItems(ctx context.Context, minScore float64, to
 				Published:   item.Published,
 			},
 			ID:                   item.ID,
-			FeedName:             item.FeedTitle,
+			FeedName:             getFeedDisplayName(item.FeedTitle, item.FeedURL),
 			ExtractedContent:     item.ExtractedContent,
 			ExtractedRichContent: item.ExtractedRichContent,
 			ExtractionError:      item.ExtractionError,
@@ -125,7 +127,7 @@ func (d *DBAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*types
 			Published:   item.Published,
 		},
 		ID:                   item.ID,
-		FeedName:             item.FeedTitle,
+		FeedName:             getFeedDisplayName(item.FeedTitle, item.FeedURL),
 		ExtractedContent:     item.ExtractedContent,
 		ExtractedRichContent: item.ExtractedRichContent,
 		ExtractionError:      item.ExtractionError,
@@ -167,4 +169,22 @@ func (d *DBAdapter) UpdateFeedStatus(ctx context.Context, feedID int64, enabled 
 // DeleteFeed removes a feed
 func (d *DBAdapter) DeleteFeed(ctx context.Context, feedID int64) error {
 	return d.DB.DeleteFeed(ctx, feedID)
+}
+
+// getFeedDisplayName returns the feed title if available, otherwise extracts hostname from URL
+func getFeedDisplayName(title, feedURL string) string {
+	if title != "" {
+		return title
+	}
+
+	// try to extract hostname from URL
+	if u, err := url.Parse(feedURL); err == nil {
+		host := u.Hostname()
+		// remove www. prefix if present
+		host = strings.TrimPrefix(host, "www.")
+		return host
+	}
+
+	// fallback to the full URL
+	return feedURL
 }

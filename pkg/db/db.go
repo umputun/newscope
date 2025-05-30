@@ -548,6 +548,18 @@ func (db *DB) ItemExists(ctx context.Context, feedID int64, guid string) (bool, 
 	return exists, nil
 }
 
+// ItemExistsByTitleOrURL checks if an item with the same title or URL already exists in any feed
+func (db *DB) ItemExistsByTitleOrURL(ctx context.Context, title, url string) (bool, error) {
+	var exists bool
+	err := db.GetContext(ctx, &exists,
+		"SELECT EXISTS(SELECT 1 FROM items WHERE title = ? OR link = ?)",
+		title, url)
+	if err != nil {
+		return false, fmt.Errorf("check item exists by title or url: %w", err)
+	}
+	return exists, nil
+}
+
 // Setting operations
 
 // GetSetting retrieves a setting value
@@ -581,7 +593,8 @@ func (db *DB) GetClassifiedItems(ctx context.Context, minScore float64, limit in
 	query := `
 		SELECT 
 			i.*,
-			f.title as feed_title
+			f.title as feed_title,
+			f.url as feed_url
 		FROM items i
 		JOIN feeds f ON i.feed_id = f.id
 		WHERE i.relevance_score >= ?
@@ -602,7 +615,8 @@ func (db *DB) GetClassifiedItem(ctx context.Context, itemID int64) (*Item, error
 	query := `
 		SELECT 
 			i.*,
-			f.title as feed_title
+			f.title as feed_title,
+			f.url as feed_url
 		FROM items i
 		JOIN feeds f ON i.feed_id = f.id
 		WHERE i.id = ?

@@ -55,6 +55,7 @@ type Item struct {
 
 	// joined data (not stored in DB, populated by queries)
 	FeedTitle string `db:"feed_title"`
+	FeedURL   string `db:"feed_url"`
 }
 
 // Setting represents a key-value configuration
