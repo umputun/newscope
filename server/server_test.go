@@ -267,6 +267,13 @@ func TestServer_articlesHandler(t *testing.T) {
 		GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 			return []string{"tech", "ai", "science"}, nil
 		},
+		GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			// for testing, return topics based on score threshold
+			if minScore >= 5.0 {
+				return []string{"tech", "ai"}, nil // fewer topics for higher scores
+			}
+			return []string{"tech", "ai", "science"}, nil
+		},
 	}
 
 	scheduler := &mocks.SchedulerMock{}
@@ -282,7 +289,8 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "Test Article")
 	assert.Contains(t, w.Body.String(), "Test Feed")
 	assert.Contains(t, w.Body.String(), "Score: 8.5/10")
-	assert.Contains(t, w.Body.String(), "<html") // should contain full HTML
+	assert.Contains(t, w.Body.String(), "<html")                                                                  // should contain full HTML
+	assert.Contains(t, w.Body.String(), "Articles <span id=\"article-count\" class=\"article-count\">(1)</span>") // should show count
 
 	// test HTMX request (partial update)
 	req2 := httptest.NewRequest("GET", "/articles?score=5.0&topic=tech", http.NoBody)
@@ -295,7 +303,8 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w2.Body.String(), "Test Article")
 	assert.Contains(t, w2.Body.String(), "Test Feed")
 	assert.Contains(t, w2.Body.String(), "Score: 8.5/10")
-	assert.NotContains(t, w2.Body.String(), "<html") // should NOT contain full HTML for HTMX request
+	assert.NotContains(t, w2.Body.String(), "<html")                                                                     // should NOT contain full HTML for HTMX request
+	assert.Contains(t, w2.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(1)</span>`) // should update count
 
 	// test HTMX request with no articles
 	database.GetClassifiedItemsFunc = func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
@@ -310,7 +319,8 @@ func TestServer_articlesHandler(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w3.Code)
 	assert.Contains(t, w3.Body.String(), "No articles found")
-	assert.NotContains(t, w3.Body.String(), "<html") // should NOT contain full HTML
+	assert.NotContains(t, w3.Body.String(), "<html")                                                                     // should NOT contain full HTML
+	assert.Contains(t, w3.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(0)</span>`) // should show 0 count
 }
 
 func TestServer_feedbackHandler(t *testing.T) {

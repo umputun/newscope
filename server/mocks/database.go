@@ -41,6 +41,9 @@ import (
 //			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 //				panic("mock out the GetTopics method")
 //			},
+//			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+//				panic("mock out the GetTopicsFiltered method")
+//			},
 //			UpdateFeedStatusFunc: func(ctx context.Context, feedID int64, enabled bool) error {
 //				panic("mock out the UpdateFeedStatus method")
 //			},
@@ -77,6 +80,9 @@ type DatabaseMock struct {
 
 	// GetTopicsFunc mocks the GetTopics method.
 	GetTopicsFunc func(ctx context.Context) ([]string, error)
+
+	// GetTopicsFilteredFunc mocks the GetTopicsFiltered method.
+	GetTopicsFilteredFunc func(ctx context.Context, minScore float64) ([]string, error)
 
 	// UpdateFeedStatusFunc mocks the UpdateFeedStatus method.
 	UpdateFeedStatusFunc func(ctx context.Context, feedID int64, enabled bool) error
@@ -142,6 +148,13 @@ type DatabaseMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
+		// GetTopicsFiltered holds details about calls to the GetTopicsFiltered method.
+		GetTopicsFiltered []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// MinScore is the minScore argument value.
+			MinScore float64
+		}
 		// UpdateFeedStatus holds details about calls to the UpdateFeedStatus method.
 		UpdateFeedStatus []struct {
 			// Ctx is the ctx argument value.
@@ -169,6 +182,7 @@ type DatabaseMock struct {
 	lockGetFeeds           sync.RWMutex
 	lockGetItems           sync.RWMutex
 	lockGetTopics          sync.RWMutex
+	lockGetTopicsFiltered  sync.RWMutex
 	lockUpdateFeedStatus   sync.RWMutex
 	lockUpdateItemFeedback sync.RWMutex
 }
@@ -458,6 +472,42 @@ func (mock *DatabaseMock) GetTopicsCalls() []struct {
 	mock.lockGetTopics.RLock()
 	calls = mock.calls.GetTopics
 	mock.lockGetTopics.RUnlock()
+	return calls
+}
+
+// GetTopicsFiltered calls GetTopicsFilteredFunc.
+func (mock *DatabaseMock) GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error) {
+	if mock.GetTopicsFilteredFunc == nil {
+		panic("DatabaseMock.GetTopicsFilteredFunc: method is nil but Database.GetTopicsFiltered was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		MinScore float64
+	}{
+		Ctx:      ctx,
+		MinScore: minScore,
+	}
+	mock.lockGetTopicsFiltered.Lock()
+	mock.calls.GetTopicsFiltered = append(mock.calls.GetTopicsFiltered, callInfo)
+	mock.lockGetTopicsFiltered.Unlock()
+	return mock.GetTopicsFilteredFunc(ctx, minScore)
+}
+
+// GetTopicsFilteredCalls gets all the calls that were made to GetTopicsFiltered.
+// Check the length with:
+//
+//	len(mockedDatabase.GetTopicsFilteredCalls())
+func (mock *DatabaseMock) GetTopicsFilteredCalls() []struct {
+	Ctx      context.Context
+	MinScore float64
+} {
+	var calls []struct {
+		Ctx      context.Context
+		MinScore float64
+	}
+	mock.lockGetTopicsFiltered.RLock()
+	calls = mock.calls.GetTopicsFiltered
+	mock.lockGetTopicsFiltered.RUnlock()
 	return calls
 }
 

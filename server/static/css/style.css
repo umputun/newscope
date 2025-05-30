@@ -162,8 +162,15 @@ main {
 
 .articles-header h2 {
     font-size: 2rem;
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
     color: var(--text-primary);
+}
+
+.article-count {
+    font-size: 1.25rem;
+    font-weight: normal;
+    color: var(--text-secondary);
+    margin-left: 0.5rem;
 }
 
 /* Filters */

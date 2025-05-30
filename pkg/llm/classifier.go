@@ -51,7 +51,7 @@ Each classification should contain:
 - guid: the article's GUID
 - score: relevance score (0-10). Adjust based on topic preferences if provided.
 - explanation: brief explanation (max 100 chars)
-- topics: array of 1-3 relevant topic keywords. IMPORTANT: Use topics from the provided canonical list when applicable. Only create new topics if absolutely necessary.
+- topics: array of 1-3 relevant topic keywords. IMPORTANT: ALWAYS provide topics for EVERY article, regardless of relevance score. Use topics from the provided canonical list when applicable. Only create new topics if absolutely necessary. Even articles with score 0 must have topics that describe their content.
 - summary: comprehensive summary that captures the key points, findings, main story, and important details (300-500 chars). Write directly about the content itself. NEVER use phrases like "The article discusses", "The article explores", "The piece covers", "The author explains", etc. Start with the actual subject matter. IMPORTANT: Write the summary in the same language as the article content.
 
 Examples of good summaries:
@@ -64,6 +64,11 @@ Examples of bad summaries:
 - "This piece explores the discovery of water on Mars..."
 - "The author explains how ransomware works..."
 
+IMPORTANT: Even low-relevance articles (score 0-3) MUST have topics assigned. Examples:
+- Article about "3D sneaker visualizer" (score: 0) should have topics: ["design", "3d", "fashion"]
+- Article about "Tunisia travel notes" (score: 2) should have topics: ["travel", "tunisia", "culture"]
+- Article about "Music piano rolls" (score: 2) should have topics: ["music", "history", "technology"]
+
 Consider the user's previous feedback when provided.`
 
 // ClassifyArticles classifies a batch of articles
@@ -75,43 +80,63 @@ func (c *Classifier) ClassifyArticles(ctx context.Context, articles []db.Item, f
 	// prepare the prompt
 	prompt := c.buildPrompt(articles, feedbacks, canonicalTopics)
 
-	// create the chat completion request
-	req := openai.ChatCompletionRequest{
-		Model:       c.config.Model,
-		Temperature: float32(c.config.Temperature),
-		MaxTokens:   c.config.MaxTokens,
-		Messages: []openai.ChatCompletionMessage{
-			{
-				Role:    openai.ChatMessageRoleSystem,
-				Content: c.systemMsg,
+	// retry up to 3 times if we get invalid JSON
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		// create the chat completion request
+		req := openai.ChatCompletionRequest{
+			Model:       c.config.Model,
+			Temperature: float32(c.config.Temperature),
+			MaxTokens:   c.config.MaxTokens,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: c.systemMsg,
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: prompt,
+				},
 			},
-			{
-				Role:    openai.ChatMessageRoleUser,
-				Content: prompt,
-			},
-		},
-	}
-
-	// add JSON response format if enabled
-	if c.config.Classification.UseJSONMode {
-		req.ResponseFormat = &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 		}
+
+		// add JSON response format if enabled
+		if c.config.Classification.UseJSONMode {
+			req.ResponseFormat = &openai.ChatCompletionResponseFormat{
+				Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+			}
+		}
+
+		// call the LLM
+		resp, err := c.client.CreateChatCompletion(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("llm request failed: %w", err)
+		}
+
+		if len(resp.Choices) == 0 {
+			return nil, fmt.Errorf("no response from llm")
+		}
+
+		// parse the response
+		content := resp.Choices[0].Message.Content
+		classifications, err := c.parseResponse(content, articles)
+		if err == nil {
+			return classifications, nil
+		}
+
+		// save the error for potential return
+		lastErr = err
+
+		// if this was a JSON parsing error, retry
+		if strings.Contains(err.Error(), "failed to parse json") || strings.Contains(err.Error(), "no json array found") {
+			continue
+		}
+
+		// for other errors, don't retry
+		return nil, err
 	}
 
-	// call the LLM
-	resp, err := c.client.CreateChatCompletion(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("llm request failed: %w", err)
-	}
-
-	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no response from llm")
-	}
-
-	// parse the response
-	content := resp.Choices[0].Message.Content
-	return c.parseResponse(content, articles)
+	return nil, fmt.Errorf("failed after 3 attempts: %w", lastErr)
 }
 
 // buildPrompt creates the prompt for the LLM

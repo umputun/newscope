@@ -36,13 +36,17 @@
         <button class="btn-feedback btn-like {{if eq .UserFeedback "like"}}active{{end}}"
                 hx-post="/api/v1/feedback/{{.ID}}/like"
                 hx-swap="outerHTML"
-                hx-target="closest .article-card">
+                hx-target="closest .article-card"
+                hx-trigger="click"
+                hx-include="#score-filter, #topic-filter">
             👍 Like
         </button>
         <button class="btn-feedback btn-dislike {{if eq .UserFeedback "dislike"}}active{{end}}"
                 hx-post="/api/v1/feedback/{{.ID}}/dislike"
                 hx-swap="outerHTML"
-                hx-target="closest .article-card">
+                hx-target="closest .article-card"
+                hx-trigger="click"
+                hx-include="#score-filter, #topic-filter">
             👎 Dislike
         </button>
         {{if .ExtractedContent}}

@@ -54,6 +54,7 @@ type Database interface {
 	GetClassifiedItem(ctx context.Context, itemID int64) (*types.ItemWithClassification, error)
 	UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error
 	GetTopics(ctx context.Context) ([]string, error)
+	GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error)
 	GetAllFeeds(ctx context.Context) ([]db.Feed, error)
 	CreateFeed(ctx context.Context, feed *db.Feed) error
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
@@ -568,8 +569,8 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// get all topics for filter
-	topics, err := s.db.GetTopics(ctx)
+	// get topics filtered by current score
+	topics, err := s.db.GetTopicsFiltered(ctx, minScore)
 	if err != nil {
 		log.Printf("[ERROR] failed to get topics: %v", err)
 		topics = []string{} // continue with empty topics
@@ -577,7 +578,34 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 
 	// check if this is an HTMX request for partial update
 	if r.Header.Get("HX-Request") == "true" {
-		// for HTMX requests, only render the articles list
+		// for HTMX requests, return updated count, topic dropdown, and articles list
+		// first update the count using out-of-band swap
+		if _, err := fmt.Fprintf(w, `<span id="article-count" class="article-count" hx-swap-oob="true">(%d)</span>`, len(articles)); err != nil {
+			log.Printf("[ERROR] failed to write article count: %v", err)
+		}
+
+		// update topic dropdown using out-of-band swap
+		var topicHTML strings.Builder
+		topicHTML.WriteString(`<select id="topic-filter" name="topic" hx-get="/articles" hx-trigger="change" hx-target="#articles-container" hx-include="#score-filter" hx-swap-oob="true">`)
+		topicHTML.WriteString(`<option value="">All Topics</option>`)
+		for _, t := range topics {
+			selected := ""
+			if t == topic {
+				selected = " selected"
+			}
+			topicHTML.WriteString(fmt.Sprintf(`<option value=%q%s>%s</option>`, t, selected, t))
+		}
+		topicHTML.WriteString(`</select>`)
+
+		if _, err := w.Write([]byte(topicHTML.String())); err != nil {
+			log.Printf("[ERROR] failed to write topic dropdown: %v", err)
+		}
+
+		// then render the articles list
+		if _, err := w.Write([]byte(`<div id="articles-list">`)); err != nil {
+			log.Printf("[ERROR] failed to write articles list start: %v", err)
+		}
+
 		for _, article := range articles {
 			s.renderArticleCard(w, &article)
 		}
@@ -586,6 +614,10 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[ERROR] failed to write no articles message: %v", err)
 			}
 		}
+
+		if _, err := w.Write([]byte(`</div>`)); err != nil {
+			log.Printf("[ERROR] failed to write articles list end: %v", err)
+		}
 		return
 	}
 
@@ -593,12 +625,14 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		ActivePage    string
 		Articles      []types.ItemWithClassification
+		ArticleCount  int
 		Topics        []string
 		MinScore      float64
 		SelectedTopic string
 	}{
 		ActivePage:    "home",
 		Articles:      articles,
+		ArticleCount:  len(articles),
 		Topics:        topics,
 		MinScore:      minScore,
 		SelectedTopic: topic,
@@ -698,7 +732,25 @@ func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// for HTMX, return the updated article card HTML
+	// check if this is an HTMX request
+	if r.Header.Get("HX-Request") == "true" {
+		// get current filter parameters from form data (included by hx-include)
+		minScore := 0.0
+		if scoreStr := r.FormValue("score"); scoreStr != "" {
+			if score, err := strconv.ParseFloat(scoreStr, 64); err == nil {
+				minScore = score
+			}
+		}
+
+		// if article no longer meets score threshold after feedback, remove it
+		if article.RelevanceScore < minScore {
+			// return empty response to remove the article from the list
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
+
+	// return the updated article card HTML
 	s.renderArticleCard(w, article)
 }
 

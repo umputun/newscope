@@ -436,18 +436,48 @@ func isLockError(err error) bool {
 		strings.Contains(errStr, "database table is locked")
 }
 
-// UpdateItemFeedback updates user feedback on an item
+// UpdateItemFeedback updates user feedback on an item and adjusts its score
 func (db *DB) UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error {
+	// start a transaction to update both feedback and score atomically
+	tx, err := db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// update feedback
 	query := `
 		UPDATE items 
 		SET user_feedback = ?, feedback_at = datetime('now')
 		WHERE id = ?
 	`
-	_, err := db.ExecContext(ctx, query, feedback, itemID)
-	if err != nil {
+	if _, err := tx.ExecContext(ctx, query, feedback, itemID); err != nil {
 		return fmt.Errorf("update item feedback: %w", err)
 	}
-	return nil
+
+	// adjust score based on feedback
+	var scoreAdjustment float64
+	switch feedback {
+	case "like":
+		scoreAdjustment = 1.0 // increase score by 1
+	case "dislike":
+		scoreAdjustment = -2.0 // decrease score by 2 (stronger signal)
+	default:
+		// no score adjustment for other feedback types
+		return tx.Commit()
+	}
+
+	// update score, ensuring it stays within 0-10 range
+	scoreQuery := `
+		UPDATE items 
+		SET relevance_score = MAX(0, MIN(10, relevance_score + ?))
+		WHERE id = ?
+	`
+	if _, err := tx.ExecContext(ctx, scoreQuery, scoreAdjustment, itemID); err != nil {
+		return fmt.Errorf("update item score: %w", err)
+	}
+
+	return tx.Commit()
 }
 
 // GetRecentFeedback retrieves recent user feedback for LLM context
@@ -590,19 +620,25 @@ func (db *DB) GetClassifiedItem(ctx context.Context, itemID int64) (*Item, error
 
 // GetTopics returns all unique topics from classified items
 func (db *DB) GetTopics(ctx context.Context) ([]string, error) {
+	return db.GetTopicsFiltered(ctx, 0.0)
+}
+
+// GetTopicsFiltered returns unique topics from items with score >= minScore
+func (db *DB) GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error) {
 	query := `
 		SELECT DISTINCT value 
 		FROM (
 			SELECT json_each.value 
 			FROM items, json_each(items.topics)
 			WHERE items.classified_at IS NOT NULL
+			AND items.relevance_score >= ?
 		)
 		ORDER BY value
 	`
 
 	var topics []string
-	if err := db.SelectContext(ctx, &topics, query); err != nil {
-		return nil, fmt.Errorf("get topics: %w", err)
+	if err := db.SelectContext(ctx, &topics, query, minScore); err != nil {
+		return nil, fmt.Errorf("get topics filtered: %w", err)
 	}
 	return topics, nil
 }

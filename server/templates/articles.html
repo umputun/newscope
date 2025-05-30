@@ -4,7 +4,7 @@
 
 {{define "content"}}
 <div class="articles-header">
-    <h2>Articles</h2>
+    <h2>Articles <span id="article-count" class="article-count">({{.ArticleCount}})</span></h2>
     
     <!-- Score filter -->
     <div class="filters">
@@ -12,7 +12,7 @@
         <input type="range" id="score-filter" name="score" min="0" max="10" value="{{.MinScore}}" step="0.5"
                hx-get="/articles"
                hx-trigger="change"
-               hx-target="#articles-list"
+               hx-target="#articles-container"
                hx-include="#topic-filter">
         <span id="score-value">{{.MinScore}}</span>
         
@@ -21,7 +21,7 @@
         <select id="topic-filter" name="topic"
                 hx-get="/articles"
                 hx-trigger="change"
-                hx-target="#articles-list"
+                hx-target="#articles-container"
                 hx-include="#score-filter">
             <option value="">All Topics</option>
             {{range .Topics}}
@@ -31,18 +31,43 @@
     </div>
 </div>
 
-<div id="articles-list">
-    {{range .Articles}}
-    {{template "article-card.html" .}}
-    {{else}}
-    <p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>
-    {{end}}
+<div id="articles-container">
+    <div id="articles-list">
+        {{range .Articles}}
+        {{template "article-card.html" .}}
+        {{else}}
+        <p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>
+        {{end}}
+    </div>
 </div>
 
-<!-- Auto-update score display -->
+<!-- Auto-update score display and localStorage -->
 <script>
+// Load saved min score from localStorage
+document.addEventListener('DOMContentLoaded', function() {
+    const savedScore = localStorage.getItem('newscopeMinScore');
+    if (savedScore !== null && savedScore !== '{{.MinScore}}') {
+        // If saved score differs from server default, navigate to it
+        const scoreFilter = document.getElementById('score-filter');
+        scoreFilter.value = savedScore;
+        document.getElementById('score-value').textContent = savedScore;
+        
+        // Trigger HTMX request to load articles with saved score
+        htmx.trigger(scoreFilter, 'change');
+    }
+});
+
+// Update score display and save to localStorage
 document.getElementById('score-filter').addEventListener('input', function(e) {
-    document.getElementById('score-value').textContent = e.target.value;
+    const value = e.target.value;
+    document.getElementById('score-value').textContent = value;
+    // Save to localStorage
+    localStorage.setItem('newscopeMinScore', value);
+});
+
+// Also save when change event fires (for programmatic changes)
+document.getElementById('score-filter').addEventListener('change', function(e) {
+    localStorage.setItem('newscopeMinScore', e.target.value);
 });
 </script>
 {{end}}

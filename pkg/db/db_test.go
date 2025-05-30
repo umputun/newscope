@@ -276,23 +276,106 @@ func TestItemOperations(t *testing.T) {
 	})
 
 	t.Run("update item feedback", func(t *testing.T) {
-		err := db.UpdateItemFeedback(ctx, 1, "like")
+		// get initial score
+		item, err := db.GetItem(ctx, 1)
+		require.NoError(t, err)
+		initialScore := item.RelevanceScore
+
+		// like should increase score by 1
+		err = db.UpdateItemFeedback(ctx, 1, "like")
 		require.NoError(t, err)
 
-		item, err := db.GetItem(ctx, 1)
+		item, err = db.GetItem(ctx, 1)
 		require.NoError(t, err)
 		assert.Equal(t, "like", item.UserFeedback)
 		assert.NotNil(t, item.FeedbackAt)
+		assert.InEpsilon(t, initialScore+1, item.RelevanceScore, 0.001)
+
+		// dislike should decrease score by 2
+		err = db.UpdateItemFeedback(ctx, 1, "dislike")
+		require.NoError(t, err)
+
+		item, err = db.GetItem(ctx, 1)
+		require.NoError(t, err)
+		assert.Equal(t, "dislike", item.UserFeedback)
+		assert.InEpsilon(t, initialScore-1, item.RelevanceScore, 0.001) // +1 -2 = -1 from initial
+	})
+
+	t.Run("update item feedback score boundaries", func(t *testing.T) {
+		// create item with score near max
+		item := &Item{
+			FeedID:           feed.ID,
+			GUID:             "guid-max-score",
+			Title:            "Max Score Item",
+			Link:             "https://example.com/max",
+			Published:        time.Now(),
+			ExtractedContent: "Content",
+		}
+		err := db.CreateItem(ctx, item)
+		require.NoError(t, err)
+
+		// set score to 9.5
+		classification := Classification{
+			GUID:        "guid-max-score",
+			Score:       9.5,
+			Explanation: "Very high score",
+			Topics:      []string{"test"},
+		}
+		err = db.UpdateItemProcessed(ctx, item.ID, "Content", "", classification)
+		require.NoError(t, err)
+
+		// like should cap at 10
+		err = db.UpdateItemFeedback(ctx, item.ID, "like")
+		require.NoError(t, err)
+
+		updated, err := db.GetItem(ctx, item.ID)
+		require.NoError(t, err)
+		assert.InEpsilon(t, 10.0, updated.RelevanceScore, 0.001)
+
+		// create item with low score
+		item2 := &Item{
+			FeedID:           feed.ID,
+			GUID:             "guid-min-score",
+			Title:            "Min Score Item",
+			Link:             "https://example.com/min",
+			Published:        time.Now(),
+			ExtractedContent: "Content",
+		}
+		err = db.CreateItem(ctx, item2)
+		require.NoError(t, err)
+
+		// set score to 1.0
+		classification2 := Classification{
+			GUID:        "guid-min-score",
+			Score:       1.0,
+			Explanation: "Very low score",
+			Topics:      []string{"test"},
+		}
+		err = db.UpdateItemProcessed(ctx, item2.ID, "Content", "", classification2)
+		require.NoError(t, err)
+
+		// dislike should cap at 0
+		err = db.UpdateItemFeedback(ctx, item2.ID, "dislike")
+		require.NoError(t, err)
+
+		updated2, err := db.GetItem(ctx, item2.ID)
+		require.NoError(t, err)
+		assert.Equal(t, 0.0, updated2.RelevanceScore)
 	})
 
 	t.Run("get recent feedback", func(t *testing.T) {
-		examples, err := db.GetRecentFeedback(ctx, "like", 10)
+		examples, err := db.GetRecentFeedback(ctx, "dislike", 10)
 		require.NoError(t, err)
-		assert.Len(t, examples, 1)
-		assert.Equal(t, "Test Article", examples[0].Title)
-		assert.Equal(t, "Test description", examples[0].Description)
-		assert.Equal(t, "like", examples[0].Feedback)
-		assert.Equal(t, []string{"golang", "programming"}, examples[0].Topics)
+		assert.GreaterOrEqual(t, len(examples), 1)
+		// should have at least one dislike from the previous test
+		found := false
+		for _, ex := range examples {
+			if ex.Feedback == "dislike" {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "should find at least one dislike feedback")
 	})
 
 	t.Run("classify items for later tests", func(t *testing.T) {
@@ -329,7 +412,7 @@ func TestItemOperations(t *testing.T) {
 		require.NoError(t, err)
 
 		// verify updates
-		item, err := db.GetItem(ctx, 3)
+		item, err := db.GetItem(ctx, item3.ID)
 		require.NoError(t, err)
 		assert.InEpsilon(t, 7.0, item.RelevanceScore, 0.001)
 		assert.Equal(t, "Good match", item.Explanation)
@@ -358,12 +441,40 @@ func TestItemOperations(t *testing.T) {
 	})
 
 	t.Run("get single classified item", func(t *testing.T) {
-		// get item3 with feed info
-		item, err := db.GetClassifiedItem(ctx, 3)
+		// create a test item if it doesn't exist
+		var testItemID int64
+		err := db.GetContext(ctx, &testItemID, "SELECT id FROM items WHERE title = ?", "Test Classified Item")
+		if err != nil {
+			// create the item
+			testItem := &Item{
+				FeedID:           feed.ID,
+				GUID:             "guid-test-classified",
+				Title:            "Test Classified Item",
+				Link:             "https://example.com/test-classified",
+				Published:        time.Now(),
+				ExtractedContent: "Test content",
+			}
+			err := db.CreateItem(ctx, testItem)
+			require.NoError(t, err)
+			testItemID = testItem.ID
+
+			// classify it
+			classification := Classification{
+				GUID:        "guid-test-classified",
+				Score:       7.5,
+				Explanation: "Test classification",
+				Topics:      []string{"test-topic"},
+			}
+			err = db.UpdateItemProcessed(ctx, testItemID, "Test content", "", classification)
+			require.NoError(t, err)
+		}
+
+		// get item with feed info
+		item, err := db.GetClassifiedItem(ctx, testItemID)
 		require.NoError(t, err)
-		assert.Equal(t, "Article 3", item.Title)
+		assert.Equal(t, "Test Classified Item", item.Title)
 		assert.Equal(t, "Test Feed", item.FeedTitle)
-		assert.InEpsilon(t, 7.0, item.RelevanceScore, 0.001)
+		assert.InEpsilon(t, 7.5, item.RelevanceScore, 0.001)
 
 		// try to get non-existent item
 		_, err = db.GetClassifiedItem(ctx, 99999)
@@ -372,12 +483,34 @@ func TestItemOperations(t *testing.T) {
 	})
 
 	t.Run("get classified item with rich content", func(t *testing.T) {
+		// create a test item for this specific test
+		testItem := &Item{
+			FeedID:           feed.ID,
+			GUID:             "guid-rich-content-test",
+			Title:            "Rich Content Test Item",
+			Link:             "https://example.com/rich-content-test",
+			Published:        time.Now(),
+			ExtractedContent: "Initial content",
+		}
+		err := db.CreateItem(ctx, testItem)
+		require.NoError(t, err)
+
+		// classify it
+		classification := Classification{
+			GUID:        "guid-rich-content-test",
+			Score:       8.0,
+			Explanation: "Rich content test",
+			Topics:      []string{"rich-test"},
+		}
+		err = db.UpdateItemProcessed(ctx, testItem.ID, "Initial content", "", classification)
+		require.NoError(t, err)
+
 		// update item with rich content
-		err := db.UpdateItemExtraction(ctx, 3, "Plain content", "<p>Rich content</p>", nil)
+		err = db.UpdateItemExtraction(ctx, testItem.ID, "Plain content", "<p>Rich content</p>", nil)
 		require.NoError(t, err)
 
 		// get item and verify both content fields
-		item, err := db.GetClassifiedItem(ctx, 3)
+		item, err := db.GetClassifiedItem(ctx, testItem.ID)
 		require.NoError(t, err)
 		assert.Equal(t, "Plain content", item.ExtractedContent)
 		assert.Equal(t, "<p>Rich content</p>", item.ExtractedRichContent)
@@ -405,6 +538,26 @@ func TestItemOperations(t *testing.T) {
 				assert.Less(t, topics[i-1], topics[i], "topics should be sorted")
 			}
 		}
+	})
+
+	t.Run("get topics filtered by score", func(t *testing.T) {
+		// get topics for items with score >= 7
+		topics, err := db.GetTopicsFiltered(ctx, 7.0)
+		require.NoError(t, err)
+		t.Logf("Topics for score >= 7: %v", topics)
+
+		// should only have tech topic from item3 (score 7.0) and item1 (score 8.5)
+		assert.Contains(t, topics, "tech")
+		assert.NotContains(t, topics, "other") // from item2 which has score 3.0
+
+		// get topics for items with score >= 3
+		topics, err = db.GetTopicsFiltered(ctx, 3.0)
+		require.NoError(t, err)
+		t.Logf("Topics for score >= 3: %v", topics)
+
+		// should have both topics
+		assert.Contains(t, topics, "tech")
+		assert.Contains(t, topics, "other")
 	})
 
 	t.Run("update item processed with summary", func(t *testing.T) {

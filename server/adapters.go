@@ -144,6 +144,11 @@ func (d *DBAdapter) GetTopics(ctx context.Context) ([]string, error) {
 	return d.DB.GetTopics(ctx)
 }
 
+// GetTopicsFiltered returns unique topics from items with score >= minScore
+func (d *DBAdapter) GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error) {
+	return d.DB.GetTopicsFiltered(ctx, minScore)
+}
+
 // GetAllFeeds returns all feeds with full details
 func (d *DBAdapter) GetAllFeeds(ctx context.Context) ([]db.Feed, error) {
 	return d.DB.GetFeeds(ctx, false) // get all feeds, not just enabled

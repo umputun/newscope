@@ -313,6 +313,53 @@ func TestClassifier_parseResponse(t *testing.T) {
 	}
 }
 
+func TestClassifier_RetryOnInvalidJSON(t *testing.T) {
+	attempts := 0
+	// create test server that returns invalid JSON on first attempt
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+
+		var content string
+		if attempts == 1 {
+			// first attempt: return response with no JSON array
+			content = "I cannot process this request right now."
+		} else {
+			// second attempt: return valid JSON
+			content = `[{"guid": "item1", "score": 8, "explanation": "Good", "topics": ["tech"]}]`
+		}
+
+		resp := openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{
+				{
+					Message: openai.ChatCompletionMessage{
+						Content: content,
+					},
+				},
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := config.LLMConfig{
+		Endpoint: server.URL + "/v1",
+		APIKey:   "test-key",
+		Model:    "gpt-4",
+	}
+	classifier := NewClassifier(cfg)
+
+	articles := []db.Item{{GUID: "item1", Title: "Test"}}
+	classifications, err := classifier.ClassifyArticles(context.Background(), articles, nil, nil)
+
+	require.NoError(t, err)
+	require.Len(t, classifications, 1)
+	assert.Equal(t, "item1", classifications[0].GUID)
+	assert.InEpsilon(t, 8.0, classifications[0].Score, 0.001)
+	assert.Equal(t, 2, attempts, "should retry once after invalid JSON")
+}
+
 func TestClassifier_JSONMode(t *testing.T) {
 	t.Run("build prompt with JSON mode", func(t *testing.T) {
 		classifier := &Classifier{
