@@ -452,19 +452,40 @@ func (db *DB) UpdateItemFeedback(ctx context.Context, itemID int64, feedback str
 
 // GetRecentFeedback retrieves recent user feedback for LLM context
 func (db *DB) GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]FeedbackExample, error) {
-	query := `
-		SELECT title, description, 
-		       SUBSTR(extracted_content, 1, 500) as content,
-		       user_feedback as feedback, 
-		       topics
-		FROM items 
-		WHERE user_feedback = ?
-		AND feedback_at IS NOT NULL
-		ORDER BY feedback_at DESC
-		LIMIT ?
-	`
+	var query string
+	var args []interface{}
 
-	rows, err := db.QueryContext(ctx, query, feedbackType, limit)
+	if feedbackType == "" {
+		// get both likes and dislikes
+		query = `
+			SELECT title, description, 
+			       SUBSTR(extracted_content, 1, 500) as content,
+			       user_feedback as feedback, 
+			       topics
+			FROM items 
+			WHERE user_feedback IN ('like', 'dislike')
+			AND feedback_at IS NOT NULL
+			ORDER BY feedback_at DESC
+			LIMIT ?
+		`
+		args = []interface{}{limit}
+	} else {
+		// get specific feedback type
+		query = `
+			SELECT title, description, 
+			       SUBSTR(extracted_content, 1, 500) as content,
+			       user_feedback as feedback, 
+			       topics
+			FROM items 
+			WHERE user_feedback = ?
+			AND feedback_at IS NOT NULL
+			ORDER BY feedback_at DESC
+			LIMIT ?
+		`
+		args = []interface{}{feedbackType, limit}
+	}
+
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query recent feedback: %w", err)
 	}

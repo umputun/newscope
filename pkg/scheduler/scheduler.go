@@ -41,6 +41,7 @@ type Database interface {
 	UpdateItemProcessed(ctx context.Context, itemID int64, content, richContent string, classification db.Classification) error
 	UpdateItemExtraction(ctx context.Context, itemID int64, content, richContent string, err error) error
 	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
+	GetTopics(ctx context.Context) ([]string, error)
 }
 
 // Parser interface for feed parsing
@@ -55,7 +56,7 @@ type Extractor interface {
 
 // Classifier interface for LLM classification
 type Classifier interface {
-	ClassifyArticles(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error)
+	ClassifyArticles(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error)
 }
 
 // Config holds scheduler configuration
@@ -119,8 +120,15 @@ func (s *Scheduler) processingWorker(ctx context.Context, items <-chan db.Item) 
 	// get feedback examples once at start
 	feedbacks, err := s.db.GetRecentFeedback(ctx, "", 10)
 	if err != nil {
-		lgr.Printf("[ERROR] failed to get feedback examples: %v", err)
+		lgr.Printf("[WARN] failed to get feedback examples: %v", err)
 		feedbacks = []db.FeedbackExample{}
+	}
+
+	// get canonical topics once at start
+	topics, err := s.db.GetTopics(ctx)
+	if err != nil {
+		lgr.Printf("[WARN] failed to get canonical topics: %v", err)
+		topics = []string{}
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -128,7 +136,7 @@ func (s *Scheduler) processingWorker(ctx context.Context, items <-chan db.Item) 
 
 	for item := range items {
 		g.Go(func() error {
-			s.processItem(ctx, item, feedbacks)
+			s.processItem(ctx, item, feedbacks, topics)
 			return nil
 		})
 	}
@@ -139,7 +147,7 @@ func (s *Scheduler) processingWorker(ctx context.Context, items <-chan db.Item) 
 }
 
 // processItem handles extraction and classification for a single item
-func (s *Scheduler) processItem(ctx context.Context, item db.Item, feedbacks []db.FeedbackExample) {
+func (s *Scheduler) processItem(ctx context.Context, item db.Item, feedbacks []db.FeedbackExample, topics []string) {
 	lgr.Printf("[DEBUG] processing item: %s", item.Link)
 
 	// 1. Extract content
@@ -157,7 +165,7 @@ func (s *Scheduler) processItem(ctx context.Context, item db.Item, feedbacks []d
 	// 2. Classify the item with extracted content
 	item.ExtractedContent = extracted.Content
 
-	classifications, err := s.classifier.ClassifyArticles(ctx, []db.Item{item}, feedbacks)
+	classifications, err := s.classifier.ClassifyArticles(ctx, []db.Item{item}, feedbacks, topics)
 	if err != nil {
 		lgr.Printf("[ERROR] failed to classify item: %v", err)
 		return
@@ -307,8 +315,17 @@ func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
 	// process items in background
 	go func() {
 		for item := range processCh {
-			feedbacks, _ := s.db.GetRecentFeedback(ctx, "", 10)
-			s.processItem(ctx, item, feedbacks)
+			feedbacks, err := s.db.GetRecentFeedback(ctx, "", 10)
+			if err != nil {
+				lgr.Printf("[WARN] failed to get feedback examples: %v", err)
+				feedbacks = []db.FeedbackExample{}
+			}
+			topics, err := s.db.GetTopics(ctx)
+			if err != nil {
+				lgr.Printf("[WARN] failed to get canonical topics: %v", err)
+				topics = []string{}
+			}
+			s.processItem(ctx, item, feedbacks, topics)
 		}
 	}()
 
@@ -326,10 +343,16 @@ func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
 
 	feedbacks, err := s.db.GetRecentFeedback(ctx, "", 10)
 	if err != nil {
-		lgr.Printf("[ERROR] failed to get feedback examples: %v", err)
+		lgr.Printf("[WARN] failed to get feedback examples: %v", err)
 		feedbacks = []db.FeedbackExample{}
 	}
 
-	s.processItem(ctx, *item, feedbacks)
+	topics, err := s.db.GetTopics(ctx)
+	if err != nil {
+		lgr.Printf("[WARN] failed to get canonical topics: %v", err)
+		topics = []string{}
+	}
+
+	s.processItem(ctx, *item, feedbacks, topics)
 	return nil
 }

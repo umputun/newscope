@@ -375,10 +375,10 @@ func TestHTTPExtractor_Extract_Encoding(t *testing.T) {
 
 func TestHTTPExtractor_Extract_EmptyParagraphHandling(t *testing.T) {
 	tests := []struct {
-		name         string
-		html         string
+		name          string
+		html          string
 		expectNoEmpty bool
-		description  string
+		description   string
 	}{
 		{
 			name: "empty div at beginning",
@@ -390,7 +390,7 @@ func TestHTTPExtractor_Extract_EmptyParagraphHandling(t *testing.T) {
 				</article>
 			</body></html>`,
 			expectNoEmpty: true,
-			description:  "should not have empty paragraph from empty div",
+			description:   "should not have empty paragraph from empty div",
 		},
 		{
 			name: "empty section at beginning",
@@ -402,7 +402,7 @@ func TestHTTPExtractor_Extract_EmptyParagraphHandling(t *testing.T) {
 				</article>
 			</body></html>`,
 			expectNoEmpty: true,
-			description:  "should not have empty paragraph from empty section",
+			description:   "should not have empty paragraph from empty section",
 		},
 		{
 			name: "multiple empty blocks",
@@ -415,7 +415,7 @@ func TestHTTPExtractor_Extract_EmptyParagraphHandling(t *testing.T) {
 				</article>
 			</body></html>`,
 			expectNoEmpty: true,
-			description:  "should not have empty paragraphs from multiple empty blocks",
+			description:   "should not have empty paragraphs from multiple empty blocks",
 		},
 		{
 			name: "nested empty divs",
@@ -428,7 +428,7 @@ func TestHTTPExtractor_Extract_EmptyParagraphHandling(t *testing.T) {
 				<p>Real content</p>
 			</body></html>`,
 			expectNoEmpty: true,
-			description:  "should not create empty paragraphs from nested empty divs",
+			description:   "should not create empty paragraphs from nested empty divs",
 		},
 		{
 			name: "div with whitespace only",
@@ -440,7 +440,7 @@ func TestHTTPExtractor_Extract_EmptyParagraphHandling(t *testing.T) {
 				<p>Content after whitespace</p>
 			</body></html>`,
 			expectNoEmpty: true,
-			description:  "should not create empty paragraphs from divs with only whitespace",
+			description:   "should not create empty paragraphs from divs with only whitespace",
 		},
 	}
 
@@ -463,14 +463,14 @@ func TestHTTPExtractor_Extract_EmptyParagraphHandling(t *testing.T) {
 			// check rich content specifically
 			if result.RichContent != "" {
 				t.Logf("Rich content: %s", result.RichContent)
-				
+
 				// should not start with empty paragraph
-				assert.False(t, strings.HasPrefix(result.RichContent, "<p></p>"), 
+				assert.False(t, strings.HasPrefix(result.RichContent, "<p></p>"),
 					"rich content should not start with empty paragraph: %s", tt.description)
-				
+
 				// should not have empty paragraphs anywhere
 				if tt.expectNoEmpty {
-					assert.NotContains(t, result.RichContent, "<p></p>", 
+					assert.NotContains(t, result.RichContent, "<p></p>",
 						"rich content should not contain empty paragraphs: %s", tt.description)
 				}
 			}

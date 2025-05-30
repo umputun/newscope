@@ -16,7 +16,7 @@ import (
 //
 //		// make and configure a mocked scheduler.Classifier
 //		mockedClassifier := &ClassifierMock{
-//			ClassifyArticlesFunc: func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+//			ClassifyArticlesFunc: func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
 //				panic("mock out the ClassifyArticles method")
 //			},
 //		}
@@ -27,7 +27,7 @@ import (
 //	}
 type ClassifierMock struct {
 	// ClassifyArticlesFunc mocks the ClassifyArticles method.
-	ClassifyArticlesFunc func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error)
+	ClassifyArticlesFunc func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -39,29 +39,33 @@ type ClassifierMock struct {
 			Articles []db.Item
 			// Feedbacks is the feedbacks argument value.
 			Feedbacks []db.FeedbackExample
+			// CanonicalTopics is the canonicalTopics argument value.
+			CanonicalTopics []string
 		}
 	}
 	lockClassifyArticles sync.RWMutex
 }
 
 // ClassifyArticles calls ClassifyArticlesFunc.
-func (mock *ClassifierMock) ClassifyArticles(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+func (mock *ClassifierMock) ClassifyArticles(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
 	if mock.ClassifyArticlesFunc == nil {
 		panic("ClassifierMock.ClassifyArticlesFunc: method is nil but Classifier.ClassifyArticles was just called")
 	}
 	callInfo := struct {
-		Ctx       context.Context
-		Articles  []db.Item
-		Feedbacks []db.FeedbackExample
+		Ctx             context.Context
+		Articles        []db.Item
+		Feedbacks       []db.FeedbackExample
+		CanonicalTopics []string
 	}{
-		Ctx:       ctx,
-		Articles:  articles,
-		Feedbacks: feedbacks,
+		Ctx:             ctx,
+		Articles:        articles,
+		Feedbacks:       feedbacks,
+		CanonicalTopics: canonicalTopics,
 	}
 	mock.lockClassifyArticles.Lock()
 	mock.calls.ClassifyArticles = append(mock.calls.ClassifyArticles, callInfo)
 	mock.lockClassifyArticles.Unlock()
-	return mock.ClassifyArticlesFunc(ctx, articles, feedbacks)
+	return mock.ClassifyArticlesFunc(ctx, articles, feedbacks, canonicalTopics)
 }
 
 // ClassifyArticlesCalls gets all the calls that were made to ClassifyArticles.
@@ -69,14 +73,16 @@ func (mock *ClassifierMock) ClassifyArticles(ctx context.Context, articles []db.
 //
 //	len(mockedClassifier.ClassifyArticlesCalls())
 func (mock *ClassifierMock) ClassifyArticlesCalls() []struct {
-	Ctx       context.Context
-	Articles  []db.Item
-	Feedbacks []db.FeedbackExample
+	Ctx             context.Context
+	Articles        []db.Item
+	Feedbacks       []db.FeedbackExample
+	CanonicalTopics []string
 } {
 	var calls []struct {
-		Ctx       context.Context
-		Articles  []db.Item
-		Feedbacks []db.FeedbackExample
+		Ctx             context.Context
+		Articles        []db.Item
+		Feedbacks       []db.FeedbackExample
+		CanonicalTopics []string
 	}
 	mock.lockClassifyArticles.RLock()
 	calls = mock.calls.ClassifyArticles

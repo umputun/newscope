@@ -187,7 +187,7 @@ func TestScheduler_ProcessItem(t *testing.T) {
 			Topics:      []string{"tech", "news"},
 		}
 
-		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
 			assert.Len(t, articles, 1)
 			assert.Equal(t, extractResult.Content, articles[0].ExtractedContent)
 			return []db.Classification{classification}, nil
@@ -206,8 +206,9 @@ func TestScheduler_ProcessItem(t *testing.T) {
 		}
 
 		feedbacks := []db.FeedbackExample{}
+		topics := []string{"tech", "news", "programming"}
 		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
-		s.processItem(ctx, testItem, feedbacks)
+		s.processItem(ctx, testItem, feedbacks, topics)
 
 		assert.True(t, processedUpdated)
 	})
@@ -238,7 +239,7 @@ func TestScheduler_ProcessItem(t *testing.T) {
 		}
 
 		// should not call classifier or update database
-		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
 			t.Fatal("classifier should not be called on extraction error")
 			return nil, nil
 		}
@@ -249,8 +250,9 @@ func TestScheduler_ProcessItem(t *testing.T) {
 		}
 
 		feedbacks := []db.FeedbackExample{}
+		topics := []string{"tech", "news", "programming"}
 		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
-		s.processItem(ctx, testItem, feedbacks)
+		s.processItem(ctx, testItem, feedbacks, topics)
 	})
 
 	t.Run("classification error", func(t *testing.T) {
@@ -274,7 +276,7 @@ func TestScheduler_ProcessItem(t *testing.T) {
 		}
 
 		classifyErr := errors.New("classification failed")
-		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
 			return nil, classifyErr
 		}
 
@@ -285,8 +287,9 @@ func TestScheduler_ProcessItem(t *testing.T) {
 		}
 
 		feedbacks := []db.FeedbackExample{}
+		topics := []string{"tech", "news", "programming"}
 		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
-		s.processItem(ctx, testItem, feedbacks)
+		s.processItem(ctx, testItem, feedbacks, topics)
 	})
 }
 
@@ -340,6 +343,10 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		return []db.FeedbackExample{}, nil
 	}
 
+	mockDB.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
+		return []string{"tech", "news", "programming"}, nil
+	}
+
 	mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
 		return &content.ExtractResult{
 			Content:     "Test content",
@@ -347,7 +354,7 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		}, nil
 	}
 
-	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
 		return []db.Classification{{
 			Score:       7.0,
 			Explanation: "Test",
@@ -388,6 +395,10 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		return []db.FeedbackExample{}, nil
 	}
 
+	mockDB.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
+		return []string{"tech", "news", "programming"}, nil
+	}
+
 	extractResult := &content.ExtractResult{
 		Content:     "Extracted content",
 		RichContent: "<p>Extracted content</p>",
@@ -403,7 +414,7 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		Topics:      []string{"tech"},
 	}
 
-	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
 		return []db.Classification{classification}, nil
 	}
 
@@ -498,6 +509,10 @@ func TestScheduler_StartStop(t *testing.T) {
 		}, nil
 	}
 
+	mockDB.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
+		return []string{"tech", "news", "programming"}, nil
+	}
+
 	// mock extraction
 	mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
 		return &content.ExtractResult{
@@ -507,7 +522,7 @@ func TestScheduler_StartStop(t *testing.T) {
 	}
 
 	// mock classification
-	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
 		return []db.Classification{{
 			GUID:        articles[0].GUID,
 			Score:       8.5,
@@ -596,6 +611,10 @@ func TestScheduler_GracefulShutdown(t *testing.T) {
 		return []db.FeedbackExample{}, nil
 	}
 
+	mockDB.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
+		return []string{"tech", "news", "programming"}, nil
+	}
+
 	// slow extraction to simulate work in progress
 	mockExtractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
 		select {
@@ -609,7 +628,7 @@ func TestScheduler_GracefulShutdown(t *testing.T) {
 		return &content.ExtractResult{Content: "Test"}, nil
 	}
 
-	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
 		return []db.Classification{{Score: 5.0}}, nil
 	}
 

@@ -91,7 +91,8 @@ func TestClassifier_ClassifyArticles(t *testing.T) {
 
 	// classify articles
 	ctx := context.Background()
-	classifications, err := classifier.ClassifyArticles(ctx, articles, feedback)
+	canonicalTopics := []string{"golang", "programming", "backend", "sports", "news", "tech"}
+	classifications, err := classifier.ClassifyArticles(ctx, articles, feedback, canonicalTopics)
 	require.NoError(t, err)
 	require.Len(t, classifications, 2)
 
@@ -123,7 +124,7 @@ func TestClassifier_ClassifyArticles_EmptyInput(t *testing.T) {
 	classifier := NewClassifier(cfg)
 
 	ctx := context.Background()
-	classifications, err := classifier.ClassifyArticles(ctx, []db.Item{}, nil)
+	classifications, err := classifier.ClassifyArticles(ctx, []db.Item{}, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, classifications)
 }
@@ -140,6 +141,26 @@ func TestClassifier_CustomSystemPrompt(t *testing.T) {
 
 	// verify custom prompt is used
 	assert.Equal(t, customPrompt, classifier.systemMsg)
+}
+
+func TestClassifier_TopicPreferences(t *testing.T) {
+	cfg := config.LLMConfig{
+		APIKey: "test-key",
+		Model:  "gpt-4",
+		Classification: config.ClassificationConfig{
+			PreferredTopics: []string{"golang", "ai"},
+			AvoidedTopics:   []string{"sports", "politics"},
+		},
+	}
+	classifier := NewClassifier(cfg)
+
+	articles := []db.Item{{GUID: "item1", Title: "Test Article"}}
+	prompt := classifier.buildPrompt(articles, nil, nil)
+
+	// check topic preferences section
+	assert.Contains(t, prompt, "Topic preferences:")
+	assert.Contains(t, prompt, "Preferred topics (increase score by 1-2): golang, ai")
+	assert.Contains(t, prompt, "Avoided topics (decrease score by 1-2): sports, politics")
 }
 
 func TestClassifier_DefaultSystemPrompt(t *testing.T) {
@@ -179,7 +200,12 @@ func TestClassifier_buildPrompt(t *testing.T) {
 		},
 	}
 
-	prompt := classifier.buildPrompt(articles, feedback)
+	canonicalTopics := []string{"tech", "ai", "programming"}
+	prompt := classifier.buildPrompt(articles, feedback, canonicalTopics)
+
+	// check canonical topics section
+	assert.Contains(t, prompt, "Available topics (use one of these when applicable):")
+	assert.Contains(t, prompt, "tech, ai, programming")
 
 	// check feedback section
 	assert.Contains(t, prompt, "Based on user feedback:")
@@ -298,7 +324,7 @@ func TestClassifier_JSONMode(t *testing.T) {
 		}
 
 		articles := []db.Item{{GUID: "item1", Title: "Test"}}
-		prompt := classifier.buildPrompt(articles, nil)
+		prompt := classifier.buildPrompt(articles, nil, nil)
 
 		assert.Contains(t, prompt, "Respond with a JSON object containing a 'classifications' array")
 	})
@@ -313,7 +339,7 @@ func TestClassifier_JSONMode(t *testing.T) {
 		}
 
 		articles := []db.Item{{GUID: "item1", Title: "Test"}}
-		prompt := classifier.buildPrompt(articles, nil)
+		prompt := classifier.buildPrompt(articles, nil, nil)
 
 		assert.Contains(t, prompt, "Respond with a JSON array of classification objects")
 	})
@@ -391,7 +417,7 @@ func TestClassifier_JSONMode(t *testing.T) {
 		classifier := NewClassifier(cfg)
 
 		articles := []db.Item{{GUID: "item1", Title: "Test"}}
-		classifications, err := classifier.ClassifyArticles(context.Background(), articles, nil)
+		classifications, err := classifier.ClassifyArticles(context.Background(), articles, nil, nil)
 
 		require.NoError(t, err)
 		require.Len(t, classifications, 1)

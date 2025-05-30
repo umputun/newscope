@@ -157,7 +157,7 @@ func extractRichContent(node *html.Node) string {
 	// clean up the result
 	result := buf.String()
 	result = strings.TrimSpace(result)
-	
+
 	// remove any leading empty paragraphs
 	for strings.HasPrefix(result, "<p></p>") {
 		result = strings.TrimPrefix(result, "<p></p>")
@@ -242,33 +242,35 @@ func handleElementNode(node *html.Node, buf *bytes.Buffer) {
 			buf.WriteString(outputTag)
 			buf.WriteString(">")
 		}
-	} else {
-		// for non-allowed tags, just process children
-		// but add paragraph breaks for block-level elements
-		blockElements := map[string]bool{
-			"div": true, "section": true, "article": true,
-			"table": true, "tr": true, "td": true, "th": true,
-		}
+		return
+	}
 
-		if blockElements[node.Data] {
-			// temporarily buffer the content to check if it's empty
-			var tempBuf bytes.Buffer
-			for child := node.FirstChild; child != nil; child = child.NextSibling {
-				extractRichContentRecursive(child, &tempBuf)
-			}
-			
-			// only wrap in <p> tags if there's actual content
-			content := strings.TrimSpace(tempBuf.String())
-			if content != "" {
-				buf.WriteString("<p>")
-				buf.WriteString(content)
-				buf.WriteString("</p>")
-			}
-		} else {
-			// for non-block elements, process children normally
-			for child := node.FirstChild; child != nil; child = child.NextSibling {
-				extractRichContentRecursive(child, buf)
-			}
+	// for non-allowed tags, just process children
+	// but add paragraph breaks for block-level elements
+	blockElements := map[string]bool{
+		"div": true, "section": true, "article": true,
+		"table": true, "tr": true, "td": true, "th": true,
+	}
+
+	if !blockElements[node.Data] {
+		// for non-block elements, process children normally
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			extractRichContentRecursive(child, buf)
 		}
+		return
+	}
+
+	// temporarily buffer the content to check if it's empty
+	var tempBuf bytes.Buffer
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		extractRichContentRecursive(child, &tempBuf)
+	}
+
+	// only wrap in <p> tags if there's actual content
+	content := strings.TrimSpace(tempBuf.String())
+	if content != "" {
+		buf.WriteString("<p>")
+		buf.WriteString(content)
+		buf.WriteString("</p>")
 	}
 }

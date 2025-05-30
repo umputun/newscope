@@ -415,6 +415,9 @@ func TestServer_articleContentHandler(t *testing.T) {
 		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
 			assert.Equal(t, int64(789), itemID)
 			return &types.ItemWithClassification{
+				Item: types.Item{
+					Title: "Full Article",
+				},
 				ExtractedContent: "This is the full article content.",
 			}, nil
 		},

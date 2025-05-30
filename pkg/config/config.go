@@ -36,10 +36,11 @@ type Config struct {
 
 // ClassificationConfig holds classification-specific settings
 type ClassificationConfig struct {
-	ScoreThreshold   float64 `yaml:"score_threshold" json:"score_threshold" jsonschema:"default=5.0,minimum=0,maximum=10,description=Minimum relevance score to include articles"`
-	FeedbackExamples int     `yaml:"feedback_examples" json:"feedback_examples" jsonschema:"default=10,description=Number of recent feedback examples to include in prompt"`
-	BatchSize        int     `yaml:"batch_size" json:"batch_size" jsonschema:"default=5,minimum=1,description=Number of articles to classify in one request"`
-	UseJSONMode      bool    `yaml:"use_json_mode" json:"use_json_mode" jsonschema:"default=false,description=Use JSON response format (not all models support this)"`
+	ScoreThreshold   float64  `yaml:"score_threshold" json:"score_threshold" jsonschema:"default=5.0,minimum=0,maximum=10,description=Minimum relevance score to include articles"`
+	FeedbackExamples int      `yaml:"feedback_examples" json:"feedback_examples" jsonschema:"default=10,description=Number of recent feedback examples to include in prompt"`
+	UseJSONMode      bool     `yaml:"use_json_mode" json:"use_json_mode" jsonschema:"default=false,description=Use JSON response format (not all models support this)"`
+	PreferredTopics  []string `yaml:"preferred_topics" json:"preferred_topics" jsonschema:"description=Topics to prefer (increases score by 1-2 points)"`
+	AvoidedTopics    []string `yaml:"avoided_topics" json:"avoided_topics" jsonschema:"description=Topics to avoid (decreases score by 1-2 points)"`
 }
 
 // LLMConfig holds LLM configuration for article classification
@@ -128,9 +129,6 @@ func Load(path string) (*Config, error) {
 	if cfg.LLM.Classification.FeedbackExamples == 0 {
 		cfg.LLM.Classification.FeedbackExamples = 10
 	}
-	if cfg.LLM.Classification.BatchSize == 0 {
-		cfg.LLM.Classification.BatchSize = 5
-	}
 
 	// set defaults for extraction
 	if cfg.Extraction.Timeout == 0 {
@@ -178,9 +176,6 @@ func validate(cfg *Config) error {
 	}
 	if cfg.LLM.Classification.ScoreThreshold < 0 || cfg.LLM.Classification.ScoreThreshold > 10 {
 		return fmt.Errorf("llm.classification.score_threshold must be between 0 and 10")
-	}
-	if cfg.LLM.Classification.BatchSize < 1 {
-		return fmt.Errorf("llm.classification.batch_size must be at least 1")
 	}
 
 	// validate extraction config

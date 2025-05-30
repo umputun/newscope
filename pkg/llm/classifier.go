@@ -49,9 +49,9 @@ Rate each article from 0-10 where:
 
 Each classification should contain:
 - guid: the article's GUID
-- score: relevance score (0-10)
+- score: relevance score (0-10). Adjust based on topic preferences if provided.
 - explanation: brief explanation (max 100 chars)
-- topics: array of 1-3 relevant topic keywords
+- topics: array of 1-3 relevant topic keywords. IMPORTANT: Use topics from the provided canonical list when applicable. Only create new topics if absolutely necessary.
 - summary: comprehensive summary that captures the key points, findings, main story, and important details (300-500 chars). Write directly about the content itself. NEVER use phrases like "The article discusses", "The article explores", "The piece covers", "The author explains", etc. Start with the actual subject matter. IMPORTANT: Write the summary in the same language as the article content.
 
 Examples of good summaries:
@@ -67,13 +67,13 @@ Examples of bad summaries:
 Consider the user's previous feedback when provided.`
 
 // ClassifyArticles classifies a batch of articles
-func (c *Classifier) ClassifyArticles(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error) {
+func (c *Classifier) ClassifyArticles(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
 	if len(articles) == 0 {
 		return []db.Classification{}, nil
 	}
 
 	// prepare the prompt
-	prompt := c.buildPrompt(articles, feedbacks)
+	prompt := c.buildPrompt(articles, feedbacks, canonicalTopics)
 
 	// create the chat completion request
 	req := openai.ChatCompletionRequest{
@@ -115,8 +115,27 @@ func (c *Classifier) ClassifyArticles(ctx context.Context, articles []db.Item, f
 }
 
 // buildPrompt creates the prompt for the LLM
-func (c *Classifier) buildPrompt(articles []db.Item, feedbackExamples []db.FeedbackExample) string {
+func (c *Classifier) buildPrompt(articles []db.Item, feedbackExamples []db.FeedbackExample, canonicalTopics []string) string {
 	var sb strings.Builder
+
+	// add canonical topics if available
+	if len(canonicalTopics) > 0 {
+		sb.WriteString("Available topics (use one of these when applicable):\n")
+		sb.WriteString(strings.Join(canonicalTopics, ", "))
+		sb.WriteString("\n\n")
+	}
+
+	// add topic preferences
+	if len(c.config.Classification.PreferredTopics) > 0 || len(c.config.Classification.AvoidedTopics) > 0 {
+		sb.WriteString("Topic preferences:\n")
+		if len(c.config.Classification.PreferredTopics) > 0 {
+			sb.WriteString(fmt.Sprintf("- Preferred topics (increase score by 1-2): %s\n", strings.Join(c.config.Classification.PreferredTopics, ", ")))
+		}
+		if len(c.config.Classification.AvoidedTopics) > 0 {
+			sb.WriteString(fmt.Sprintf("- Avoided topics (decrease score by 1-2): %s\n", strings.Join(c.config.Classification.AvoidedTopics, ", ")))
+		}
+		sb.WriteString("\n")
+	}
 
 	// add feedback examples if available
 	if len(feedbackExamples) > 0 {
