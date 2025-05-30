@@ -55,6 +55,8 @@
         
         <button class="btn-secondary"
                 hx-post="/api/v1/feeds/{{.ID}}/fetch"
+                hx-target="#feed-{{.ID}}"
+                hx-swap="outerHTML"
                 hx-indicator="#fetch-indicator-{{.ID}}">
             Fetch Now
         </button>
