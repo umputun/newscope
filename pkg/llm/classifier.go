@@ -270,18 +270,34 @@ func (c *Classifier) parseResponse(content string, articles []db.Item) ([]db.Cla
 	return valid, nil
 }
 
+// default prompts for preference summary operations
+const (
+	defaultGenerateSummaryPrompt = `Analyze the following user feedback on articles and create a comprehensive preference summary.
+The summary should capture patterns in what the user likes and dislikes.
+Be specific about content types, writing styles, technical depth, and topics.
+Keep the summary concise (200-300 words) but insightful.`
+
+	defaultUpdateSummaryPrompt = `Update the following preference summary based on new user feedback.
+Incorporate the new patterns while preserving existing insights.
+Keep the updated summary concise (200-300 words) but comprehensive.`
+)
+
 // GeneratePreferenceSummary creates initial summary from feedback history
 func (c *Classifier) GeneratePreferenceSummary(ctx context.Context, feedback []db.FeedbackExample) (string, error) {
 	if len(feedback) == 0 {
 		return "", fmt.Errorf("no feedback provided")
 	}
 
+	// use custom prompt if provided, otherwise use default
+	prompt := c.config.Classification.Prompts.GenerateSummary
+	if prompt == "" {
+		prompt = defaultGenerateSummaryPrompt
+	}
+
 	// build prompt for summary generation
 	var sb strings.Builder
-	sb.WriteString("Analyze the following user feedback on articles and create a comprehensive preference summary.\n")
-	sb.WriteString("The summary should capture patterns in what the user likes and dislikes.\n")
-	sb.WriteString("Be specific about content types, writing styles, technical depth, and topics.\n")
-	sb.WriteString("Keep the summary concise (200-300 words) but insightful.\n\n")
+	sb.WriteString(prompt)
+	sb.WriteString("\n\n")
 
 	sb.WriteString("User feedback history:\n\n")
 	for _, ex := range feedback {
@@ -338,11 +354,16 @@ func (c *Classifier) UpdatePreferenceSummary(ctx context.Context, currentSummary
 		return currentSummary, nil // nothing to update
 	}
 
+	// use custom prompt if provided, otherwise use default
+	prompt := c.config.Classification.Prompts.UpdateSummary
+	if prompt == "" {
+		prompt = defaultUpdateSummaryPrompt
+	}
+
 	// build prompt for summary update
 	var sb strings.Builder
-	sb.WriteString("Update the following preference summary based on new user feedback.\n")
-	sb.WriteString("Incorporate the new patterns while preserving existing insights.\n")
-	sb.WriteString("Keep the updated summary concise (200-300 words) but comprehensive.\n\n")
+	sb.WriteString(prompt)
+	sb.WriteString("\n\n")
 
 	sb.WriteString("Current preference summary:\n")
 	sb.WriteString(currentSummary)

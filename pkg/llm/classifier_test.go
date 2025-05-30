@@ -579,3 +579,112 @@ func TestClassifier_UpdatePreferenceSummary(t *testing.T) {
 	assert.Contains(t, updatedSummary, "cloud infrastructure")
 	assert.Contains(t, updatedSummary, "political")
 }
+
+func TestClassifier_CustomPrompts(t *testing.T) {
+	t.Run("custom generate summary prompt", func(t *testing.T) {
+		customPrompt := "Custom prompt for testing: analyze feedback and create summary."
+
+		// create test server that captures the request
+		var capturedPrompt string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var req openai.ChatCompletionRequest
+			json.NewDecoder(r.Body).Decode(&req)
+
+			// capture the user message content
+			for _, msg := range req.Messages {
+				if msg.Role == openai.ChatMessageRoleUser {
+					capturedPrompt = msg.Content
+					break
+				}
+			}
+
+			resp := openai.ChatCompletionResponse{
+				Choices: []openai.ChatCompletionChoice{
+					{
+						Message: openai.ChatCompletionMessage{
+							Content: "Test summary",
+						},
+					},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		cfg := config.LLMConfig{
+			Endpoint: server.URL + "/v1",
+			APIKey:   "test-key",
+			Model:    "gpt-4",
+			Classification: config.ClassificationConfig{
+				Prompts: config.ClassificationPrompts{
+					GenerateSummary: customPrompt,
+				},
+			},
+		}
+		classifier := NewClassifier(cfg)
+
+		feedback := []db.FeedbackExample{
+			{Title: "Test Article", Feedback: "like"},
+		}
+
+		_, err := classifier.GeneratePreferenceSummary(context.Background(), feedback)
+		require.NoError(t, err)
+
+		// verify custom prompt was used
+		assert.Contains(t, capturedPrompt, customPrompt)
+	})
+
+	t.Run("custom update summary prompt", func(t *testing.T) {
+		customPrompt := "Custom update prompt: refine the summary with new data."
+
+		// create test server that captures the request
+		var capturedPrompt string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var req openai.ChatCompletionRequest
+			json.NewDecoder(r.Body).Decode(&req)
+
+			// capture the user message content
+			for _, msg := range req.Messages {
+				if msg.Role == openai.ChatMessageRoleUser {
+					capturedPrompt = msg.Content
+					break
+				}
+			}
+
+			resp := openai.ChatCompletionResponse{
+				Choices: []openai.ChatCompletionChoice{
+					{
+						Message: openai.ChatCompletionMessage{
+							Content: "Updated summary",
+						},
+					},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		cfg := config.LLMConfig{
+			Endpoint: server.URL + "/v1",
+			APIKey:   "test-key",
+			Model:    "gpt-4",
+			Classification: config.ClassificationConfig{
+				Prompts: config.ClassificationPrompts{
+					UpdateSummary: customPrompt,
+				},
+			},
+		}
+		classifier := NewClassifier(cfg)
+
+		currentSummary := "Current summary"
+		newFeedback := []db.FeedbackExample{
+			{Title: "New Article", Feedback: "like"},
+		}
+
+		_, err := classifier.UpdatePreferenceSummary(context.Background(), currentSummary, newFeedback)
+		require.NoError(t, err)
+
+		// verify custom prompt was used
+		assert.Contains(t, capturedPrompt, customPrompt)
+	})
+}

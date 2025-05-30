@@ -55,6 +55,23 @@ llm:
       - "sports"
       - "politics"
       - "celebrity"
+    
+    # Optional: Custom prompts for preference summary generation
+    # prompts:
+    #   generate_summary: |
+    #     Analyze the user's feedback history and create a preference profile.
+    #     Focus on:
+    #     - Technical depth preferences (beginner vs advanced)
+    #     - Content types (tutorials, news, opinion pieces)
+    #     - Specific technologies and domains of interest
+    #     - Writing style preferences
+    #     Limit to 200-300 words.
+    #   
+    #   update_summary: |
+    #     Refine the existing preference profile based on new feedback.
+    #     Maintain previous insights while incorporating new patterns.
+    #     Note any shifts in interests or preferences.
+    #     Keep within 200-300 words.
 
 extraction:
   enabled: true

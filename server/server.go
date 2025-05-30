@@ -641,7 +641,7 @@ func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, articles []typ
 	for i := range articles {
 		s.renderArticleCard(w, &articles[i])
 	}
-	
+
 	if len(articles) == 0 {
 		if _, err := w.Write([]byte(`<p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>`)); err != nil {
 			log.Printf("[ERROR] failed to write no articles message: %v", err)
@@ -658,7 +658,7 @@ func (s *Server) writeTopicDropdown(w http.ResponseWriter, topics []string, sele
 	var topicHTML strings.Builder
 	topicHTML.WriteString(`<select id="topic-filter" name="topic" hx-get="/articles" hx-trigger="change" hx-target="#articles-container" hx-include="#score-filter" hx-swap-oob="true">`)
 	topicHTML.WriteString(`<option value="">All Topics</option>`)
-	
+
 	for _, t := range topics {
 		selected := ""
 		if t == selectedTopic {
@@ -666,7 +666,7 @@ func (s *Server) writeTopicDropdown(w http.ResponseWriter, topics []string, sele
 		}
 		topicHTML.WriteString(fmt.Sprintf(`<option value=%q%s>%s</option>`, t, selected, t))
 	}
-	
+
 	topicHTML.WriteString(`</select>`)
 
 	if _, err := w.Write([]byte(topicHTML.String())); err != nil {

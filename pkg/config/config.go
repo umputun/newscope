@@ -36,11 +36,18 @@ type Config struct {
 
 // ClassificationConfig holds classification-specific settings
 type ClassificationConfig struct {
-	ScoreThreshold   float64  `yaml:"score_threshold" json:"score_threshold" jsonschema:"default=5.0,minimum=0,maximum=10,description=Minimum relevance score to include articles"`
-	FeedbackExamples int      `yaml:"feedback_examples" json:"feedback_examples" jsonschema:"default=10,description=Number of recent feedback examples to include in prompt"`
-	UseJSONMode      bool     `yaml:"use_json_mode" json:"use_json_mode" jsonschema:"default=false,description=Use JSON response format (not all models support this)"`
-	PreferredTopics  []string `yaml:"preferred_topics" json:"preferred_topics" jsonschema:"description=Topics to prefer (increases score by 1-2 points)"`
-	AvoidedTopics    []string `yaml:"avoided_topics" json:"avoided_topics" jsonschema:"description=Topics to avoid (decreases score by 1-2 points)"`
+	ScoreThreshold   float64               `yaml:"score_threshold" json:"score_threshold" jsonschema:"default=5.0,minimum=0,maximum=10,description=Minimum relevance score to include articles"`
+	FeedbackExamples int                   `yaml:"feedback_examples" json:"feedback_examples" jsonschema:"default=10,description=Number of recent feedback examples to include in prompt"`
+	UseJSONMode      bool                  `yaml:"use_json_mode" json:"use_json_mode" jsonschema:"default=false,description=Use JSON response format (not all models support this)"`
+	PreferredTopics  []string              `yaml:"preferred_topics" json:"preferred_topics" jsonschema:"description=Topics to prefer (increases score by 1-2 points)"`
+	AvoidedTopics    []string              `yaml:"avoided_topics" json:"avoided_topics" jsonschema:"description=Topics to avoid (decreases score by 1-2 points)"`
+	Prompts          ClassificationPrompts `yaml:"prompts" json:"prompts" jsonschema:"description=Custom prompts for classification and preference summaries"`
+}
+
+// ClassificationPrompts holds customizable prompts for the LLM classifier
+type ClassificationPrompts struct {
+	GenerateSummary string `yaml:"generate_summary" json:"generate_summary" jsonschema:"description=Prompt for generating preference summary from feedback history"`
+	UpdateSummary   string `yaml:"update_summary" json:"update_summary" jsonschema:"description=Prompt for updating existing preference summary with new feedback"`
 }
 
 // LLMConfig holds LLM configuration for article classification
