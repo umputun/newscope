@@ -18,6 +18,7 @@ import (
 	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed/types"
+	"github.com/umputun/newscope/pkg/llm"
 	"github.com/umputun/newscope/pkg/scheduler/mocks"
 )
 
@@ -32,6 +33,22 @@ func setupTestDB() *mocks.DatabaseMock {
 
 	mockDB.ItemExistsByTitleOrURLFunc = func(ctx context.Context, title, url string) (bool, error) {
 		return false, nil
+	}
+
+	mockDB.GetSettingFunc = func(ctx context.Context, key string) (string, error) {
+		return "", nil
+	}
+
+	mockDB.SetSettingFunc = func(ctx context.Context, key, value string) error {
+		return nil
+	}
+
+	mockDB.GetFeedbackCountFunc = func(ctx context.Context) (int64, error) {
+		return 0, nil
+	}
+
+	mockDB.GetFeedbackSinceFunc = func(ctx context.Context, offset int64, limit int) ([]db.FeedbackExample, error) {
+		return []db.FeedbackExample{}, nil
 	}
 
 	return mockDB
@@ -266,9 +283,10 @@ func TestScheduler_ProcessItem(t *testing.T) {
 			Topics:      []string{"tech", "news"},
 		}
 
-		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
-			assert.Len(t, articles, 1)
-			assert.Equal(t, extractResult.Content, articles[0].ExtractedContent)
+		mockClassifier.ClassifyFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]db.Classification, error) {
+			assert.Len(t, req.Articles, 1)
+			assert.Equal(t, extractResult.Content, req.Articles[0].ExtractedContent)
+			assert.Empty(t, req.PreferenceSummary) // processItem calls with empty summary
 			return []db.Classification{classification}, nil
 		}
 
@@ -318,7 +336,7 @@ func TestScheduler_ProcessItem(t *testing.T) {
 		}
 
 		// should not call classifier or update database
-		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
+		mockClassifier.ClassifyFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]db.Classification, error) {
 			t.Fatal("classifier should not be called on extraction error")
 			return nil, nil
 		}
@@ -355,7 +373,7 @@ func TestScheduler_ProcessItem(t *testing.T) {
 		}
 
 		classifyErr := errors.New("classification failed")
-		mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
+		mockClassifier.ClassifyFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]db.Classification, error) {
 			return nil, classifyErr
 		}
 
@@ -433,7 +451,7 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		}, nil
 	}
 
-	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
+	mockClassifier.ClassifyFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]db.Classification, error) {
 		return []db.Classification{{
 			Score:       7.0,
 			Explanation: "Test",
@@ -453,7 +471,7 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 func TestScheduler_ExtractContentNow(t *testing.T) {
 	ctx := context.Background()
 
-	mockDB := &mocks.DatabaseMock{}
+	mockDB := setupTestDB()
 	mockParser := &mocks.ParserMock{}
 	mockExtractor := &mocks.ExtractorMock{}
 	mockClassifier := &mocks.ClassifierMock{}
@@ -493,7 +511,7 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		Topics:      []string{"tech"},
 	}
 
-	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
+	mockClassifier.ClassifyFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]db.Classification, error) {
 		return []db.Classification{classification}, nil
 	}
 
@@ -601,9 +619,9 @@ func TestScheduler_StartStop(t *testing.T) {
 	}
 
 	// mock classification
-	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
+	mockClassifier.ClassifyFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]db.Classification, error) {
 		return []db.Classification{{
-			GUID:        articles[0].GUID,
+			GUID:        req.Articles[0].GUID,
 			Score:       8.5,
 			Explanation: "Highly relevant",
 			Topics:      []string{"tech", "news"},
@@ -707,7 +725,7 @@ func TestScheduler_GracefulShutdown(t *testing.T) {
 		return &content.ExtractResult{Content: "Test"}, nil
 	}
 
-	mockClassifier.ClassifyArticlesFunc = func(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
+	mockClassifier.ClassifyFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]db.Classification, error) {
 		return []db.Classification{{Score: 5.0}}, nil
 	}
 
@@ -738,4 +756,184 @@ func TestScheduler_GracefulShutdown(t *testing.T) {
 
 	// verify processing completed despite shutdown
 	assert.True(t, processingComplete, "in-flight processing should complete")
+}
+
+func TestScheduler_UpdatePreferenceSummaryIfNeeded(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("generate initial summary at 50 feedback", func(t *testing.T) {
+		mockDB := setupTestDB()
+		mockParser := &mocks.ParserMock{}
+		mockExtractor := &mocks.ExtractorMock{}
+		mockClassifier := &mocks.ClassifierMock{}
+
+		// setup for 50 feedback items
+		mockDB.GetFeedbackCountFunc = func(ctx context.Context) (int64, error) {
+			return 50, nil
+		}
+
+		// no previous summary
+		mockDB.GetSettingFunc = func(ctx context.Context, key string) (string, error) {
+			if key == "last_summary_feedback_count" {
+				return "", nil
+			}
+			return "", nil
+		}
+
+		feedbackReturned := false
+		mockDB.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error) {
+			feedbackReturned = true
+			assert.Equal(t, 50, limit)
+			return []db.FeedbackExample{
+				{Title: "Article 1", Feedback: "like"},
+				{Title: "Article 2", Feedback: "dislike"},
+			}, nil
+		}
+
+		summaryGenerated := false
+		mockClassifier.GeneratePreferenceSummaryFunc = func(ctx context.Context, feedback []db.FeedbackExample) (string, error) {
+			summaryGenerated = true
+			assert.Len(t, feedback, 2)
+			return "User prefers technical articles", nil
+		}
+
+		settingsSaved := make(map[string]string)
+		mockDB.SetSettingFunc = func(ctx context.Context, key, value string) error {
+			settingsSaved[key] = value
+			return nil
+		}
+
+		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+		err := s.updatePreferenceSummaryIfNeeded(ctx)
+		require.NoError(t, err)
+
+		assert.True(t, feedbackReturned)
+		assert.True(t, summaryGenerated)
+		assert.Equal(t, "User prefers technical articles", settingsSaved["preference_summary"])
+		assert.Equal(t, "50", settingsSaved["last_summary_feedback_count"])
+	})
+
+	t.Run("update summary after 20 new feedback", func(t *testing.T) {
+		mockDB := setupTestDB()
+		mockParser := &mocks.ParserMock{}
+		mockExtractor := &mocks.ExtractorMock{}
+		mockClassifier := &mocks.ClassifierMock{}
+
+		// setup for 70 feedback items (50 + 20 new)
+		mockDB.GetFeedbackCountFunc = func(ctx context.Context) (int64, error) {
+			return 70, nil
+		}
+
+		// previous summary at 50
+		mockDB.GetSettingFunc = func(ctx context.Context, key string) (string, error) {
+			if key == "last_summary_feedback_count" {
+				return "50", nil
+			}
+			if key == "preference_summary" {
+				return "Original summary", nil
+			}
+			return "", nil
+		}
+
+		newFeedbackReturned := false
+		mockDB.GetFeedbackSinceFunc = func(ctx context.Context, offset int64, limit int) ([]db.FeedbackExample, error) {
+			newFeedbackReturned = true
+			assert.Equal(t, int64(50), offset)
+			assert.Equal(t, 20, limit)
+			return []db.FeedbackExample{
+				{Title: "New Article 1", Feedback: "like"},
+			}, nil
+		}
+
+		summaryUpdated := false
+		mockClassifier.UpdatePreferenceSummaryFunc = func(ctx context.Context, currentSummary string, newFeedback []db.FeedbackExample) (string, error) {
+			summaryUpdated = true
+			assert.Equal(t, "Original summary", currentSummary)
+			assert.Len(t, newFeedback, 1)
+			return "Updated summary", nil
+		}
+
+		settingsSaved := make(map[string]string)
+		mockDB.SetSettingFunc = func(ctx context.Context, key, value string) error {
+			settingsSaved[key] = value
+			return nil
+		}
+
+		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+		err := s.updatePreferenceSummaryIfNeeded(ctx)
+		require.NoError(t, err)
+
+		assert.True(t, newFeedbackReturned)
+		assert.True(t, summaryUpdated)
+		assert.Equal(t, "Updated summary", settingsSaved["preference_summary"])
+		assert.Equal(t, "70", settingsSaved["last_summary_feedback_count"])
+	})
+
+	t.Run("no update if less than 20 new feedback", func(t *testing.T) {
+		mockDB := setupTestDB()
+		mockParser := &mocks.ParserMock{}
+		mockExtractor := &mocks.ExtractorMock{}
+		mockClassifier := &mocks.ClassifierMock{}
+
+		// setup for 65 feedback items (50 + 15 new - not enough for update)
+		mockDB.GetFeedbackCountFunc = func(ctx context.Context) (int64, error) {
+			return 65, nil
+		}
+
+		mockDB.GetSettingFunc = func(ctx context.Context, key string) (string, error) {
+			if key == "last_summary_feedback_count" {
+				return "50", nil
+			}
+			return "", nil
+		}
+
+		// should not be called
+		mockClassifier.GeneratePreferenceSummaryFunc = func(ctx context.Context, feedback []db.FeedbackExample) (string, error) {
+			t.Fatal("GeneratePreferenceSummary should not be called")
+			return "", nil
+		}
+
+		mockClassifier.UpdatePreferenceSummaryFunc = func(ctx context.Context, currentSummary string, newFeedback []db.FeedbackExample) (string, error) {
+			t.Fatal("UpdatePreferenceSummary should not be called")
+			return "", nil
+		}
+
+		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+		err := s.updatePreferenceSummaryIfNeeded(ctx)
+		require.NoError(t, err)
+	})
+
+	t.Run("no update if less than 50 total feedback", func(t *testing.T) {
+		mockDB := setupTestDB()
+		mockParser := &mocks.ParserMock{}
+		mockExtractor := &mocks.ExtractorMock{}
+		mockClassifier := &mocks.ClassifierMock{}
+
+		// setup for only 30 feedback items (less than 50 threshold)
+		mockDB.GetFeedbackCountFunc = func(ctx context.Context) (int64, error) {
+			return 30, nil
+		}
+
+		mockDB.GetSettingFunc = func(ctx context.Context, key string) (string, error) {
+			// important: return empty string for last_summary_feedback_count
+			// to simulate no previous summary generation
+			return "", nil
+		}
+
+		// should not be called since we have less than 50 total feedback
+		mockClassifier.GeneratePreferenceSummaryFunc = func(ctx context.Context, feedback []db.FeedbackExample) (string, error) {
+			t.Fatal("GeneratePreferenceSummary should not be called")
+			return "", nil
+		}
+
+		// should not be called since we haven't generated initial summary yet
+		mockClassifier.UpdatePreferenceSummaryFunc = func(ctx context.Context, currentSummary string, newFeedback []db.FeedbackExample) (string, error) {
+			t.Fatal("UpdatePreferenceSummary should not be called")
+			return "", nil
+		}
+
+		s := NewScheduler(mockDB, mockParser, mockExtractor, mockClassifier, Config{})
+		err := s.updatePreferenceSummaryIfNeeded(ctx)
+		require.NoError(t, err)
+	})
 }

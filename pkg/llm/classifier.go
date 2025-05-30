@@ -71,20 +71,28 @@ IMPORTANT: Even low-relevance articles (score 0-3) MUST have topics assigned. Ex
 
 Consider the user's previous feedback when provided.`
 
-// ClassifyArticles classifies a batch of articles
-func (c *Classifier) ClassifyArticles(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error) {
-	if len(articles) == 0 {
+// ClassifyRequest contains all parameters for article classification
+type ClassifyRequest struct {
+	Articles          []db.Item
+	Feedbacks         []db.FeedbackExample
+	CanonicalTopics   []string
+	PreferenceSummary string
+}
+
+// Classify classifies articles using the provided request parameters
+func (c *Classifier) Classify(ctx context.Context, req ClassifyRequest) ([]db.Classification, error) {
+	if len(req.Articles) == 0 {
 		return []db.Classification{}, nil
 	}
 
 	// prepare the prompt
-	prompt := c.buildPrompt(articles, feedbacks, canonicalTopics)
+	prompt := c.buildPromptWithSummary(req.Articles, req.Feedbacks, req.CanonicalTopics, req.PreferenceSummary)
 
 	// retry up to 3 times if we get invalid JSON
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		// create the chat completion request
-		req := openai.ChatCompletionRequest{
+		chatReq := openai.ChatCompletionRequest{
 			Model:       c.config.Model,
 			Temperature: float32(c.config.Temperature),
 			MaxTokens:   c.config.MaxTokens,
@@ -102,13 +110,13 @@ func (c *Classifier) ClassifyArticles(ctx context.Context, articles []db.Item, f
 
 		// add JSON response format if enabled
 		if c.config.Classification.UseJSONMode {
-			req.ResponseFormat = &openai.ChatCompletionResponseFormat{
+			chatReq.ResponseFormat = &openai.ChatCompletionResponseFormat{
 				Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 			}
 		}
 
 		// call the LLM
-		resp, err := c.client.CreateChatCompletion(ctx, req)
+		resp, err := c.client.CreateChatCompletion(ctx, chatReq)
 		if err != nil {
 			return nil, fmt.Errorf("llm request failed: %w", err)
 		}
@@ -119,7 +127,7 @@ func (c *Classifier) ClassifyArticles(ctx context.Context, articles []db.Item, f
 
 		// parse the response
 		content := resp.Choices[0].Message.Content
-		classifications, err := c.parseResponse(content, articles)
+		classifications, err := c.parseResponse(content, req.Articles)
 		if err == nil {
 			return classifications, nil
 		}
@@ -141,7 +149,19 @@ func (c *Classifier) ClassifyArticles(ctx context.Context, articles []db.Item, f
 
 // buildPrompt creates the prompt for the LLM
 func (c *Classifier) buildPrompt(articles []db.Item, feedbackExamples []db.FeedbackExample, canonicalTopics []string) string {
+	return c.buildPromptWithSummary(articles, feedbackExamples, canonicalTopics, "")
+}
+
+// buildPromptWithSummary creates the prompt for the LLM with optional preference summary
+func (c *Classifier) buildPromptWithSummary(articles []db.Item, feedbackExamples []db.FeedbackExample, canonicalTopics []string, preferenceSummary string) string {
 	var sb strings.Builder
+
+	// add preference summary if available
+	if preferenceSummary != "" {
+		sb.WriteString("User preference summary (based on historical feedback):\n")
+		sb.WriteString(preferenceSummary)
+		sb.WriteString("\n\n")
+	}
 
 	// add canonical topics if available
 	if len(canonicalTopics) > 0 {
@@ -164,7 +184,7 @@ func (c *Classifier) buildPrompt(articles []db.Item, feedbackExamples []db.Feedb
 
 	// add feedback examples if available
 	if len(feedbackExamples) > 0 {
-		sb.WriteString("Based on user feedback:\n")
+		sb.WriteString("Recent user feedback:\n")
 		for _, ex := range feedbackExamples {
 			sb.WriteString(fmt.Sprintf("- %s article: %s\n", ex.Feedback, ex.Title))
 			if len(ex.Topics) > 0 {
@@ -248,4 +268,128 @@ func (c *Classifier) parseResponse(content string, articles []db.Item) ([]db.Cla
 	}
 
 	return valid, nil
+}
+
+// GeneratePreferenceSummary creates initial summary from feedback history
+func (c *Classifier) GeneratePreferenceSummary(ctx context.Context, feedback []db.FeedbackExample) (string, error) {
+	if len(feedback) == 0 {
+		return "", fmt.Errorf("no feedback provided")
+	}
+
+	// build prompt for summary generation
+	var sb strings.Builder
+	sb.WriteString("Analyze the following user feedback on articles and create a comprehensive preference summary.\n")
+	sb.WriteString("The summary should capture patterns in what the user likes and dislikes.\n")
+	sb.WriteString("Be specific about content types, writing styles, technical depth, and topics.\n")
+	sb.WriteString("Keep the summary concise (200-300 words) but insightful.\n\n")
+
+	sb.WriteString("User feedback history:\n\n")
+	for _, ex := range feedback {
+		sb.WriteString(fmt.Sprintf("%s: %s\n", strings.ToUpper(ex.Feedback), ex.Title))
+		if ex.Description != "" {
+			sb.WriteString(fmt.Sprintf("  Description: %s\n", ex.Description))
+		}
+		if ex.Content != "" {
+			sb.WriteString(fmt.Sprintf("  Content preview: %s\n", ex.Content))
+		}
+		if len(ex.Topics) > 0 {
+			sb.WriteString(fmt.Sprintf("  Topics: %s\n", strings.Join(ex.Topics, ", ")))
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("Generate a preference summary that will help classify future articles more accurately.")
+
+	// create the chat completion request
+	req := openai.ChatCompletionRequest{
+		Model:       c.config.Model,
+		Temperature: 0.7,
+		MaxTokens:   500,
+		Messages: []openai.ChatCompletionMessage{
+			{
+				Role:    openai.ChatMessageRoleSystem,
+				Content: "You are an AI assistant that analyzes user preferences based on their article feedback.",
+			},
+			{
+				Role:    openai.ChatMessageRoleUser,
+				Content: sb.String(),
+			},
+		},
+	}
+
+	resp, err := c.client.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("generate preference summary failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no response from llm")
+	}
+
+	return resp.Choices[0].Message.Content, nil
+}
+
+// UpdatePreferenceSummary updates existing summary with new feedback
+func (c *Classifier) UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []db.FeedbackExample) (string, error) {
+	if currentSummary == "" {
+		return "", fmt.Errorf("no current summary provided")
+	}
+	if len(newFeedback) == 0 {
+		return currentSummary, nil // nothing to update
+	}
+
+	// build prompt for summary update
+	var sb strings.Builder
+	sb.WriteString("Update the following preference summary based on new user feedback.\n")
+	sb.WriteString("Incorporate the new patterns while preserving existing insights.\n")
+	sb.WriteString("Keep the updated summary concise (200-300 words) but comprehensive.\n\n")
+
+	sb.WriteString("Current preference summary:\n")
+	sb.WriteString(currentSummary)
+	sb.WriteString("\n\n")
+
+	sb.WriteString("New user feedback:\n\n")
+	for _, ex := range newFeedback {
+		sb.WriteString(fmt.Sprintf("%s: %s\n", strings.ToUpper(ex.Feedback), ex.Title))
+		if ex.Description != "" {
+			sb.WriteString(fmt.Sprintf("  Description: %s\n", ex.Description))
+		}
+		if ex.Content != "" {
+			sb.WriteString(fmt.Sprintf("  Content preview: %s\n", ex.Content))
+		}
+		if len(ex.Topics) > 0 {
+			sb.WriteString(fmt.Sprintf("  Topics: %s\n", strings.Join(ex.Topics, ", ")))
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("Generate an updated preference summary that incorporates these new insights.")
+
+	// create the chat completion request
+	req := openai.ChatCompletionRequest{
+		Model:       c.config.Model,
+		Temperature: 0.7,
+		MaxTokens:   500,
+		Messages: []openai.ChatCompletionMessage{
+			{
+				Role:    openai.ChatMessageRoleSystem,
+				Content: "You are an AI assistant that refines user preference summaries based on ongoing feedback.",
+			},
+			{
+				Role:    openai.ChatMessageRoleUser,
+				Content: sb.String(),
+			},
+		},
+	}
+
+	resp, err := c.client.CreateChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("update preference summary failed: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no response from llm")
+	}
+
+	return resp.Choices[0].Message.Content, nil
 }

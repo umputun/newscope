@@ -12,6 +12,7 @@ import (
 	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed/types"
+	"github.com/umputun/newscope/pkg/llm"
 )
 
 // Scheduler manages periodic feed updates and content processing
@@ -43,6 +44,10 @@ type Database interface {
 	UpdateItemExtraction(ctx context.Context, itemID int64, content, richContent string, err error) error
 	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
 	GetTopics(ctx context.Context) ([]string, error)
+	GetFeedbackCount(ctx context.Context) (int64, error)
+	GetFeedbackSince(ctx context.Context, offset int64, limit int) ([]db.FeedbackExample, error)
+	GetSetting(ctx context.Context, key string) (string, error)
+	SetSetting(ctx context.Context, key, value string) error
 }
 
 // Parser interface for feed parsing
@@ -57,7 +62,9 @@ type Extractor interface {
 
 // Classifier interface for LLM classification
 type Classifier interface {
-	ClassifyArticles(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error)
+	Classify(ctx context.Context, req llm.ClassifyRequest) ([]db.Classification, error)
+	GeneratePreferenceSummary(ctx context.Context, feedback []db.FeedbackExample) (string, error)
+	UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []db.FeedbackExample) (string, error)
 }
 
 // Config holds scheduler configuration
@@ -118,6 +125,18 @@ func (s *Scheduler) Stop() {
 func (s *Scheduler) processingWorker(ctx context.Context, items <-chan db.Item) {
 	defer s.wg.Done()
 
+	// check and update preference summary if needed
+	if err := s.updatePreferenceSummaryIfNeeded(ctx); err != nil {
+		lgr.Printf("[WARN] failed to update preference summary: %v", err)
+	}
+
+	// get preference summary
+	preferenceSummary, err := s.db.GetSetting(ctx, "preference_summary")
+	if err != nil {
+		lgr.Printf("[WARN] failed to get preference summary: %v", err)
+		preferenceSummary = ""
+	}
+
 	// get feedback examples once at start
 	feedbacks, err := s.db.GetRecentFeedback(ctx, "", 10)
 	if err != nil {
@@ -137,7 +156,7 @@ func (s *Scheduler) processingWorker(ctx context.Context, items <-chan db.Item) 
 
 	for item := range items {
 		g.Go(func() error {
-			s.processItem(ctx, item, feedbacks, topics)
+			s.processItemWithSummary(ctx, item, feedbacks, topics, preferenceSummary)
 			return nil
 		})
 	}
@@ -149,6 +168,11 @@ func (s *Scheduler) processingWorker(ctx context.Context, items <-chan db.Item) 
 
 // processItem handles extraction and classification for a single item
 func (s *Scheduler) processItem(ctx context.Context, item db.Item, feedbacks []db.FeedbackExample, topics []string) {
+	s.processItemWithSummary(ctx, item, feedbacks, topics, "")
+}
+
+// processItemWithSummary handles extraction and classification with preference summary
+func (s *Scheduler) processItemWithSummary(ctx context.Context, item db.Item, feedbacks []db.FeedbackExample, topics []string, preferenceSummary string) {
 	lgr.Printf("[DEBUG] processing item: %s", item.Link)
 
 	// 1. Extract content
@@ -166,7 +190,12 @@ func (s *Scheduler) processItem(ctx context.Context, item db.Item, feedbacks []d
 	// 2. Classify the item with extracted content
 	item.ExtractedContent = extracted.Content
 
-	classifications, err := s.classifier.ClassifyArticles(ctx, []db.Item{item}, feedbacks, topics)
+	classifications, err := s.classifier.Classify(ctx, llm.ClassifyRequest{
+		Articles:          []db.Item{item},
+		Feedbacks:         feedbacks,
+		CanonicalTopics:   topics,
+		PreferenceSummary: preferenceSummary,
+	})
 	if err != nil {
 		lgr.Printf("[WARN] failed to classify item: %v", err)
 		return
@@ -185,6 +214,93 @@ func (s *Scheduler) processItem(ctx context.Context, item db.Item, feedbacks []d
 	}
 
 	lgr.Printf("[DEBUG] processed item: %s (score: %.1f)", item.Title, classification.Score)
+}
+
+// updatePreferenceSummaryIfNeeded checks if preference summary needs updating
+func (s *Scheduler) updatePreferenceSummaryIfNeeded(ctx context.Context) error {
+	feedbackCount, err := s.db.GetFeedbackCount(ctx)
+	if err != nil {
+		return fmt.Errorf("get feedback count: %w", err)
+	}
+
+	lastSummaryCountStr, err := s.db.GetSetting(ctx, "last_summary_feedback_count")
+	if err != nil {
+		return fmt.Errorf("get last summary count: %w", err)
+	}
+
+	var lastSummaryCount int64
+	if lastSummaryCountStr != "" {
+		_, err := fmt.Sscanf(lastSummaryCountStr, "%d", &lastSummaryCount)
+		if err != nil {
+			lgr.Printf("[WARN] failed to parse last summary count: %v", err)
+		}
+	}
+
+	// initial generation at 50 feedback
+	if lastSummaryCount == 0 && feedbackCount >= 50 {
+		lgr.Printf("[INFO] generating initial preference summary from %d feedback items", feedbackCount)
+
+		feedback, err := s.db.GetRecentFeedback(ctx, "", 50)
+		if err != nil {
+			return fmt.Errorf("get feedback for initial summary: %w", err)
+		}
+
+		summary, err := s.classifier.GeneratePreferenceSummary(ctx, feedback)
+		if err != nil {
+			return fmt.Errorf("generate initial summary: %w", err)
+		}
+
+		if err := s.db.SetSetting(ctx, "preference_summary", summary); err != nil {
+			return fmt.Errorf("save preference summary: %w", err)
+		}
+
+		if err := s.db.SetSetting(ctx, "last_summary_feedback_count", fmt.Sprintf("%d", feedbackCount)); err != nil {
+			return fmt.Errorf("save last summary count: %w", err)
+		}
+
+		lgr.Printf("[INFO] preference summary generated successfully")
+		return nil
+	}
+
+	// update every 20 new feedback (only if we already have a summary)
+	if lastSummaryCount > 0 && feedbackCount-lastSummaryCount >= 20 {
+		return s.updateExistingPreferenceSummary(ctx, feedbackCount, lastSummaryCount)
+	}
+
+	return nil
+}
+
+// updateExistingPreferenceSummary updates the preference summary with new feedback
+func (s *Scheduler) updateExistingPreferenceSummary(ctx context.Context, feedbackCount, lastSummaryCount int64) error {
+	diff := feedbackCount - lastSummaryCount
+	lgr.Printf("[INFO] updating preference summary with %d new feedback items", diff)
+
+	// get new feedback since last summary
+	newFeedback, err := s.db.GetFeedbackSince(ctx, lastSummaryCount, int(diff))
+	if err != nil {
+		return fmt.Errorf("get new feedback: %w", err)
+	}
+
+	currentSummary, err := s.db.GetSetting(ctx, "preference_summary")
+	if err != nil {
+		return fmt.Errorf("get current summary: %w", err)
+	}
+
+	updatedSummary, err := s.classifier.UpdatePreferenceSummary(ctx, currentSummary, newFeedback)
+	if err != nil {
+		return fmt.Errorf("update summary: %w", err)
+	}
+
+	if err := s.db.SetSetting(ctx, "preference_summary", updatedSummary); err != nil {
+		return fmt.Errorf("save updated summary: %w", err)
+	}
+
+	if err := s.db.SetSetting(ctx, "last_summary_feedback_count", fmt.Sprintf("%d", feedbackCount)); err != nil {
+		return fmt.Errorf("save last summary count: %w", err)
+	}
+
+	lgr.Printf("[INFO] preference summary updated successfully")
+	return nil
 }
 
 // feedUpdateWorker periodically updates all enabled feeds
@@ -327,6 +443,13 @@ func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
 
 	// process items in background
 	go func() {
+		// get preference summary
+		preferenceSummary, err := s.db.GetSetting(ctx, "preference_summary")
+		if err != nil {
+			lgr.Printf("[WARN] failed to get preference summary: %v", err)
+			preferenceSummary = ""
+		}
+
 		for item := range processCh {
 			feedbacks, err := s.db.GetRecentFeedback(ctx, "", 10)
 			if err != nil {
@@ -338,7 +461,7 @@ func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
 				lgr.Printf("[WARN] failed to get canonical topics: %v", err)
 				topics = []string{}
 			}
-			s.processItem(ctx, item, feedbacks, topics)
+			s.processItemWithSummary(ctx, item, feedbacks, topics, preferenceSummary)
 		}
 	}()
 
@@ -354,6 +477,13 @@ func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
 		return fmt.Errorf("get item: %w", err)
 	}
 
+	// get preference summary
+	preferenceSummary, err := s.db.GetSetting(ctx, "preference_summary")
+	if err != nil {
+		lgr.Printf("[WARN] failed to get preference summary: %v", err)
+		preferenceSummary = ""
+	}
+
 	feedbacks, err := s.db.GetRecentFeedback(ctx, "", 10)
 	if err != nil {
 		lgr.Printf("[WARN] failed to get feedback examples: %v", err)
@@ -366,6 +496,6 @@ func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
 		topics = []string{}
 	}
 
-	s.processItem(ctx, *item, feedbacks, topics)
+	s.processItemWithSummary(ctx, *item, feedbacks, topics, preferenceSummary)
 	return nil
 }

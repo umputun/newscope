@@ -23,6 +23,12 @@ import (
 //			GetFeedFunc: func(ctx context.Context, id int64) (*db.Feed, error) {
 //				panic("mock out the GetFeed method")
 //			},
+//			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
+//				panic("mock out the GetFeedbackCount method")
+//			},
+//			GetFeedbackSinceFunc: func(ctx context.Context, offset int64, limit int) ([]db.FeedbackExample, error) {
+//				panic("mock out the GetFeedbackSince method")
+//			},
 //			GetFeedsFunc: func(ctx context.Context, enabledOnly bool) ([]db.Feed, error) {
 //				panic("mock out the GetFeeds method")
 //			},
@@ -32,6 +38,9 @@ import (
 //			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error) {
 //				panic("mock out the GetRecentFeedback method")
 //			},
+//			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+//				panic("mock out the GetSetting method")
+//			},
 //			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 //				panic("mock out the GetTopics method")
 //			},
@@ -40,6 +49,9 @@ import (
 //			},
 //			ItemExistsByTitleOrURLFunc: func(ctx context.Context, title string, url string) (bool, error) {
 //				panic("mock out the ItemExistsByTitleOrURL method")
+//			},
+//			SetSettingFunc: func(ctx context.Context, key string, value string) error {
+//				panic("mock out the SetSetting method")
 //			},
 //			UpdateFeedErrorFunc: func(ctx context.Context, feedID int64, errMsg string) error {
 //				panic("mock out the UpdateFeedError method")
@@ -66,6 +78,12 @@ type DatabaseMock struct {
 	// GetFeedFunc mocks the GetFeed method.
 	GetFeedFunc func(ctx context.Context, id int64) (*db.Feed, error)
 
+	// GetFeedbackCountFunc mocks the GetFeedbackCount method.
+	GetFeedbackCountFunc func(ctx context.Context) (int64, error)
+
+	// GetFeedbackSinceFunc mocks the GetFeedbackSince method.
+	GetFeedbackSinceFunc func(ctx context.Context, offset int64, limit int) ([]db.FeedbackExample, error)
+
 	// GetFeedsFunc mocks the GetFeeds method.
 	GetFeedsFunc func(ctx context.Context, enabledOnly bool) ([]db.Feed, error)
 
@@ -75,6 +93,9 @@ type DatabaseMock struct {
 	// GetRecentFeedbackFunc mocks the GetRecentFeedback method.
 	GetRecentFeedbackFunc func(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
 
+	// GetSettingFunc mocks the GetSetting method.
+	GetSettingFunc func(ctx context.Context, key string) (string, error)
+
 	// GetTopicsFunc mocks the GetTopics method.
 	GetTopicsFunc func(ctx context.Context) ([]string, error)
 
@@ -83,6 +104,9 @@ type DatabaseMock struct {
 
 	// ItemExistsByTitleOrURLFunc mocks the ItemExistsByTitleOrURL method.
 	ItemExistsByTitleOrURLFunc func(ctx context.Context, title string, url string) (bool, error)
+
+	// SetSettingFunc mocks the SetSetting method.
+	SetSettingFunc func(ctx context.Context, key string, value string) error
 
 	// UpdateFeedErrorFunc mocks the UpdateFeedError method.
 	UpdateFeedErrorFunc func(ctx context.Context, feedID int64, errMsg string) error
@@ -112,6 +136,20 @@ type DatabaseMock struct {
 			// ID is the id argument value.
 			ID int64
 		}
+		// GetFeedbackCount holds details about calls to the GetFeedbackCount method.
+		GetFeedbackCount []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
+		// GetFeedbackSince holds details about calls to the GetFeedbackSince method.
+		GetFeedbackSince []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Offset is the offset argument value.
+			Offset int64
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// GetFeeds holds details about calls to the GetFeeds method.
 		GetFeeds []struct {
 			// Ctx is the ctx argument value.
@@ -135,6 +173,13 @@ type DatabaseMock struct {
 			// Limit is the limit argument value.
 			Limit int
 		}
+		// GetSetting holds details about calls to the GetSetting method.
+		GetSetting []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Key is the key argument value.
+			Key string
+		}
 		// GetTopics holds details about calls to the GetTopics method.
 		GetTopics []struct {
 			// Ctx is the ctx argument value.
@@ -157,6 +202,15 @@ type DatabaseMock struct {
 			Title string
 			// URL is the url argument value.
 			URL string
+		}
+		// SetSetting holds details about calls to the SetSetting method.
+		SetSetting []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Key is the key argument value.
+			Key string
+			// Value is the value argument value.
+			Value string
 		}
 		// UpdateFeedError holds details about calls to the UpdateFeedError method.
 		UpdateFeedError []struct {
@@ -205,12 +259,16 @@ type DatabaseMock struct {
 	}
 	lockCreateItem             sync.RWMutex
 	lockGetFeed                sync.RWMutex
+	lockGetFeedbackCount       sync.RWMutex
+	lockGetFeedbackSince       sync.RWMutex
 	lockGetFeeds               sync.RWMutex
 	lockGetItem                sync.RWMutex
 	lockGetRecentFeedback      sync.RWMutex
+	lockGetSetting             sync.RWMutex
 	lockGetTopics              sync.RWMutex
 	lockItemExists             sync.RWMutex
 	lockItemExistsByTitleOrURL sync.RWMutex
+	lockSetSetting             sync.RWMutex
 	lockUpdateFeedError        sync.RWMutex
 	lockUpdateFeedFetched      sync.RWMutex
 	lockUpdateItemExtraction   sync.RWMutex
@@ -286,6 +344,78 @@ func (mock *DatabaseMock) GetFeedCalls() []struct {
 	mock.lockGetFeed.RLock()
 	calls = mock.calls.GetFeed
 	mock.lockGetFeed.RUnlock()
+	return calls
+}
+
+// GetFeedbackCount calls GetFeedbackCountFunc.
+func (mock *DatabaseMock) GetFeedbackCount(ctx context.Context) (int64, error) {
+	if mock.GetFeedbackCountFunc == nil {
+		panic("DatabaseMock.GetFeedbackCountFunc: method is nil but Database.GetFeedbackCount was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockGetFeedbackCount.Lock()
+	mock.calls.GetFeedbackCount = append(mock.calls.GetFeedbackCount, callInfo)
+	mock.lockGetFeedbackCount.Unlock()
+	return mock.GetFeedbackCountFunc(ctx)
+}
+
+// GetFeedbackCountCalls gets all the calls that were made to GetFeedbackCount.
+// Check the length with:
+//
+//	len(mockedDatabase.GetFeedbackCountCalls())
+func (mock *DatabaseMock) GetFeedbackCountCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockGetFeedbackCount.RLock()
+	calls = mock.calls.GetFeedbackCount
+	mock.lockGetFeedbackCount.RUnlock()
+	return calls
+}
+
+// GetFeedbackSince calls GetFeedbackSinceFunc.
+func (mock *DatabaseMock) GetFeedbackSince(ctx context.Context, offset int64, limit int) ([]db.FeedbackExample, error) {
+	if mock.GetFeedbackSinceFunc == nil {
+		panic("DatabaseMock.GetFeedbackSinceFunc: method is nil but Database.GetFeedbackSince was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Offset int64
+		Limit  int
+	}{
+		Ctx:    ctx,
+		Offset: offset,
+		Limit:  limit,
+	}
+	mock.lockGetFeedbackSince.Lock()
+	mock.calls.GetFeedbackSince = append(mock.calls.GetFeedbackSince, callInfo)
+	mock.lockGetFeedbackSince.Unlock()
+	return mock.GetFeedbackSinceFunc(ctx, offset, limit)
+}
+
+// GetFeedbackSinceCalls gets all the calls that were made to GetFeedbackSince.
+// Check the length with:
+//
+//	len(mockedDatabase.GetFeedbackSinceCalls())
+func (mock *DatabaseMock) GetFeedbackSinceCalls() []struct {
+	Ctx    context.Context
+	Offset int64
+	Limit  int
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Offset int64
+		Limit  int
+	}
+	mock.lockGetFeedbackSince.RLock()
+	calls = mock.calls.GetFeedbackSince
+	mock.lockGetFeedbackSince.RUnlock()
 	return calls
 }
 
@@ -401,6 +531,42 @@ func (mock *DatabaseMock) GetRecentFeedbackCalls() []struct {
 	return calls
 }
 
+// GetSetting calls GetSettingFunc.
+func (mock *DatabaseMock) GetSetting(ctx context.Context, key string) (string, error) {
+	if mock.GetSettingFunc == nil {
+		panic("DatabaseMock.GetSettingFunc: method is nil but Database.GetSetting was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		Key string
+	}{
+		Ctx: ctx,
+		Key: key,
+	}
+	mock.lockGetSetting.Lock()
+	mock.calls.GetSetting = append(mock.calls.GetSetting, callInfo)
+	mock.lockGetSetting.Unlock()
+	return mock.GetSettingFunc(ctx, key)
+}
+
+// GetSettingCalls gets all the calls that were made to GetSetting.
+// Check the length with:
+//
+//	len(mockedDatabase.GetSettingCalls())
+func (mock *DatabaseMock) GetSettingCalls() []struct {
+	Ctx context.Context
+	Key string
+} {
+	var calls []struct {
+		Ctx context.Context
+		Key string
+	}
+	mock.lockGetSetting.RLock()
+	calls = mock.calls.GetSetting
+	mock.lockGetSetting.RUnlock()
+	return calls
+}
+
 // GetTopics calls GetTopicsFunc.
 func (mock *DatabaseMock) GetTopics(ctx context.Context) ([]string, error) {
 	if mock.GetTopicsFunc == nil {
@@ -510,6 +676,46 @@ func (mock *DatabaseMock) ItemExistsByTitleOrURLCalls() []struct {
 	mock.lockItemExistsByTitleOrURL.RLock()
 	calls = mock.calls.ItemExistsByTitleOrURL
 	mock.lockItemExistsByTitleOrURL.RUnlock()
+	return calls
+}
+
+// SetSetting calls SetSettingFunc.
+func (mock *DatabaseMock) SetSetting(ctx context.Context, key string, value string) error {
+	if mock.SetSettingFunc == nil {
+		panic("DatabaseMock.SetSettingFunc: method is nil but Database.SetSetting was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Key   string
+		Value string
+	}{
+		Ctx:   ctx,
+		Key:   key,
+		Value: value,
+	}
+	mock.lockSetSetting.Lock()
+	mock.calls.SetSetting = append(mock.calls.SetSetting, callInfo)
+	mock.lockSetSetting.Unlock()
+	return mock.SetSettingFunc(ctx, key, value)
+}
+
+// SetSettingCalls gets all the calls that were made to SetSetting.
+// Check the length with:
+//
+//	len(mockedDatabase.SetSettingCalls())
+func (mock *DatabaseMock) SetSettingCalls() []struct {
+	Ctx   context.Context
+	Key   string
+	Value string
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Key   string
+		Value string
+	}
+	mock.lockSetSetting.RLock()
+	calls = mock.calls.SetSetting
+	mock.lockSetSetting.RUnlock()
 	return calls
 }
 

@@ -16,7 +16,7 @@ import (
 	"github.com/umputun/newscope/pkg/db"
 )
 
-func TestClassifier_ClassifyArticles(t *testing.T) {
+func TestClassifier_Classify(t *testing.T) {
 	// create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/v1/chat/completions", r.URL.Path)
@@ -92,7 +92,11 @@ func TestClassifier_ClassifyArticles(t *testing.T) {
 	// classify articles
 	ctx := context.Background()
 	canonicalTopics := []string{"golang", "programming", "backend", "sports", "news", "tech"}
-	classifications, err := classifier.ClassifyArticles(ctx, articles, feedback, canonicalTopics)
+	classifications, err := classifier.Classify(ctx, ClassifyRequest{
+		Articles:        articles,
+		Feedbacks:       feedback,
+		CanonicalTopics: canonicalTopics,
+	})
 	require.NoError(t, err)
 	require.Len(t, classifications, 2)
 
@@ -124,7 +128,9 @@ func TestClassifier_ClassifyArticles_EmptyInput(t *testing.T) {
 	classifier := NewClassifier(cfg)
 
 	ctx := context.Background()
-	classifications, err := classifier.ClassifyArticles(ctx, []db.Item{}, nil, nil)
+	classifications, err := classifier.Classify(ctx, ClassifyRequest{
+		Articles: []db.Item{},
+	})
 	require.NoError(t, err)
 	assert.Empty(t, classifications)
 }
@@ -208,7 +214,7 @@ func TestClassifier_buildPrompt(t *testing.T) {
 	assert.Contains(t, prompt, "tech, ai, programming")
 
 	// check feedback section
-	assert.Contains(t, prompt, "Based on user feedback:")
+	assert.Contains(t, prompt, "Recent user feedback:")
 	assert.Contains(t, prompt, "like article: Liked Article")
 	assert.Contains(t, prompt, "Topics: tech, ai")
 	assert.Contains(t, prompt, "dislike article: Disliked Article")
@@ -351,7 +357,9 @@ func TestClassifier_RetryOnInvalidJSON(t *testing.T) {
 	classifier := NewClassifier(cfg)
 
 	articles := []db.Item{{GUID: "item1", Title: "Test"}}
-	classifications, err := classifier.ClassifyArticles(context.Background(), articles, nil, nil)
+	classifications, err := classifier.Classify(context.Background(), ClassifyRequest{
+		Articles: articles,
+	})
 
 	require.NoError(t, err)
 	require.Len(t, classifications, 1)
@@ -464,11 +472,110 @@ func TestClassifier_JSONMode(t *testing.T) {
 		classifier := NewClassifier(cfg)
 
 		articles := []db.Item{{GUID: "item1", Title: "Test"}}
-		classifications, err := classifier.ClassifyArticles(context.Background(), articles, nil, nil)
+		classifications, err := classifier.Classify(context.Background(), ClassifyRequest{
+			Articles: articles,
+		})
 
 		require.NoError(t, err)
 		require.Len(t, classifications, 1)
 		assert.Equal(t, "item1", classifications[0].GUID)
 		assert.InEpsilon(t, 9.0, classifications[0].Score, 0.001)
 	})
+}
+
+func TestClassifier_GeneratePreferenceSummary(t *testing.T) {
+	// create test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/chat/completions", r.URL.Path)
+		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+
+		// return mock preference summary
+		resp := openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{
+				{
+					Message: openai.ChatCompletionMessage{
+						Content: "User prefers technical articles about Go, AI/ML, and backend development. Likes in-depth tutorials and implementation details. Dislikes sports and entertainment content.",
+					},
+				},
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := config.LLMConfig{
+		Endpoint: server.URL + "/v1",
+		APIKey:   "test-key",
+		Model:    "gpt-4",
+	}
+	classifier := NewClassifier(cfg)
+
+	feedback := []db.FeedbackExample{
+		{
+			Title:       "Go 1.22 Features",
+			Description: "New features in Go",
+			Content:     "Range-over-function iterators...",
+			Feedback:    "like",
+			Topics:      []string{"golang", "programming"},
+		},
+		{
+			Title:    "Sports News",
+			Feedback: "dislike",
+			Topics:   []string{"sports"},
+		},
+	}
+
+	summary, err := classifier.GeneratePreferenceSummary(context.Background(), feedback)
+	require.NoError(t, err)
+	assert.Contains(t, summary, "technical articles")
+	assert.Contains(t, summary, "Go")
+}
+
+func TestClassifier_UpdatePreferenceSummary(t *testing.T) {
+	// create test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// return mock updated summary
+		resp := openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{
+				{
+					Message: openai.ChatCompletionMessage{
+						Content: "User prefers technical articles about Go, AI/ML, backend development, and cloud infrastructure. Likes in-depth tutorials, implementation details, and performance optimizations. Dislikes sports, entertainment, and political content.",
+					},
+				},
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := config.LLMConfig{
+		Endpoint: server.URL + "/v1",
+		APIKey:   "test-key",
+		Model:    "gpt-4",
+	}
+	classifier := NewClassifier(cfg)
+
+	currentSummary := "User prefers technical articles about Go, AI/ML, and backend development. Likes in-depth tutorials and implementation details. Dislikes sports and entertainment content."
+
+	newFeedback := []db.FeedbackExample{
+		{
+			Title:    "Kubernetes Best Practices",
+			Feedback: "like",
+			Topics:   []string{"kubernetes", "cloud"},
+		},
+		{
+			Title:    "Political News",
+			Feedback: "dislike",
+			Topics:   []string{"politics"},
+		},
+	}
+
+	updatedSummary, err := classifier.UpdatePreferenceSummary(context.Background(), currentSummary, newFeedback)
+	require.NoError(t, err)
+	assert.Contains(t, updatedSummary, "cloud infrastructure")
+	assert.Contains(t, updatedSummary, "political")
 }

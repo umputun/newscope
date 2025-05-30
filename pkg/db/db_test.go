@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -360,7 +361,7 @@ func TestItemOperations(t *testing.T) {
 
 		updated2, err := db.GetItem(ctx, item2.ID)
 		require.NoError(t, err)
-		assert.InEpsilon(t, 0.0, updated2.RelevanceScore, 0.001)
+		assert.InDelta(t, 0.0, updated2.RelevanceScore, 0.001)
 	})
 
 	t.Run("get recent feedback", func(t *testing.T) {
@@ -659,6 +660,82 @@ func TestSettingOperations(t *testing.T) {
 		value, err = db.GetSetting(ctx, "interests")
 		require.NoError(t, err)
 		assert.Equal(t, "updated interests", value)
+	})
+}
+
+func TestFeedbackCountAndSince(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// create feed
+	feed := &Feed{
+		URL:           "https://example.com/feed.xml",
+		Title:         "Test Feed",
+		Description:   "A test feed",
+		FetchInterval: 1800,
+		Enabled:       true,
+	}
+	err := db.CreateFeed(ctx, feed)
+	require.NoError(t, err)
+
+	// create items with feedback
+	for i := 0; i < 10; i++ {
+		item := &Item{
+			FeedID:      feed.ID,
+			GUID:        fmt.Sprintf("item-%d", i),
+			Title:       fmt.Sprintf("Item %d", i),
+			Link:        fmt.Sprintf("https://example.com/item%d", i),
+			Description: fmt.Sprintf("Description %d", i),
+			Published:   time.Now().Add(-time.Duration(i) * time.Hour),
+		}
+		err := db.CreateItem(ctx, item)
+		require.NoError(t, err)
+
+		// add classification
+		classification := Classification{
+			Score:       float64(i),
+			Explanation: fmt.Sprintf("Score %d", i),
+			Topics:      []string{"test"},
+		}
+		err = db.UpdateItemProcessed(ctx, item.ID, "content", "", classification)
+		require.NoError(t, err)
+
+		// add feedback to half of items
+		if i%2 == 0 {
+			feedback := "like"
+			if i%4 == 0 {
+				feedback = "dislike"
+			}
+			err = db.UpdateItemFeedback(ctx, item.ID, feedback)
+			require.NoError(t, err)
+		}
+	}
+
+	t.Run("get feedback count", func(t *testing.T) {
+		count, err := db.GetFeedbackCount(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int64(5), count) // 5 items have feedback
+	})
+
+	t.Run("get feedback since offset", func(t *testing.T) {
+		// get feedback items after offset 2 (should get 3 items)
+		feedback, err := db.GetFeedbackSince(ctx, 2, 10)
+		require.NoError(t, err)
+		assert.Len(t, feedback, 3)
+
+		// verify they are ordered by most recent first
+		for i := 0; i < len(feedback)-1; i++ {
+			assert.NotEmpty(t, feedback[i].Title)
+			assert.Contains(t, []string{"like", "dislike"}, feedback[i].Feedback)
+		}
+	})
+
+	t.Run("get feedback since with limit", func(t *testing.T) {
+		// get only 2 feedback items after offset 1
+		feedback, err := db.GetFeedbackSince(ctx, 1, 2)
+		require.NoError(t, err)
+		assert.Len(t, feedback, 2)
 	})
 }
 

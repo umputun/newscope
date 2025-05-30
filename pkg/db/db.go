@@ -536,6 +536,52 @@ func (db *DB) GetRecentFeedback(ctx context.Context, feedbackType string, limit 
 	return examples, nil
 }
 
+// GetFeedbackCount returns the total number of feedback items (likes and dislikes)
+func (db *DB) GetFeedbackCount(ctx context.Context) (int64, error) {
+	var count int64
+	err := db.GetContext(ctx, &count,
+		"SELECT COUNT(*) FROM items WHERE user_feedback IN ('like', 'dislike')")
+	if err != nil {
+		return 0, fmt.Errorf("get feedback count: %w", err)
+	}
+	return count, nil
+}
+
+// GetFeedbackSince retrieves feedback items after a certain count offset
+func (db *DB) GetFeedbackSince(ctx context.Context, offset int64, limit int) ([]FeedbackExample, error) {
+	query := `
+		SELECT title, description, 
+		       SUBSTR(extracted_content, 1, 500) as content,
+		       user_feedback as feedback, 
+		       topics
+		FROM items 
+		WHERE user_feedback IN ('like', 'dislike')
+		AND feedback_at IS NOT NULL
+		ORDER BY feedback_at DESC
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := db.QueryContext(ctx, query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("query feedback since offset: %w", err)
+	}
+	defer rows.Close()
+
+	var examples []FeedbackExample
+	for rows.Next() {
+		var example FeedbackExample
+		var topics Topics
+		err := rows.Scan(&example.Title, &example.Description, &example.Content, &example.Feedback, &topics)
+		if err != nil {
+			return nil, fmt.Errorf("scan feedback row: %w", err)
+		}
+		example.Topics = topics
+		examples = append(examples, example)
+	}
+
+	return examples, nil
+}
+
 // ItemExists checks if an item already exists
 func (db *DB) ItemExists(ctx context.Context, feedID int64, guid string) (bool, error) {
 	var exists bool

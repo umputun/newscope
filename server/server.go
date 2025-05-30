@@ -594,46 +594,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 
 	// check if this is an HTMX request for partial update
 	if r.Header.Get("HX-Request") == "true" {
-		// for HTMX requests, return updated count, topic dropdown, and articles list
-		// first update the count using out-of-band swap
-		if _, err := fmt.Fprintf(w, `<span id="article-count" class="article-count" hx-swap-oob="true">(%d)</span>`, len(articles)); err != nil {
-			log.Printf("[ERROR] failed to write article count: %v", err)
-		}
-
-		// update topic dropdown using out-of-band swap
-		var topicHTML strings.Builder
-		topicHTML.WriteString(`<select id="topic-filter" name="topic" hx-get="/articles" hx-trigger="change" hx-target="#articles-container" hx-include="#score-filter" hx-swap-oob="true">`)
-		topicHTML.WriteString(`<option value="">All Topics</option>`)
-		for _, t := range topics {
-			selected := ""
-			if t == topic {
-				selected = " selected"
-			}
-			topicHTML.WriteString(fmt.Sprintf(`<option value=%q%s>%s</option>`, t, selected, t))
-		}
-		topicHTML.WriteString(`</select>`)
-
-		if _, err := w.Write([]byte(topicHTML.String())); err != nil {
-			log.Printf("[ERROR] failed to write topic dropdown: %v", err)
-		}
-
-		// then render the articles list
-		if _, err := w.Write([]byte(`<div id="articles-list">`)); err != nil {
-			log.Printf("[ERROR] failed to write articles list start: %v", err)
-		}
-
-		for _, article := range articles {
-			s.renderArticleCard(w, &article)
-		}
-		if len(articles) == 0 {
-			if _, err := w.Write([]byte(`<p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>`)); err != nil {
-				log.Printf("[ERROR] failed to write no articles message: %v", err)
-			}
-		}
-
-		if _, err := w.Write([]byte(`</div>`)); err != nil {
-			log.Printf("[ERROR] failed to write articles list end: %v", err)
-		}
+		s.handleHTMXArticlesRequest(w, articles, topics, topic)
 		return
 	}
 
@@ -658,6 +619,58 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.renderPage(w, "articles.html", data); err != nil {
 		log.Printf("[ERROR] failed to render articles page: %v", err)
 		http.Error(w, "Failed to render page", http.StatusInternalServerError)
+	}
+}
+
+// handleHTMXArticlesRequest handles HTMX requests for articles page
+func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, articles []types.ItemWithClassification, topics []string, selectedTopic string) {
+	// for HTMX requests, return updated count, topic dropdown, and articles list
+	// first update the count using out-of-band swap
+	if _, err := fmt.Fprintf(w, `<span id="article-count" class="article-count" hx-swap-oob="true">(%d)</span>`, len(articles)); err != nil {
+		log.Printf("[ERROR] failed to write article count: %v", err)
+	}
+
+	// update topic dropdown using out-of-band swap
+	s.writeTopicDropdown(w, topics, selectedTopic)
+
+	// then render the articles list
+	if _, err := w.Write([]byte(`<div id="articles-list">`)); err != nil {
+		log.Printf("[ERROR] failed to write articles list start: %v", err)
+	}
+
+	for i := range articles {
+		s.renderArticleCard(w, &articles[i])
+	}
+	
+	if len(articles) == 0 {
+		if _, err := w.Write([]byte(`<p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>`)); err != nil {
+			log.Printf("[ERROR] failed to write no articles message: %v", err)
+		}
+	}
+
+	if _, err := w.Write([]byte(`</div>`)); err != nil {
+		log.Printf("[ERROR] failed to write articles list end: %v", err)
+	}
+}
+
+// writeTopicDropdown writes the topic dropdown HTML
+func (s *Server) writeTopicDropdown(w http.ResponseWriter, topics []string, selectedTopic string) {
+	var topicHTML strings.Builder
+	topicHTML.WriteString(`<select id="topic-filter" name="topic" hx-get="/articles" hx-trigger="change" hx-target="#articles-container" hx-include="#score-filter" hx-swap-oob="true">`)
+	topicHTML.WriteString(`<option value="">All Topics</option>`)
+	
+	for _, t := range topics {
+		selected := ""
+		if t == selectedTopic {
+			selected = " selected"
+		}
+		topicHTML.WriteString(fmt.Sprintf(`<option value=%q%s>%s</option>`, t, selected, t))
+	}
+	
+	topicHTML.WriteString(`</select>`)
+
+	if _, err := w.Write([]byte(topicHTML.String())); err != nil {
+		log.Printf("[ERROR] failed to write topic dropdown: %v", err)
 	}
 }
 

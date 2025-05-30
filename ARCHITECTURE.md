@@ -149,7 +149,7 @@ Extracts full article content from web pages using go-trafilatura with rich HTML
 
 ### 5. LLM Classification (`pkg/llm`)
 
-Uses OpenAI-compatible APIs to classify and score articles based on relevance.
+Uses OpenAI-compatible APIs to classify and score articles based on relevance with persistent learning through preference summaries.
 
 **Key Features:**
 - Support for any OpenAI-compatible endpoint (OpenAI, Ollama, etc.)
@@ -157,22 +157,35 @@ Uses OpenAI-compatible APIs to classify and score articles based on relevance.
 - Feedback-based prompt enhancement
 - Configurable system prompts
 - JSON mode for structured responses
+- Persistent preference learning through summaries
 
 **Components:**
 - **Classifier**: Main classification logic
-  - Builds prompts with feedback examples
+  - Builds prompts with feedback examples and preference summaries
   - Handles batch classification
   - Parses LLM responses
   - Supports both JSON object and array response formats
+  
+- **Preference Summary System**: Learns from all historical feedback
+  - Generates initial summary after 50 feedback items
+  - Updates summary every 20 new feedback items
+  - Maintains compressed knowledge of user preferences
+  - Included in classification prompts for better accuracy
+
+**Methods:**
+- `ClassifyArticles()`: Standard classification with recent feedback
+- `ClassifyArticlesWithSummary()`: Enhanced classification with preference summary
+- `GeneratePreferenceSummary()`: Creates initial preference summary from feedback history
+- `UpdatePreferenceSummary()`: Updates existing summary with new feedback patterns
 
 **Data Flow:**
 ```
-Articles + Feedback → Build Prompt → LLM API → Parse Response → Classifications
+Articles + Preference Summary + Recent Feedback → Build Prompt → LLM API → Parse Response → Classifications
 ```
 
 ### 6. Scheduler (`pkg/scheduler`)
 
-Manages periodic feed updates and content processing with a channel-based architecture.
+Manages periodic feed updates and content processing with a channel-based architecture and preference summary management.
 
 **Key Features:**
 - Single feed update interval with concurrent processing
@@ -181,12 +194,20 @@ Manages periodic feed updates and content processing with a channel-based archit
 - errgroup with concurrency limit for worker management
 - Graceful shutdown with context cancellation
 - On-demand operations (UpdateFeedNow, ExtractContentNow)
+- Automatic preference summary generation and updates
 
 **Workflow:**
-1. **Feed Updates**: Periodically fetch new articles from RSS feeds
-2. **Channel Pipeline**: New items are sent to a processing channel
-3. **Processing Worker**: Consumes items from channel, extracts content and classifies in one operation
-4. **Concurrent Processing**: Uses errgroup.SetLimit() for concurrency control
+1. **Preference Summary Management**: Check and update preference summary if needed
+2. **Feed Updates**: Periodically fetch new articles from RSS feeds
+3. **Channel Pipeline**: New items are sent to a processing channel
+4. **Processing Worker**: Consumes items from channel, extracts content and classifies with preference summary
+5. **Concurrent Processing**: Uses errgroup.SetLimit() for concurrency control
+
+**Preference Summary Lifecycle:**
+- Generates initial summary after 50 feedback items
+- Updates summary every 20 new feedback items
+- Stores summary and count in settings table
+- Includes summary in all classification requests
 
 **Interfaces** (defined by scheduler):
 ```go
@@ -199,12 +220,22 @@ type Database interface {
     GetItem(ctx context.Context, id int64) (*db.Item, error)
     CreateItem(ctx context.Context, item *db.Item) error
     ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
+    ItemExistsByTitleOrURL(ctx context.Context, title, url string) (bool, error)
     UpdateItemProcessed(ctx context.Context, itemID int64, content, richContent string, classification db.Classification) error
+    UpdateItemExtraction(ctx context.Context, itemID int64, content, richContent string, err error) error
     GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
+    GetTopics(ctx context.Context) ([]string, error)
+    GetFeedbackCount(ctx context.Context) (int64, error)
+    GetFeedbackSince(ctx context.Context, offset int64, limit int) ([]db.FeedbackExample, error)
+    GetSetting(ctx context.Context, key string) (string, error)
+    SetSetting(ctx context.Context, key, value string) error
 }
 
 type Classifier interface {
-    ClassifyArticles(ctx context.Context, items []db.Item, feedbacks []db.FeedbackExample) ([]db.Classification, error)
+    ClassifyArticles(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error)
+    ClassifyArticlesWithSummary(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string, preferenceSummary string) ([]db.Classification, error)
+    GeneratePreferenceSummary(ctx context.Context, feedback []db.FeedbackExample) (string, error)
+    UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []db.FeedbackExample) (string, error)
 }
 ```
 
