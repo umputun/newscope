@@ -9,6 +9,14 @@ import (
 	"github.com/umputun/newscope/pkg/feed/types"
 )
 
+// ArticleFilter holds filtering parameters for articles
+type ArticleFilter struct {
+	MinScore float64
+	Topic    string
+	FeedName string
+	Limit    int
+}
+
 // DBAdapter adapts db.DB to server.Database interface
 type DBAdapter struct {
 	*db.DB
@@ -57,20 +65,39 @@ func (d *DBAdapter) GetItems(ctx context.Context, limit, _ int) ([]types.Item, e
 
 // GetClassifiedItems returns items with classification data
 func (d *DBAdapter) GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+	return d.GetClassifiedItemsFiltered(ctx, ArticleFilter{
+		MinScore: minScore,
+		Topic:    topic,
+		Limit:    limit,
+	})
+}
+
+// GetClassifiedItemsWithFilters returns items with classification data filtered by topic and feed
+func (d *DBAdapter) GetClassifiedItemsWithFilters(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]types.ItemWithClassification, error) {
+	return d.GetClassifiedItemsFiltered(ctx, ArticleFilter{
+		MinScore: minScore,
+		Topic:    topic,
+		FeedName: feedName,
+		Limit:    limit,
+	})
+}
+
+// GetClassifiedItemsFiltered returns items with classification data using filter struct
+func (d *DBAdapter) GetClassifiedItemsFiltered(ctx context.Context, filter ArticleFilter) ([]types.ItemWithClassification, error) {
 	// get items from DB
-	items, err := d.DB.GetClassifiedItems(ctx, minScore, limit)
+	items, err := d.DB.GetClassifiedItems(ctx, filter.MinScore, filter.Limit)
 	if err != nil {
 		return nil, err
 	}
 
-	// convert to types and filter by topic if needed
+	// convert to types and filter by topic and feed if needed
 	result := make([]types.ItemWithClassification, 0, len(items))
 	for _, item := range items {
 		// filter by topic if specified
-		if topic != "" {
+		if filter.Topic != "" {
 			found := false
 			for _, t := range item.Topics {
-				if t == topic {
+				if t == filter.Topic {
 					found = true
 					break
 				}
@@ -78,6 +105,12 @@ func (d *DBAdapter) GetClassifiedItems(ctx context.Context, minScore float64, to
 			if !found {
 				continue
 			}
+		}
+		
+		// filter by feed if specified
+		feedDisplayName := getFeedDisplayName(item.FeedTitle, item.FeedURL)
+		if filter.FeedName != "" && feedDisplayName != filter.FeedName {
+			continue
 		}
 
 		result = append(result, types.ItemWithClassification{
@@ -90,7 +123,7 @@ func (d *DBAdapter) GetClassifiedItems(ctx context.Context, minScore float64, to
 				Published:   item.Published,
 			},
 			ID:                   item.ID,
-			FeedName:             getFeedDisplayName(item.FeedTitle, item.FeedURL),
+			FeedName:             feedDisplayName,
 			ExtractedContent:     item.ExtractedContent,
 			ExtractedRichContent: item.ExtractedRichContent,
 			ExtractionError:      item.ExtractionError,
@@ -169,6 +202,27 @@ func (d *DBAdapter) UpdateFeedStatus(ctx context.Context, feedID int64, enabled 
 // DeleteFeed removes a feed
 func (d *DBAdapter) DeleteFeed(ctx context.Context, feedID int64) error {
 	return d.DB.DeleteFeed(ctx, feedID)
+}
+
+// GetActiveFeedNames returns names of feeds that have classified articles
+func (d *DBAdapter) GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error) {
+	items, err := d.DB.GetClassifiedItems(ctx, minScore, 100) // get enough items to find all feeds
+	if err != nil {
+		return nil, err
+	}
+	
+	feedSet := make(map[string]bool)
+	for _, item := range items {
+		feedName := getFeedDisplayName(item.FeedTitle, item.FeedURL)
+		feedSet[feedName] = true
+	}
+	
+	feeds := make([]string, 0, len(feedSet))
+	for feed := range feedSet {
+		feeds = append(feeds, feed)
+	}
+	
+	return feeds, nil
 }
 
 // getFeedDisplayName returns the feed title if available, otherwise extracts hostname from URL

@@ -245,7 +245,7 @@ func TestServer_articlesHandler(t *testing.T) {
 	classifiedAt := now
 
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, minScore float64, topic string, feedName string, limit int) ([]types.ItemWithClassification, error) {
 			return []types.ItemWithClassification{
 				{
 					Item: types.Item{
@@ -263,6 +263,9 @@ func TestServer_articlesHandler(t *testing.T) {
 					ClassifiedAt:   &classifiedAt,
 				},
 			}, nil
+		},
+		GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			return []string{"Test Feed", "Example Feed"}, nil
 		},
 		GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 			return []string{"tech", "ai", "science"}, nil
@@ -307,7 +310,7 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w2.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(1)</span>`) // should update count
 
 	// test HTMX request with no articles
-	database.GetClassifiedItemsFunc = func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+	database.GetClassifiedItemsWithFiltersFunc = func(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]types.ItemWithClassification, error) {
 		return []types.ItemWithClassification{}, nil
 	}
 

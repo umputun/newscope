@@ -38,7 +38,7 @@
                 hx-swap="outerHTML"
                 hx-target="closest .article-card"
                 hx-trigger="click"
-                hx-include="#score-filter, #topic-filter">
+                hx-include="#score-filter, #topic-filter, #feed-filter">
             👍 Like
         </button>
         <button class="btn-feedback btn-dislike {{if eq .UserFeedback "dislike"}}active{{end}}"
@@ -46,7 +46,7 @@
                 hx-swap="outerHTML"
                 hx-target="closest .article-card"
                 hx-trigger="click"
-                hx-include="#score-filter, #topic-filter">
+                hx-include="#score-filter, #topic-filter, #feed-filter">
             👎 Dislike
         </button>
         {{if .ExtractedContent}}

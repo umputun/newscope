@@ -23,6 +23,9 @@ import (
 //			DeleteFeedFunc: func(ctx context.Context, feedID int64) error {
 //				panic("mock out the DeleteFeed method")
 //			},
+//			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+//				panic("mock out the GetActiveFeedNames method")
+//			},
 //			GetAllFeedsFunc: func(ctx context.Context) ([]db.Feed, error) {
 //				panic("mock out the GetAllFeeds method")
 //			},
@@ -31,6 +34,9 @@ import (
 //			},
 //			GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
 //				panic("mock out the GetClassifiedItems method")
+//			},
+//			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, minScore float64, topic string, feedName string, limit int) ([]types.ItemWithClassification, error) {
+//				panic("mock out the GetClassifiedItemsWithFilters method")
 //			},
 //			GetFeedsFunc: func(ctx context.Context) ([]types.Feed, error) {
 //				panic("mock out the GetFeeds method")
@@ -63,6 +69,9 @@ type DatabaseMock struct {
 	// DeleteFeedFunc mocks the DeleteFeed method.
 	DeleteFeedFunc func(ctx context.Context, feedID int64) error
 
+	// GetActiveFeedNamesFunc mocks the GetActiveFeedNames method.
+	GetActiveFeedNamesFunc func(ctx context.Context, minScore float64) ([]string, error)
+
 	// GetAllFeedsFunc mocks the GetAllFeeds method.
 	GetAllFeedsFunc func(ctx context.Context) ([]db.Feed, error)
 
@@ -71,6 +80,9 @@ type DatabaseMock struct {
 
 	// GetClassifiedItemsFunc mocks the GetClassifiedItems method.
 	GetClassifiedItemsFunc func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error)
+
+	// GetClassifiedItemsWithFiltersFunc mocks the GetClassifiedItemsWithFilters method.
+	GetClassifiedItemsWithFiltersFunc func(ctx context.Context, minScore float64, topic string, feedName string, limit int) ([]types.ItemWithClassification, error)
 
 	// GetFeedsFunc mocks the GetFeeds method.
 	GetFeedsFunc func(ctx context.Context) ([]types.Feed, error)
@@ -106,6 +118,13 @@ type DatabaseMock struct {
 			// FeedID is the feedID argument value.
 			FeedID int64
 		}
+		// GetActiveFeedNames holds details about calls to the GetActiveFeedNames method.
+		GetActiveFeedNames []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// MinScore is the minScore argument value.
+			MinScore float64
+		}
 		// GetAllFeeds holds details about calls to the GetAllFeeds method.
 		GetAllFeeds []struct {
 			// Ctx is the ctx argument value.
@@ -126,6 +145,19 @@ type DatabaseMock struct {
 			MinScore float64
 			// Topic is the topic argument value.
 			Topic string
+			// Limit is the limit argument value.
+			Limit int
+		}
+		// GetClassifiedItemsWithFilters holds details about calls to the GetClassifiedItemsWithFilters method.
+		GetClassifiedItemsWithFilters []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// MinScore is the minScore argument value.
+			MinScore float64
+			// Topic is the topic argument value.
+			Topic string
+			// FeedName is the feedName argument value.
+			FeedName string
 			// Limit is the limit argument value.
 			Limit int
 		}
@@ -174,17 +206,19 @@ type DatabaseMock struct {
 			Feedback string
 		}
 	}
-	lockCreateFeed         sync.RWMutex
-	lockDeleteFeed         sync.RWMutex
-	lockGetAllFeeds        sync.RWMutex
-	lockGetClassifiedItem  sync.RWMutex
-	lockGetClassifiedItems sync.RWMutex
-	lockGetFeeds           sync.RWMutex
-	lockGetItems           sync.RWMutex
-	lockGetTopics          sync.RWMutex
-	lockGetTopicsFiltered  sync.RWMutex
-	lockUpdateFeedStatus   sync.RWMutex
-	lockUpdateItemFeedback sync.RWMutex
+	lockCreateFeed                    sync.RWMutex
+	lockDeleteFeed                    sync.RWMutex
+	lockGetActiveFeedNames            sync.RWMutex
+	lockGetAllFeeds                   sync.RWMutex
+	lockGetClassifiedItem             sync.RWMutex
+	lockGetClassifiedItems            sync.RWMutex
+	lockGetClassifiedItemsWithFilters sync.RWMutex
+	lockGetFeeds                      sync.RWMutex
+	lockGetItems                      sync.RWMutex
+	lockGetTopics                     sync.RWMutex
+	lockGetTopicsFiltered             sync.RWMutex
+	lockUpdateFeedStatus              sync.RWMutex
+	lockUpdateItemFeedback            sync.RWMutex
 }
 
 // CreateFeed calls CreateFeedFunc.
@@ -256,6 +290,42 @@ func (mock *DatabaseMock) DeleteFeedCalls() []struct {
 	mock.lockDeleteFeed.RLock()
 	calls = mock.calls.DeleteFeed
 	mock.lockDeleteFeed.RUnlock()
+	return calls
+}
+
+// GetActiveFeedNames calls GetActiveFeedNamesFunc.
+func (mock *DatabaseMock) GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error) {
+	if mock.GetActiveFeedNamesFunc == nil {
+		panic("DatabaseMock.GetActiveFeedNamesFunc: method is nil but Database.GetActiveFeedNames was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		MinScore float64
+	}{
+		Ctx:      ctx,
+		MinScore: minScore,
+	}
+	mock.lockGetActiveFeedNames.Lock()
+	mock.calls.GetActiveFeedNames = append(mock.calls.GetActiveFeedNames, callInfo)
+	mock.lockGetActiveFeedNames.Unlock()
+	return mock.GetActiveFeedNamesFunc(ctx, minScore)
+}
+
+// GetActiveFeedNamesCalls gets all the calls that were made to GetActiveFeedNames.
+// Check the length with:
+//
+//	len(mockedDatabase.GetActiveFeedNamesCalls())
+func (mock *DatabaseMock) GetActiveFeedNamesCalls() []struct {
+	Ctx      context.Context
+	MinScore float64
+} {
+	var calls []struct {
+		Ctx      context.Context
+		MinScore float64
+	}
+	mock.lockGetActiveFeedNames.RLock()
+	calls = mock.calls.GetActiveFeedNames
+	mock.lockGetActiveFeedNames.RUnlock()
 	return calls
 }
 
@@ -368,6 +438,54 @@ func (mock *DatabaseMock) GetClassifiedItemsCalls() []struct {
 	mock.lockGetClassifiedItems.RLock()
 	calls = mock.calls.GetClassifiedItems
 	mock.lockGetClassifiedItems.RUnlock()
+	return calls
+}
+
+// GetClassifiedItemsWithFilters calls GetClassifiedItemsWithFiltersFunc.
+func (mock *DatabaseMock) GetClassifiedItemsWithFilters(ctx context.Context, minScore float64, topic string, feedName string, limit int) ([]types.ItemWithClassification, error) {
+	if mock.GetClassifiedItemsWithFiltersFunc == nil {
+		panic("DatabaseMock.GetClassifiedItemsWithFiltersFunc: method is nil but Database.GetClassifiedItemsWithFilters was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		MinScore float64
+		Topic    string
+		FeedName string
+		Limit    int
+	}{
+		Ctx:      ctx,
+		MinScore: minScore,
+		Topic:    topic,
+		FeedName: feedName,
+		Limit:    limit,
+	}
+	mock.lockGetClassifiedItemsWithFilters.Lock()
+	mock.calls.GetClassifiedItemsWithFilters = append(mock.calls.GetClassifiedItemsWithFilters, callInfo)
+	mock.lockGetClassifiedItemsWithFilters.Unlock()
+	return mock.GetClassifiedItemsWithFiltersFunc(ctx, minScore, topic, feedName, limit)
+}
+
+// GetClassifiedItemsWithFiltersCalls gets all the calls that were made to GetClassifiedItemsWithFilters.
+// Check the length with:
+//
+//	len(mockedDatabase.GetClassifiedItemsWithFiltersCalls())
+func (mock *DatabaseMock) GetClassifiedItemsWithFiltersCalls() []struct {
+	Ctx      context.Context
+	MinScore float64
+	Topic    string
+	FeedName string
+	Limit    int
+} {
+	var calls []struct {
+		Ctx      context.Context
+		MinScore float64
+		Topic    string
+		FeedName string
+		Limit    int
+	}
+	mock.lockGetClassifiedItemsWithFilters.RLock()
+	calls = mock.calls.GetClassifiedItemsWithFilters
+	mock.lockGetClassifiedItemsWithFilters.RUnlock()
 	return calls
 }
 

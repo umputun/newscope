@@ -46,15 +46,26 @@ type Server struct {
 	router        *routegroup.Bundle
 }
 
+// articlesPageRequest holds data for rendering articles page
+type articlesPageRequest struct {
+	articles       []types.ItemWithClassification
+	topics         []string
+	feeds          []string
+	selectedTopic  string
+	selectedFeed   string
+}
+
 // Database interface for server operations
 type Database interface {
 	GetFeeds(ctx context.Context) ([]types.Feed, error)
 	GetItems(ctx context.Context, limit, offset int) ([]types.Item, error)
 	GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error)
+	GetClassifiedItemsWithFilters(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]types.ItemWithClassification, error)
 	GetClassifiedItem(ctx context.Context, itemID int64) (*types.ItemWithClassification, error)
 	UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error
 	GetTopics(ctx context.Context) ([]string, error)
 	GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error)
+	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
 	GetAllFeeds(ctx context.Context) ([]db.Feed, error)
 	CreateFeed(ctx context.Context, feed *db.Feed) error
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
@@ -576,9 +587,10 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	topic := r.URL.Query().Get("topic")
+	feedName := r.URL.Query().Get("feed")
 
 	// get articles with classification
-	articles, err := s.db.GetClassifiedItems(ctx, minScore, topic, 100)
+	articles, err := s.db.GetClassifiedItemsWithFilters(ctx, minScore, topic, feedName, 100)
 	if err != nil {
 		log.Printf("[ERROR] failed to get classified items: %v", err)
 		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
@@ -592,27 +604,44 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		topics = []string{} // continue with empty topics
 	}
 
+	// get active feed names
+	feeds, err := s.db.GetActiveFeedNames(ctx, minScore)
+	if err != nil {
+		log.Printf("[ERROR] failed to get feed names: %v", err)
+		feeds = []string{} // continue with empty feeds
+	}
+
 	// check if this is an HTMX request for partial update
 	if r.Header.Get("HX-Request") == "true" {
-		s.handleHTMXArticlesRequest(w, articles, topics, topic)
+		s.handleHTMXArticlesRequest(w, articlesPageRequest{
+			articles:      articles,
+			topics:        topics,
+			feeds:         feeds,
+			selectedTopic: topic,
+			selectedFeed:  feedName,
+		})
 		return
 	}
 
 	// prepare template data for full page render
 	data := struct {
-		ActivePage    string
-		Articles      []types.ItemWithClassification
-		ArticleCount  int
-		Topics        []string
-		MinScore      float64
-		SelectedTopic string
+		ActivePage     string
+		Articles       []types.ItemWithClassification
+		ArticleCount   int
+		Topics         []string
+		Feeds          []string
+		MinScore       float64
+		SelectedTopic  string
+		SelectedFeed   string
 	}{
-		ActivePage:    "home",
-		Articles:      articles,
-		ArticleCount:  len(articles),
-		Topics:        topics,
-		MinScore:      minScore,
-		SelectedTopic: topic,
+		ActivePage:     "home",
+		Articles:       articles,
+		ArticleCount:   len(articles),
+		Topics:         topics,
+		Feeds:          feeds,
+		MinScore:       minScore,
+		SelectedTopic:  topic,
+		SelectedFeed:   feedName,
 	}
 
 	// render full page with base template and article card component
@@ -623,26 +652,29 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleHTMXArticlesRequest handles HTMX requests for articles page
-func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, articles []types.ItemWithClassification, topics []string, selectedTopic string) {
-	// for HTMX requests, return updated count, topic dropdown, and articles list
+func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, req articlesPageRequest) {
+	// for HTMX requests, return updated count, topic dropdown, feed dropdown, and articles list
 	// first update the count using out-of-band swap
-	if _, err := fmt.Fprintf(w, `<span id="article-count" class="article-count" hx-swap-oob="true">(%d)</span>`, len(articles)); err != nil {
+	if _, err := fmt.Fprintf(w, `<span id="article-count" class="article-count" hx-swap-oob="true">(%d)</span>`, len(req.articles)); err != nil {
 		log.Printf("[ERROR] failed to write article count: %v", err)
 	}
 
 	// update topic dropdown using out-of-band swap
-	s.writeTopicDropdown(w, topics, selectedTopic)
+	s.writeTopicDropdown(w, req.topics, req.selectedTopic)
+	
+	// update feed dropdown using out-of-band swap
+	s.writeFeedDropdown(w, req.feeds, req.selectedFeed)
 
 	// then render the articles list
 	if _, err := w.Write([]byte(`<div id="articles-list">`)); err != nil {
 		log.Printf("[ERROR] failed to write articles list start: %v", err)
 	}
 
-	for i := range articles {
-		s.renderArticleCard(w, &articles[i])
+	for i := range req.articles {
+		s.renderArticleCard(w, &req.articles[i])
 	}
 
-	if len(articles) == 0 {
+	if len(req.articles) == 0 {
 		if _, err := w.Write([]byte(`<p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>`)); err != nil {
 			log.Printf("[ERROR] failed to write no articles message: %v", err)
 		}
@@ -656,7 +688,7 @@ func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, articles []typ
 // writeTopicDropdown writes the topic dropdown HTML
 func (s *Server) writeTopicDropdown(w http.ResponseWriter, topics []string, selectedTopic string) {
 	var topicHTML strings.Builder
-	topicHTML.WriteString(`<select id="topic-filter" name="topic" hx-get="/articles" hx-trigger="change" hx-target="#articles-container" hx-include="#score-filter" hx-swap-oob="true">`)
+	topicHTML.WriteString(`<select id="topic-filter" name="topic" hx-get="/articles" hx-trigger="change" hx-target="#articles-container" hx-include="#score-filter, #feed-filter" hx-swap-oob="true">`)
 	topicHTML.WriteString(`<option value="">All Topics</option>`)
 
 	for _, t := range topics {
@@ -671,6 +703,27 @@ func (s *Server) writeTopicDropdown(w http.ResponseWriter, topics []string, sele
 
 	if _, err := w.Write([]byte(topicHTML.String())); err != nil {
 		log.Printf("[ERROR] failed to write topic dropdown: %v", err)
+	}
+}
+
+// writeFeedDropdown writes the feed dropdown HTML
+func (s *Server) writeFeedDropdown(w http.ResponseWriter, feeds []string, selectedFeed string) {
+	var feedHTML strings.Builder
+	feedHTML.WriteString(`<select id="feed-filter" name="feed" hx-get="/articles" hx-trigger="change" hx-target="#articles-container" hx-include="#score-filter, #topic-filter" hx-swap-oob="true">`)
+	feedHTML.WriteString(`<option value="">All Feeds</option>`)
+
+	for _, f := range feeds {
+		selected := ""
+		if f == selectedFeed {
+			selected = " selected"
+		}
+		feedHTML.WriteString(fmt.Sprintf(`<option value=%q%s>%s</option>`, f, selected, f))
+	}
+
+	feedHTML.WriteString(`</select>`)
+
+	if _, err := w.Write([]byte(feedHTML.String())); err != nil {
+		log.Printf("[ERROR] failed to write feed dropdown: %v", err)
 	}
 }
 
