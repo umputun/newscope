@@ -11,16 +11,20 @@ import (
 
 	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/db"
+	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/pkg/feed/types"
 	"github.com/umputun/newscope/pkg/llm"
 )
 
 // Scheduler manages periodic feed updates and content processing
 type Scheduler struct {
-	db         Database
-	parser     Parser
-	extractor  Extractor
-	classifier Classifier
+	feedManager      FeedManager
+	itemProcessor    ItemProcessor
+	feedbackProvider FeedbackProvider
+	settingManager   SettingManager
+	parser           Parser
+	extractor        Extractor
+	classifier       Classifier
 
 	updateInterval time.Duration
 	maxWorkers     int
@@ -29,23 +33,34 @@ type Scheduler struct {
 	cancel context.CancelFunc
 }
 
-// Database interface for scheduler operations
-type Database interface {
-	GetFeed(ctx context.Context, id int64) (*db.Feed, error)
-	GetFeeds(ctx context.Context, enabledOnly bool) ([]db.Feed, error)
+// FeedManager handles feed-related operations for scheduler
+type FeedManager interface {
+	GetFeed(ctx context.Context, id int64) (*domain.Feed, error)
+	GetFeeds(ctx context.Context, enabledOnly bool) ([]*domain.Feed, error)
 	UpdateFeedFetched(ctx context.Context, feedID int64, nextFetch time.Time) error
 	UpdateFeedError(ctx context.Context, feedID int64, errMsg string) error
+}
 
-	GetItem(ctx context.Context, id int64) (*db.Item, error)
-	CreateItem(ctx context.Context, item *db.Item) error
+// ItemProcessor handles item processing operations for scheduler
+type ItemProcessor interface {
+	GetItem(ctx context.Context, id int64) (*domain.Item, error)
+	CreateItem(ctx context.Context, item *domain.Item) error
 	ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
 	ItemExistsByTitleOrURL(ctx context.Context, title, url string) (bool, error)
-	UpdateItemProcessed(ctx context.Context, itemID int64, content, richContent string, classification db.Classification) error
-	UpdateItemExtraction(ctx context.Context, itemID int64, content, richContent string, err error) error
-	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
+	UpdateItemProcessed(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error
+	UpdateItemExtraction(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error
+}
+
+// FeedbackProvider provides feedback data for LLM training
+type FeedbackProvider interface {
+	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]*domain.FeedbackExample, error)
 	GetTopics(ctx context.Context) ([]string, error)
 	GetFeedbackCount(ctx context.Context) (int64, error)
-	GetFeedbackSince(ctx context.Context, offset int64, limit int) ([]db.FeedbackExample, error)
+	GetFeedbackSince(ctx context.Context, offset int64, limit int) ([]*domain.FeedbackExample, error)
+}
+
+// SettingManager handles settings operations
+type SettingManager interface {
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error
 }
@@ -74,7 +89,7 @@ type Config struct {
 }
 
 // NewScheduler creates a new scheduler instance
-func NewScheduler(database Database, parser Parser, extractor Extractor, classifier Classifier, cfg Config) *Scheduler {
+func NewScheduler(feedManager FeedManager, itemProcessor ItemProcessor, feedbackProvider FeedbackProvider, settingManager SettingManager, parser Parser, extractor Extractor, classifier Classifier, cfg Config) *Scheduler {
 	if cfg.UpdateInterval == 0 {
 		cfg.UpdateInterval = 30 * time.Minute
 	}
@@ -83,12 +98,15 @@ func NewScheduler(database Database, parser Parser, extractor Extractor, classif
 	}
 
 	return &Scheduler{
-		db:             database,
-		parser:         parser,
-		extractor:      extractor,
-		classifier:     classifier,
-		updateInterval: cfg.UpdateInterval,
-		maxWorkers:     cfg.MaxWorkers,
+		feedManager:      feedManager,
+		itemProcessor:    itemProcessor,
+		feedbackProvider: feedbackProvider,
+		settingManager:   settingManager,
+		parser:           parser,
+		extractor:        extractor,
+		classifier:       classifier,
+		updateInterval:   cfg.UpdateInterval,
+		maxWorkers:       cfg.MaxWorkers,
 	}
 }
 
