@@ -48,11 +48,11 @@ type Server struct {
 
 // articlesPageRequest holds data for rendering articles page
 type articlesPageRequest struct {
-	articles       []types.ItemWithClassification
-	topics         []string
-	feeds          []string
-	selectedTopic  string
-	selectedFeed   string
+	articles      []types.ItemWithClassification
+	topics        []string
+	feeds         []string
+	selectedTopic string
+	selectedFeed  string
 }
 
 // Database interface for server operations
@@ -625,23 +625,23 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 
 	// prepare template data for full page render
 	data := struct {
-		ActivePage     string
-		Articles       []types.ItemWithClassification
-		ArticleCount   int
-		Topics         []string
-		Feeds          []string
-		MinScore       float64
-		SelectedTopic  string
-		SelectedFeed   string
+		ActivePage    string
+		Articles      []types.ItemWithClassification
+		ArticleCount  int
+		Topics        []string
+		Feeds         []string
+		MinScore      float64
+		SelectedTopic string
+		SelectedFeed  string
 	}{
-		ActivePage:     "home",
-		Articles:       articles,
-		ArticleCount:   len(articles),
-		Topics:         topics,
-		Feeds:          feeds,
-		MinScore:       minScore,
-		SelectedTopic:  topic,
-		SelectedFeed:   feedName,
+		ActivePage:    "home",
+		Articles:      articles,
+		ArticleCount:  len(articles),
+		Topics:        topics,
+		Feeds:         feeds,
+		MinScore:      minScore,
+		SelectedTopic: topic,
+		SelectedFeed:  feedName,
 	}
 
 	// render full page with base template and article card component
@@ -661,7 +661,7 @@ func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, req articlesPa
 
 	// update topic dropdown using out-of-band swap
 	s.writeTopicDropdown(w, req.topics, req.selectedTopic)
-	
+
 	// update feed dropdown using out-of-band swap
 	s.writeFeedDropdown(w, req.feeds, req.selectedFeed)
 

@@ -46,15 +46,33 @@ llm:
     score_threshold: 5.0       # Minimum score to include
     feedback_examples: 10      # Recent examples to include
     use_json_mode: true        # Use JSON mode for classification
-    preferred_topics:          # Topics that increase article scores
+    preferred_topics:          # Topics that increase article scores based on Radio-T content
       - "golang"
       - "rust" 
       - "ai"
-      - "security"
+      - "machine learning"
+      - "programming"
+      - "software development"
+      - "open source"
+      - "github"
+      - "docker"
+      - "typescript"
+      - "coding"
+      - "tech industry"
+      - "claude"
+      - "openai"
+      - "anthropic"
+      - "llm"
+      - "coding assistants"
+      - "development tools"
+      - "software engineering"
     avoided_topics:            # Topics that decrease article scores
       - "sports"
       - "politics"
       - "celebrity"
+      - "entertainment"
+      - "fashion"
+      - "lifestyle"
     
     # Optional: Custom prompts for preference summary generation
     # prompts:

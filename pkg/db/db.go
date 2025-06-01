@@ -636,6 +636,12 @@ func (db *DB) SetSetting(ctx context.Context, key, value string) error {
 
 // GetClassifiedItems returns classified items with feed information
 func (db *DB) GetClassifiedItems(ctx context.Context, minScore float64, limit int) ([]Item, error) {
+	return db.GetClassifiedItemsWithFilters(ctx, minScore, "", "", limit)
+}
+
+// GetClassifiedItemsWithFilters retrieves classified items with optional topic and feed filtering
+func (db *DB) GetClassifiedItemsWithFilters(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]Item, error) {
+	// build query with dynamic filtering
 	query := `
 		SELECT 
 			i.*,
@@ -644,16 +650,53 @@ func (db *DB) GetClassifiedItems(ctx context.Context, minScore float64, limit in
 		FROM items i
 		JOIN feeds f ON i.feed_id = f.id
 		WHERE i.relevance_score >= ?
-		AND i.classified_at IS NOT NULL
-		ORDER BY i.published DESC
-		LIMIT ?
-	`
+		AND i.classified_at IS NOT NULL`
+
+	args := []interface{}{minScore}
+
+	// add topic filter if specified
+	if topic != "" {
+		query += ` AND JSON_EXTRACT(i.topics, '$') LIKE ?`
+		args = append(args, "%\""+topic+"\"%")
+	}
+
+	// add feed filter if specified
+	if feedName != "" {
+		// filter by either feed title or hostname from URL
+		query += ` AND (f.title = ? OR f.title = '' AND ? LIKE '%' || REPLACE(REPLACE(SUBSTR(f.url, INSTR(f.url, '://') + 3), 'www.', ''), '/', '') || '%')`
+		args = append(args, feedName, feedName)
+	}
+
+	query += ` ORDER BY i.published DESC LIMIT ?`
+	args = append(args, limit)
 
 	var items []Item
-	if err := db.SelectContext(ctx, &items, query, minScore, limit); err != nil {
-		return nil, fmt.Errorf("get classified items: %w", err)
+	if err := db.SelectContext(ctx, &items, query, args...); err != nil {
+		return nil, fmt.Errorf("get classified items with filters: %w", err)
 	}
 	return items, nil
+}
+
+// GetActiveFeedNames returns distinct feed names for feeds that have classified articles with score >= minScore
+func (db *DB) GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error) {
+	query := `
+		SELECT DISTINCT 
+			CASE 
+				WHEN f.title != '' THEN f.title
+				ELSE REPLACE(REPLACE(SUBSTR(f.url, INSTR(f.url, '://') + 3), 'www.', ''), '/', '')
+			END as feed_name
+		FROM items i
+		JOIN feeds f ON i.feed_id = f.id
+		WHERE i.relevance_score >= ?
+		AND i.classified_at IS NOT NULL
+		ORDER BY feed_name
+	`
+
+	var feedNames []string
+	if err := db.SelectContext(ctx, &feedNames, query, minScore); err != nil {
+		return nil, fmt.Errorf("get active feed names: %w", err)
+	}
+	return feedNames, nil
 }
 
 // GetClassifiedItem returns a single classified item with feed information

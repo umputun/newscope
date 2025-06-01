@@ -84,34 +84,16 @@ func (d *DBAdapter) GetClassifiedItemsWithFilters(ctx context.Context, minScore 
 
 // GetClassifiedItemsFiltered returns items with classification data using filter struct
 func (d *DBAdapter) GetClassifiedItemsFiltered(ctx context.Context, filter ArticleFilter) ([]types.ItemWithClassification, error) {
-	// get items from DB
-	items, err := d.DB.GetClassifiedItems(ctx, filter.MinScore, filter.Limit)
+	// get items from DB with filtering applied at database level
+	items, err := d.DB.GetClassifiedItemsWithFilters(ctx, filter.MinScore, filter.Topic, filter.FeedName, filter.Limit)
 	if err != nil {
 		return nil, err
 	}
 
-	// convert to types and filter by topic and feed if needed
+	// convert to types (no application-level filtering needed)
 	result := make([]types.ItemWithClassification, 0, len(items))
 	for _, item := range items {
-		// filter by topic if specified
-		if filter.Topic != "" {
-			found := false
-			for _, t := range item.Topics {
-				if t == filter.Topic {
-					found = true
-					break
-				}
-			}
-			if !found {
-				continue
-			}
-		}
-		
-		// filter by feed if specified
 		feedDisplayName := getFeedDisplayName(item.FeedTitle, item.FeedURL)
-		if filter.FeedName != "" && feedDisplayName != filter.FeedName {
-			continue
-		}
 
 		result = append(result, types.ItemWithClassification{
 			Item: types.Item{
@@ -206,23 +188,7 @@ func (d *DBAdapter) DeleteFeed(ctx context.Context, feedID int64) error {
 
 // GetActiveFeedNames returns names of feeds that have classified articles
 func (d *DBAdapter) GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error) {
-	items, err := d.DB.GetClassifiedItems(ctx, minScore, 100) // get enough items to find all feeds
-	if err != nil {
-		return nil, err
-	}
-	
-	feedSet := make(map[string]bool)
-	for _, item := range items {
-		feedName := getFeedDisplayName(item.FeedTitle, item.FeedURL)
-		feedSet[feedName] = true
-	}
-	
-	feeds := make([]string, 0, len(feedSet))
-	for feed := range feedSet {
-		feeds = append(feeds, feed)
-	}
-	
-	return feeds, nil
+	return d.DB.GetActiveFeedNames(ctx, minScore)
 }
 
 // getFeedDisplayName returns the feed title if available, otherwise extracts hostname from URL

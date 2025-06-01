@@ -380,6 +380,53 @@ func TestItemOperations(t *testing.T) {
 		assert.True(t, found, "should find at least one dislike feedback")
 	})
 
+	t.Run("get classified items with filters", func(t *testing.T) {
+		// test topic filtering
+		topicItems, err := db.GetClassifiedItemsWithFilters(ctx, 0, "test", "", 10)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(topicItems), 1)
+
+		// verify all items have the topic
+		for _, item := range topicItems {
+			found := false
+			for _, topic := range item.Topics {
+				if topic == "test" {
+					found = true
+					break
+				}
+			}
+			assert.True(t, found, "item should have 'test' topic")
+		}
+
+		// test feed filtering
+		feedItems, err := db.GetClassifiedItemsWithFilters(ctx, 0, "", "Test Feed", 10)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(feedItems), 1)
+
+		// verify all items are from the correct feed
+		for _, item := range feedItems {
+			assert.Equal(t, "Test Feed", item.FeedTitle)
+		}
+
+		// test combined filtering
+		combinedItems, err := db.GetClassifiedItemsWithFilters(ctx, 0, "test", "Test Feed", 10)
+		require.NoError(t, err)
+		assert.LessOrEqual(t, len(combinedItems), len(topicItems))
+		assert.LessOrEqual(t, len(combinedItems), len(feedItems))
+	})
+
+	t.Run("get active feed names", func(t *testing.T) {
+		feedNames, err := db.GetActiveFeedNames(ctx, 0)
+		require.NoError(t, err)
+		assert.Contains(t, feedNames, "Test Feed")
+
+		// test with higher score threshold
+		feedNamesHighScore, err := db.GetActiveFeedNames(ctx, 8)
+		require.NoError(t, err)
+		// should have fewer or equal feeds
+		assert.LessOrEqual(t, len(feedNamesHighScore), len(feedNames))
+	})
+
 	t.Run("classify items for later tests", func(t *testing.T) {
 		// create more items and classify them for subsequent tests
 		item3 := &Item{
