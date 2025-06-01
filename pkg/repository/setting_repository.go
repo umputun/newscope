@@ -7,8 +7,6 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-
-	"github.com/umputun/newscope/pkg/domain"
 )
 
 // SettingRepository handles setting-related database operations

@@ -10,59 +10,23 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/umputun/newscope/pkg/content"
-	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/pkg/feed/types"
-	"github.com/umputun/newscope/pkg/llm"
+	"github.com/umputun/newscope/pkg/repository"
 )
 
 // Scheduler manages periodic feed updates and content processing
 type Scheduler struct {
-	feedManager      FeedManager
-	itemProcessor    ItemProcessor
-	feedbackProvider FeedbackProvider
-	settingManager   SettingManager
-	parser           Parser
-	extractor        Extractor
-	classifier       Classifier
+	repos      *repository.Repositories
+	parser     Parser
+	extractor  Extractor
+	classifier Classifier
 
 	updateInterval time.Duration
 	maxWorkers     int
 
 	wg     sync.WaitGroup
 	cancel context.CancelFunc
-}
-
-// FeedManager handles feed-related operations for scheduler
-type FeedManager interface {
-	GetFeed(ctx context.Context, id int64) (*domain.Feed, error)
-	GetFeeds(ctx context.Context, enabledOnly bool) ([]*domain.Feed, error)
-	UpdateFeedFetched(ctx context.Context, feedID int64, nextFetch time.Time) error
-	UpdateFeedError(ctx context.Context, feedID int64, errMsg string) error
-}
-
-// ItemProcessor handles item processing operations for scheduler
-type ItemProcessor interface {
-	GetItem(ctx context.Context, id int64) (*domain.Item, error)
-	CreateItem(ctx context.Context, item *domain.Item) error
-	ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
-	ItemExistsByTitleOrURL(ctx context.Context, title, url string) (bool, error)
-	UpdateItemProcessed(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error
-	UpdateItemExtraction(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error
-}
-
-// FeedbackProvider provides feedback data for LLM training
-type FeedbackProvider interface {
-	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]*domain.FeedbackExample, error)
-	GetTopics(ctx context.Context) ([]string, error)
-	GetFeedbackCount(ctx context.Context) (int64, error)
-	GetFeedbackSince(ctx context.Context, offset int64, limit int) ([]*domain.FeedbackExample, error)
-}
-
-// SettingManager handles settings operations
-type SettingManager interface {
-	GetSetting(ctx context.Context, key string) (string, error)
-	SetSetting(ctx context.Context, key, value string) error
 }
 
 // Parser interface for feed parsing
@@ -75,11 +39,11 @@ type Extractor interface {
 	Extract(ctx context.Context, url string) (*content.ExtractResult, error)
 }
 
-// Classifier interface for LLM classification
+// Classifier interface for LLM classification (simplified for now)
 type Classifier interface {
-	Classify(ctx context.Context, req llm.ClassifyRequest) ([]db.Classification, error)
-	GeneratePreferenceSummary(ctx context.Context, feedback []db.FeedbackExample) (string, error)
-	UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []db.FeedbackExample) (string, error)
+	ClassifyItems(ctx context.Context, items []*domain.Item, feedbacks []*domain.FeedbackExample, topics []string, preferenceSummary string) ([]*domain.Classification, error)
+	GeneratePreferenceSummary(ctx context.Context, feedback []*domain.FeedbackExample) (string, error)
+	UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []*domain.FeedbackExample) (string, error)
 }
 
 // Config holds scheduler configuration
@@ -89,7 +53,7 @@ type Config struct {
 }
 
 // NewScheduler creates a new scheduler instance
-func NewScheduler(feedManager FeedManager, itemProcessor ItemProcessor, feedbackProvider FeedbackProvider, settingManager SettingManager, parser Parser, extractor Extractor, classifier Classifier, cfg Config) *Scheduler {
+func NewScheduler(repos *repository.Repositories, parser Parser, extractor Extractor, classifier Classifier, cfg Config) *Scheduler {
 	if cfg.UpdateInterval == 0 {
 		cfg.UpdateInterval = 30 * time.Minute
 	}
@@ -98,15 +62,12 @@ func NewScheduler(feedManager FeedManager, itemProcessor ItemProcessor, feedback
 	}
 
 	return &Scheduler{
-		feedManager:      feedManager,
-		itemProcessor:    itemProcessor,
-		feedbackProvider: feedbackProvider,
-		settingManager:   settingManager,
-		parser:           parser,
-		extractor:        extractor,
-		classifier:       classifier,
-		updateInterval:   cfg.UpdateInterval,
-		maxWorkers:       cfg.MaxWorkers,
+		repos:          repos,
+		parser:         parser,
+		extractor:      extractor,
+		classifier:     classifier,
+		updateInterval: cfg.UpdateInterval,
+		maxWorkers:     cfg.MaxWorkers,
 	}
 }
 
@@ -115,7 +76,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 	ctx, s.cancel = context.WithCancel(ctx)
 
 	// channel for items to process
-	processCh := make(chan db.Item, 100)
+	processCh := make(chan *domain.Item, 100)
 
 	// start processing worker
 	s.wg.Add(1)
@@ -140,41 +101,15 @@ func (s *Scheduler) Stop() {
 }
 
 // processingWorker processes items from the channel
-func (s *Scheduler) processingWorker(ctx context.Context, items <-chan db.Item) {
+func (s *Scheduler) processingWorker(ctx context.Context, items <-chan *domain.Item) {
 	defer s.wg.Done()
-
-	// check and update preference summary if needed
-	if err := s.updatePreferenceSummaryIfNeeded(ctx); err != nil {
-		lgr.Printf("[WARN] failed to update preference summary: %v", err)
-	}
-
-	// get preference summary
-	preferenceSummary, err := s.db.GetSetting(ctx, "preference_summary")
-	if err != nil {
-		lgr.Printf("[WARN] failed to get preference summary: %v", err)
-		preferenceSummary = ""
-	}
-
-	// get feedback examples once at start
-	feedbacks, err := s.db.GetRecentFeedback(ctx, "", 10)
-	if err != nil {
-		lgr.Printf("[WARN] failed to get feedback examples: %v", err)
-		feedbacks = []db.FeedbackExample{}
-	}
-
-	// get canonical topics once at start
-	topics, err := s.db.GetTopics(ctx)
-	if err != nil {
-		lgr.Printf("[WARN] failed to get canonical topics: %v", err)
-		topics = []string{}
-	}
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(s.maxWorkers)
 
 	for item := range items {
 		g.Go(func() error {
-			s.processItemWithSummary(ctx, item, feedbacks, topics, preferenceSummary)
+			s.processItem(ctx, item)
 			return nil
 		})
 	}
@@ -185,35 +120,47 @@ func (s *Scheduler) processingWorker(ctx context.Context, items <-chan db.Item) 
 }
 
 // processItem handles extraction and classification for a single item
-func (s *Scheduler) processItem(ctx context.Context, item db.Item, feedbacks []db.FeedbackExample, topics []string) {
-	s.processItemWithSummary(ctx, item, feedbacks, topics, "")
-}
-
-// processItemWithSummary handles extraction and classification with preference summary
-func (s *Scheduler) processItemWithSummary(ctx context.Context, item db.Item, feedbacks []db.FeedbackExample, topics []string, preferenceSummary string) {
+func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 	lgr.Printf("[DEBUG] processing item: %s", item.Link)
 
 	// 1. Extract content
 	extracted, err := s.extractor.Extract(ctx, item.Link)
 	if err != nil {
 		lgr.Printf("[WARN] failed to extract content from %s: %v", item.Link, err)
-		// save extraction error to database
-		if updateErr := s.db.UpdateItemExtraction(ctx, item.ID, "", "", err); updateErr != nil {
+		extraction := &domain.ExtractedContent{
+			Error:       err.Error(),
+			ExtractedAt: time.Now(),
+		}
+		if updateErr := s.repos.Item.UpdateItemExtraction(ctx, item.ID, extraction); updateErr != nil {
 			lgr.Printf("[WARN] failed to update extraction error: %v", updateErr)
 		}
-		// don't fail the whole process, just skip classification
 		return
 	}
 
-	// 2. Classify the item with extracted content
-	item.ExtractedContent = extracted.Content
+	// 2. Get context for classification
+	feedbacks, err := s.repos.Classification.GetRecentFeedback(ctx, "", 10)
+	if err != nil {
+		lgr.Printf("[WARN] failed to get feedback examples: %v", err)
+		feedbacks = []*domain.FeedbackExample{}
+	}
 
-	classifications, err := s.classifier.Classify(ctx, llm.ClassifyRequest{
-		Articles:          []db.Item{item},
-		Feedbacks:         feedbacks,
-		CanonicalTopics:   topics,
-		PreferenceSummary: preferenceSummary,
-	})
+	topics, err := s.repos.Classification.GetTopics(ctx)
+	if err != nil {
+		lgr.Printf("[WARN] failed to get canonical topics: %v", err)
+		topics = []string{}
+	}
+
+	preferenceSummary, err := s.repos.Setting.GetSetting(ctx, "preference_summary")
+	if err != nil {
+		lgr.Printf("[WARN] failed to get preference summary: %v", err)
+		preferenceSummary = ""
+	}
+
+	// Set extracted content for classification
+	item.Content = extracted.Content
+
+	// 3. Classify the item
+	classifications, err := s.classifier.ClassifyItems(ctx, []*domain.Item{item}, feedbacks, topics, preferenceSummary)
 	if err != nil {
 		lgr.Printf("[WARN] failed to classify item: %v", err)
 		return
@@ -224,9 +171,17 @@ func (s *Scheduler) processItemWithSummary(ctx context.Context, item db.Item, fe
 		return
 	}
 
-	// 3. Update item with both extraction and classification results
+	// 4. Update item with both extraction and classification results
+	extraction := &domain.ExtractedContent{
+		PlainText:   extracted.Content,
+		RichHTML:    extracted.RichContent,
+		ExtractedAt: time.Now(),
+	}
+
 	classification := classifications[0]
-	if err := s.db.UpdateItemProcessed(ctx, item.ID, extracted.Content, extracted.RichContent, classification); err != nil {
+	classification.ClassifiedAt = time.Now()
+
+	if err := s.repos.Item.UpdateItemProcessed(ctx, item.ID, extraction, classification); err != nil {
 		lgr.Printf("[WARN] failed to update item processing: %v", err)
 		return
 	}
@@ -234,95 +189,8 @@ func (s *Scheduler) processItemWithSummary(ctx context.Context, item db.Item, fe
 	lgr.Printf("[DEBUG] processed item: %s (score: %.1f)", item.Title, classification.Score)
 }
 
-// updatePreferenceSummaryIfNeeded checks if preference summary needs updating
-func (s *Scheduler) updatePreferenceSummaryIfNeeded(ctx context.Context) error {
-	feedbackCount, err := s.db.GetFeedbackCount(ctx)
-	if err != nil {
-		return fmt.Errorf("get feedback count: %w", err)
-	}
-
-	lastSummaryCountStr, err := s.db.GetSetting(ctx, "last_summary_feedback_count")
-	if err != nil {
-		return fmt.Errorf("get last summary count: %w", err)
-	}
-
-	var lastSummaryCount int64
-	if lastSummaryCountStr != "" {
-		_, err := fmt.Sscanf(lastSummaryCountStr, "%d", &lastSummaryCount)
-		if err != nil {
-			lgr.Printf("[WARN] failed to parse last summary count: %v", err)
-		}
-	}
-
-	// initial generation at 50 feedback
-	if lastSummaryCount == 0 && feedbackCount >= 50 {
-		lgr.Printf("[INFO] generating initial preference summary from %d feedback items", feedbackCount)
-
-		feedback, err := s.db.GetRecentFeedback(ctx, "", 50)
-		if err != nil {
-			return fmt.Errorf("get feedback for initial summary: %w", err)
-		}
-
-		summary, err := s.classifier.GeneratePreferenceSummary(ctx, feedback)
-		if err != nil {
-			return fmt.Errorf("generate initial summary: %w", err)
-		}
-
-		if err := s.db.SetSetting(ctx, "preference_summary", summary); err != nil {
-			return fmt.Errorf("save preference summary: %w", err)
-		}
-
-		if err := s.db.SetSetting(ctx, "last_summary_feedback_count", fmt.Sprintf("%d", feedbackCount)); err != nil {
-			return fmt.Errorf("save last summary count: %w", err)
-		}
-
-		lgr.Printf("[INFO] preference summary generated successfully")
-		return nil
-	}
-
-	// update every 20 new feedback (only if we already have a summary)
-	if lastSummaryCount > 0 && feedbackCount-lastSummaryCount >= 20 {
-		return s.updateExistingPreferenceSummary(ctx, feedbackCount, lastSummaryCount)
-	}
-
-	return nil
-}
-
-// updateExistingPreferenceSummary updates the preference summary with new feedback
-func (s *Scheduler) updateExistingPreferenceSummary(ctx context.Context, feedbackCount, lastSummaryCount int64) error {
-	diff := feedbackCount - lastSummaryCount
-	lgr.Printf("[INFO] updating preference summary with %d new feedback items", diff)
-
-	// get new feedback since last summary
-	newFeedback, err := s.db.GetFeedbackSince(ctx, lastSummaryCount, int(diff))
-	if err != nil {
-		return fmt.Errorf("get new feedback: %w", err)
-	}
-
-	currentSummary, err := s.db.GetSetting(ctx, "preference_summary")
-	if err != nil {
-		return fmt.Errorf("get current summary: %w", err)
-	}
-
-	updatedSummary, err := s.classifier.UpdatePreferenceSummary(ctx, currentSummary, newFeedback)
-	if err != nil {
-		return fmt.Errorf("update summary: %w", err)
-	}
-
-	if err := s.db.SetSetting(ctx, "preference_summary", updatedSummary); err != nil {
-		return fmt.Errorf("save updated summary: %w", err)
-	}
-
-	if err := s.db.SetSetting(ctx, "last_summary_feedback_count", fmt.Sprintf("%d", feedbackCount)); err != nil {
-		return fmt.Errorf("save last summary count: %w", err)
-	}
-
-	lgr.Printf("[INFO] preference summary updated successfully")
-	return nil
-}
-
 // feedUpdateWorker periodically updates all enabled feeds
-func (s *Scheduler) feedUpdateWorker(ctx context.Context, processCh chan<- db.Item) {
+func (s *Scheduler) feedUpdateWorker(ctx context.Context, processCh chan<- *domain.Item) {
 	defer s.wg.Done()
 	defer close(processCh)
 
@@ -343,8 +211,8 @@ func (s *Scheduler) feedUpdateWorker(ctx context.Context, processCh chan<- db.It
 }
 
 // updateAllFeeds fetches and updates all enabled feeds
-func (s *Scheduler) updateAllFeeds(ctx context.Context, processCh chan<- db.Item) {
-	feeds, err := s.db.GetFeeds(ctx, true)
+func (s *Scheduler) updateAllFeeds(ctx context.Context, processCh chan<- *domain.Item) {
+	feeds, err := s.repos.Feed.GetFeeds(ctx, true)
 	if err != nil {
 		lgr.Printf("[ERROR] failed to get enabled feeds: %v", err)
 		return
@@ -352,7 +220,6 @@ func (s *Scheduler) updateAllFeeds(ctx context.Context, processCh chan<- db.Item
 
 	lgr.Printf("[INFO] updating %d feeds", len(feeds))
 
-	// use errgroup with limit for concurrent feed updates
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(s.maxWorkers)
 
@@ -371,7 +238,7 @@ func (s *Scheduler) updateAllFeeds(ctx context.Context, processCh chan<- db.Item
 }
 
 // updateFeed fetches and stores new items for a single feed
-func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- db.Item) {
+func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh chan<- *domain.Item) {
 	feedName := f.Title
 	if feedName == "" {
 		feedName = f.URL
@@ -381,7 +248,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 	parsedFeed, err := s.parser.Parse(ctx, f.URL)
 	if err != nil {
 		lgr.Printf("[WARN] failed to parse feed %s: %v", f.URL, err)
-		if err := s.db.UpdateFeedError(ctx, f.ID, err.Error()); err != nil {
+		if err := s.repos.Feed.UpdateFeedError(ctx, f.ID, err.Error()); err != nil {
 			lgr.Printf("[WARN] failed to update feed error: %v", err)
 		}
 		return
@@ -390,8 +257,8 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 	// store new items
 	newCount := 0
 	for _, item := range parsedFeed.Items {
-		// first check if item exists in this feed
-		exists, err := s.db.ItemExists(ctx, f.ID, item.GUID)
+		// check if item exists
+		exists, err := s.repos.Item.ItemExists(ctx, f.ID, item.GUID)
 		if err != nil {
 			lgr.Printf("[WARN] failed to check item existence: %v", err)
 			continue
@@ -400,8 +267,8 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 			continue
 		}
 
-		// check if item with same title or URL exists in any feed
-		duplicateExists, err := s.db.ItemExistsByTitleOrURL(ctx, item.Title, item.Link)
+		// check for duplicates
+		duplicateExists, err := s.repos.Item.ItemExistsByTitleOrURL(ctx, item.Title, item.Link)
 		if err != nil {
 			lgr.Printf("[WARN] failed to check duplicate item: %v", err)
 			continue
@@ -411,7 +278,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 			continue
 		}
 
-		dbItem := &db.Item{
+		domainItem := &domain.Item{
 			FeedID:      f.ID,
 			GUID:        item.GUID,
 			Title:       item.Title,
@@ -422,7 +289,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 			Published:   item.Published,
 		}
 
-		if err := s.db.CreateItem(ctx, dbItem); err != nil {
+		if err := s.repos.Item.CreateItem(ctx, domainItem); err != nil {
 			lgr.Printf("[WARN] failed to create item: %v", err)
 			continue
 		}
@@ -431,7 +298,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 
 		// send to processing channel
 		select {
-		case processCh <- *dbItem:
+		case processCh <- domainItem:
 		case <-ctx.Done():
 			return
 		}
@@ -439,7 +306,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 
 	// update last fetched timestamp
 	nextFetch := time.Now().Add(time.Duration(f.FetchInterval) * time.Second)
-	if err := s.db.UpdateFeedFetched(ctx, f.ID, nextFetch); err != nil {
+	if err := s.repos.Feed.UpdateFeedFetched(ctx, f.ID, nextFetch); err != nil {
 		lgr.Printf("[WARN] failed to update last fetched: %v", err)
 	}
 
@@ -450,70 +317,31 @@ func (s *Scheduler) updateFeed(ctx context.Context, f db.Feed, processCh chan<- 
 
 // UpdateFeedNow triggers immediate update of a specific feed
 func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
-	feed, err := s.db.GetFeed(ctx, feedID)
+	feed, err := s.repos.Feed.GetFeed(ctx, feedID)
 	if err != nil {
 		return fmt.Errorf("get feed: %w", err)
 	}
 
-	// create a temporary channel for processing
-	processCh := make(chan db.Item, 10)
+	processCh := make(chan *domain.Item, 10)
 	defer close(processCh)
 
-	// process items in background
 	go func() {
-		// get preference summary
-		preferenceSummary, err := s.db.GetSetting(ctx, "preference_summary")
-		if err != nil {
-			lgr.Printf("[WARN] failed to get preference summary: %v", err)
-			preferenceSummary = ""
-		}
-
 		for item := range processCh {
-			feedbacks, err := s.db.GetRecentFeedback(ctx, "", 10)
-			if err != nil {
-				lgr.Printf("[WARN] failed to get feedback examples: %v", err)
-				feedbacks = []db.FeedbackExample{}
-			}
-			topics, err := s.db.GetTopics(ctx)
-			if err != nil {
-				lgr.Printf("[WARN] failed to get canonical topics: %v", err)
-				topics = []string{}
-			}
-			s.processItemWithSummary(ctx, item, feedbacks, topics, preferenceSummary)
+			s.processItem(ctx, item)
 		}
 	}()
 
-	s.updateFeed(ctx, *feed, processCh)
+	s.updateFeed(ctx, feed, processCh)
 	return nil
 }
 
 // ExtractContentNow triggers immediate content extraction for an item
 func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
-	// this is now merged with classification, so we just process the item
-	item, err := s.db.GetItem(ctx, itemID)
+	item, err := s.repos.Item.GetItem(ctx, itemID)
 	if err != nil {
 		return fmt.Errorf("get item: %w", err)
 	}
 
-	// get preference summary
-	preferenceSummary, err := s.db.GetSetting(ctx, "preference_summary")
-	if err != nil {
-		lgr.Printf("[WARN] failed to get preference summary: %v", err)
-		preferenceSummary = ""
-	}
-
-	feedbacks, err := s.db.GetRecentFeedback(ctx, "", 10)
-	if err != nil {
-		lgr.Printf("[WARN] failed to get feedback examples: %v", err)
-		feedbacks = []db.FeedbackExample{}
-	}
-
-	topics, err := s.db.GetTopics(ctx)
-	if err != nil {
-		lgr.Printf("[WARN] failed to get canonical topics: %v", err)
-		topics = []string{}
-	}
-
-	s.processItemWithSummary(ctx, *item, feedbacks, topics, preferenceSummary)
+	s.processItem(ctx, item)
 	return nil
 }

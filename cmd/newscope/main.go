@@ -20,6 +20,7 @@ import (
 	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed"
 	"github.com/umputun/newscope/pkg/llm"
+	"github.com/umputun/newscope/pkg/repository"
 	"github.com/umputun/newscope/pkg/scheduler"
 	"github.com/umputun/newscope/server"
 )
@@ -63,7 +64,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	// setup database
+	// setup database repositories
+	repoCfg := repository.Config{
+		DSN:             cfg.Database.DSN,
+		MaxOpenConns:    cfg.Database.MaxOpenConns,
+		MaxIdleConns:    cfg.Database.MaxIdleConns,
+		ConnMaxLifetime: time.Duration(cfg.Database.ConnMaxLifetime) * time.Second,
+	}
+	repos, err := repository.NewRepositories(context.Background(), repoCfg)
+	if err != nil {
+		log.Printf("[ERROR] failed to initialize database: %v", err)
+		os.Exit(1)
+	}
+	defer repos.Close()
+
+	// TODO: Remove this when server is updated to use new repositories
+	// Keep old db connection for server compatibility
 	dbCfg := db.Config{
 		DSN:             cfg.Database.DSN,
 		MaxOpenConns:    cfg.Database.MaxOpenConns,
@@ -72,7 +88,7 @@ func main() {
 	}
 	dbConn, err := db.New(context.Background(), dbCfg)
 	if err != nil {
-		log.Printf("[ERROR] failed to initialize database: %v", err)
+		log.Printf("[ERROR] failed to initialize old database: %v", err)
 		os.Exit(1)
 	}
 	defer dbConn.Close()
@@ -101,11 +117,13 @@ func main() {
 	}
 
 	// setup LLM classifier
-	var classifier *llm.Classifier
+	var classifierAdapter *ClassifierAdapter
 	if cfg.LLM.Endpoint != "" && cfg.LLM.APIKey != "" {
-		classifier = llm.NewClassifier(cfg.LLM)
+		classifier := llm.NewClassifier(cfg.LLM)
+		classifierAdapter = NewClassifierAdapter(classifier)
 		log.Printf("[INFO] LLM classifier enabled with model: %s", cfg.LLM.Model)
 	} else {
+		classifierAdapter = NewClassifierAdapter(nil)
 		log.Printf("[WARN] LLM classifier disabled - no endpoint or API key configured")
 	}
 
@@ -114,7 +132,7 @@ func main() {
 		UpdateInterval: time.Duration(cfg.Schedule.UpdateInterval) * time.Minute,
 		MaxWorkers:     cfg.Schedule.MaxWorkers,
 	}
-	sched := scheduler.NewScheduler(dbConn, feedParser, contentExtractor, classifier, schedulerCfg)
+	sched := scheduler.NewScheduler(repos, feedParser, contentExtractor, classifierAdapter, schedulerCfg)
 	sched.Start(ctx)
 	defer sched.Stop()
 
