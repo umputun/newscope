@@ -16,7 +16,7 @@
     <form hx-post="/api/v1/feeds" 
           hx-target="#feeds-list" 
           hx-swap="beforeend"
-          hx-on="htmx:afterRequest: this.reset(); document.getElementById('add-feed-form').style.display='none'">
+          hx-on::after-request="if(event.detail.xhr.status === 200) { this.reset(); document.getElementById('add-feed-form').style.display='none'; }">
         <div class="form-group">
             <label for="url">Feed URL:</label>
             <input type="url" id="url" name="url" required placeholder="https://example.com/feed.xml">
