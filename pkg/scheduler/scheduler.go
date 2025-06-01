@@ -1,3 +1,11 @@
+//go:generate moq -out mocks/feed_manager.go -pkg mocks -skip-ensure -fmt goimports . FeedManager
+//go:generate moq -out mocks/item_manager.go -pkg mocks -skip-ensure -fmt goimports . ItemManager
+//go:generate moq -out mocks/classification_manager.go -pkg mocks -skip-ensure -fmt goimports . ClassificationManager
+//go:generate moq -out mocks/setting_manager.go -pkg mocks -skip-ensure -fmt goimports . SettingManager
+//go:generate moq -out mocks/parser.go -pkg mocks -skip-ensure -fmt goimports . Parser
+//go:generate moq -out mocks/extractor.go -pkg mocks -skip-ensure -fmt goimports . Extractor
+//go:generate moq -out mocks/classifier.go -pkg mocks -skip-ensure -fmt goimports . Classifier
+
 package scheduler
 
 import (
@@ -191,7 +199,7 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 		preferenceSummary = ""
 	}
 
-	// Set extracted content for classification
+	// set extracted content for classification
 	item.Content = extracted.Content
 
 	// 3. Classify the item

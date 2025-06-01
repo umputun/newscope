@@ -2,13 +2,14 @@ package repository
 
 import (
 	"context"
+	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/go-pkgz/repeater/v2"
 	"github.com/jmoiron/sqlx"
 
-	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/domain"
 )
 
@@ -17,14 +18,82 @@ type ItemRepository struct {
 	db *sqlx.DB
 }
 
+// itemSQL represents an item for SQL operations
+type itemSQL struct {
+	ID          int64     `db:"id"`
+	FeedID      int64     `db:"feed_id"`
+	GUID        string    `db:"guid"`
+	Title       string    `db:"title"`
+	Link        string    `db:"link"`
+	Description string    `db:"description"`
+	Content     string    `db:"content"`
+	Author      string    `db:"author"`
+	Published   time.Time `db:"published"`
+
+	// extracted content
+	ExtractedContent     string     `db:"extracted_content"`
+	ExtractedRichContent string     `db:"extracted_rich_content"`
+	ExtractedAt          *time.Time `db:"extracted_at"`
+	ExtractionError      string     `db:"extraction_error"`
+
+	// LLM classification
+	RelevanceScore float64    `db:"relevance_score"`
+	Explanation    string     `db:"explanation"`
+	Topics         topicsSQL  `db:"topics"`
+	ClassifiedAt   *time.Time `db:"classified_at"`
+
+	// user feedback
+	UserFeedback string     `db:"user_feedback"`
+	FeedbackAt   *time.Time `db:"feedback_at"`
+
+	// metadata
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+
+	// joined data (not stored in DB, populated by queries)
+	FeedTitle string `db:"feed_title"`
+	FeedURL   string `db:"feed_url"`
+}
+
+// topicsSQL is a JSON array of topic strings for SQL operations
+type topicsSQL []string
+
+// Value implements driver.Valuer for database storage
+func (t topicsSQL) Value() (driver.Value, error) {
+	if t == nil {
+		return "[]", nil
+	}
+	return json.Marshal(t)
+}
+
+// Scan implements sql.Scanner for database retrieval
+func (t *topicsSQL) Scan(value interface{}) error {
+	if value == nil {
+		*t = topicsSQL{}
+		return nil
+	}
+
+	var data []byte
+	switch v := value.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
+		return json.Unmarshal([]byte("[]"), t)
+	}
+
+	return json.Unmarshal(data, t)
+}
+
 // NewItemRepository creates a new item repository
-func NewItemRepository(db *sqlx.DB) *ItemRepository {
-	return &ItemRepository{db: db}
+func NewItemRepository(database *sqlx.DB) *ItemRepository {
+	return &ItemRepository{db: database}
 }
 
 // CreateItem inserts a new item
 func (r *ItemRepository) CreateItem(ctx context.Context, item *domain.Item) error {
-	dbItem := &db.Item{
+	sqlItem := &itemSQL{
 		FeedID:      item.FeedID,
 		GUID:        item.GUID,
 		Title:       item.Title,
@@ -44,7 +113,7 @@ func (r *ItemRepository) CreateItem(ctx context.Context, item *domain.Item) erro
 			:author, :published
 		)
 	`
-	result, err := r.db.NamedExecContext(ctx, query, dbItem)
+	result, err := r.db.NamedExecContext(ctx, query, sqlItem)
 	if err != nil {
 		return fmt.Errorf("create item: %w", err)
 	}
@@ -60,12 +129,12 @@ func (r *ItemRepository) CreateItem(ctx context.Context, item *domain.Item) erro
 
 // GetItem retrieves an item by ID
 func (r *ItemRepository) GetItem(ctx context.Context, id int64) (*domain.Item, error) {
-	var dbItem db.Item
-	err := r.db.GetContext(ctx, &dbItem, "SELECT * FROM items WHERE id = ?", id)
+	var sqlItem itemSQL
+	err := r.db.GetContext(ctx, &sqlItem, "SELECT * FROM items WHERE id = ?", id)
 	if err != nil {
 		return nil, fmt.Errorf("get item: %w", err)
 	}
-	return r.toDomainItem(&dbItem), nil
+	return r.toDomainItem(&sqlItem), nil
 }
 
 // GetItems retrieves items with optional filters
@@ -76,14 +145,14 @@ func (r *ItemRepository) GetItems(ctx context.Context, limit int, minScore float
 		ORDER BY published DESC
 		LIMIT ?
 	`
-	var dbItems []db.Item
-	err := r.db.SelectContext(ctx, &dbItems, query, minScore, limit)
+	var sqlItems []itemSQL
+	err := r.db.SelectContext(ctx, &sqlItems, query, minScore, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get items: %w", err)
 	}
 
-	items := make([]*domain.Item, len(dbItems))
-	for i, item := range dbItems {
+	items := make([]*domain.Item, len(sqlItems))
+	for i, item := range sqlItems {
 		items[i] = r.toDomainItem(&item)
 	}
 	return items, nil
@@ -99,14 +168,14 @@ func (r *ItemRepository) GetUnclassifiedItems(ctx context.Context, limit int) ([
 		ORDER BY published DESC
 		LIMIT ?
 	`
-	var dbItems []db.Item
-	err := r.db.SelectContext(ctx, &dbItems, query, limit)
+	var sqlItems []itemSQL
+	err := r.db.SelectContext(ctx, &sqlItems, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get unclassified items: %w", err)
 	}
 
-	items := make([]*domain.Item, len(dbItems))
-	for i, item := range dbItems {
+	items := make([]*domain.Item, len(sqlItems))
+	for i, item := range sqlItems {
 		items[i] = r.toDomainItem(&item)
 	}
 	return items, nil
@@ -121,14 +190,14 @@ func (r *ItemRepository) GetItemsNeedingExtraction(ctx context.Context, limit in
 		ORDER BY published DESC
 		LIMIT ?
 	`
-	var dbItems []db.Item
-	err := r.db.SelectContext(ctx, &dbItems, query, limit)
+	var sqlItems []itemSQL
+	err := r.db.SelectContext(ctx, &sqlItems, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get items needing extraction: %w", err)
 	}
 
-	items := make([]*domain.Item, len(dbItems))
-	for i, item := range dbItems {
+	items := make([]*domain.Item, len(sqlItems))
+	for i, item := range sqlItems {
 		items[i] = r.toDomainItem(&item)
 	}
 	return items, nil
@@ -172,7 +241,7 @@ func (r *ItemRepository) UpdateItemClassification(ctx context.Context, itemID in
 		    classified_at = datetime('now')
 		WHERE id = ?
 	`
-	_, err := r.db.ExecContext(ctx, query, classification.Score, classification.Explanation, db.Topics(classification.Topics), itemID)
+	_, err := r.db.ExecContext(ctx, query, classification.Score, classification.Explanation, topicsSQL(classification.Topics), itemID)
 	if err != nil {
 		return fmt.Errorf("update item classification: %w", err)
 	}
@@ -200,8 +269,8 @@ func (r *ItemRepository) UpdateItemProcessed(ctx context.Context, itemID int64, 
 				    description = ?
 				WHERE id = ?
 			`
-			args = []interface{}{extraction.PlainText, extraction.RichHTML, classification.Score, 
-				classification.Explanation, db.Topics(classification.Topics), classification.Summary, itemID}
+			args = []interface{}{extraction.PlainText, extraction.RichHTML, classification.Score,
+				classification.Explanation, topicsSQL(classification.Topics), classification.Summary, itemID}
 		} else {
 			query = `
 				UPDATE items 
@@ -215,7 +284,7 @@ func (r *ItemRepository) UpdateItemProcessed(ctx context.Context, itemID int64, 
 				WHERE id = ?
 			`
 			args = []interface{}{extraction.PlainText, extraction.RichHTML, classification.Score,
-				classification.Explanation, db.Topics(classification.Topics), itemID}
+				classification.Explanation, topicsSQL(classification.Topics), itemID}
 		}
 
 		_, err := r.db.ExecContext(ctx, query, args...)
@@ -254,19 +323,19 @@ func (r *ItemRepository) ItemExistsByTitleOrURL(ctx context.Context, title, url 
 	return exists, nil
 }
 
-// toDomainItem converts db.Item to domain.Item
-func (r *ItemRepository) toDomainItem(dbItem *db.Item) *domain.Item {
+// toDomainItem converts itemSQL to domain.Item
+func (r *ItemRepository) toDomainItem(sqlItem *itemSQL) *domain.Item {
 	return &domain.Item{
-		ID:          dbItem.ID,
-		FeedID:      dbItem.FeedID,
-		GUID:        dbItem.GUID,
-		Title:       dbItem.Title,
-		Link:        dbItem.Link,
-		Description: dbItem.Description,
-		Content:     dbItem.Content,
-		Author:      dbItem.Author,
-		Published:   dbItem.Published,
-		CreatedAt:   dbItem.CreatedAt,
-		UpdatedAt:   dbItem.UpdatedAt,
+		ID:          sqlItem.ID,
+		FeedID:      sqlItem.FeedID,
+		GUID:        sqlItem.GUID,
+		Title:       sqlItem.Title,
+		Link:        sqlItem.Link,
+		Description: sqlItem.Description,
+		Content:     sqlItem.Content,
+		Author:      sqlItem.Author,
+		Published:   sqlItem.Published,
+		CreatedAt:   sqlItem.CreatedAt,
+		UpdatedAt:   sqlItem.UpdatedAt,
 	}
 }

@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/umputun/newscope/pkg/db"
+	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/pkg/feed/types"
 )
 
@@ -17,7 +17,7 @@ import (
 //
 //		// make and configure a mocked server.Database
 //		mockedDatabase := &DatabaseMock{
-//			CreateFeedFunc: func(ctx context.Context, feed *db.Feed) error {
+//			CreateFeedFunc: func(ctx context.Context, feed *domain.Feed) error {
 //				panic("mock out the CreateFeed method")
 //			},
 //			DeleteFeedFunc: func(ctx context.Context, feedID int64) error {
@@ -26,7 +26,7 @@ import (
 //			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetActiveFeedNames method")
 //			},
-//			GetAllFeedsFunc: func(ctx context.Context) ([]db.Feed, error) {
+//			GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
 //				panic("mock out the GetAllFeeds method")
 //			},
 //			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
@@ -64,7 +64,7 @@ import (
 //	}
 type DatabaseMock struct {
 	// CreateFeedFunc mocks the CreateFeed method.
-	CreateFeedFunc func(ctx context.Context, feed *db.Feed) error
+	CreateFeedFunc func(ctx context.Context, feed *domain.Feed) error
 
 	// DeleteFeedFunc mocks the DeleteFeed method.
 	DeleteFeedFunc func(ctx context.Context, feedID int64) error
@@ -73,7 +73,7 @@ type DatabaseMock struct {
 	GetActiveFeedNamesFunc func(ctx context.Context, minScore float64) ([]string, error)
 
 	// GetAllFeedsFunc mocks the GetAllFeeds method.
-	GetAllFeedsFunc func(ctx context.Context) ([]db.Feed, error)
+	GetAllFeedsFunc func(ctx context.Context) ([]domain.Feed, error)
 
 	// GetClassifiedItemFunc mocks the GetClassifiedItem method.
 	GetClassifiedItemFunc func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error)
@@ -109,7 +109,7 @@ type DatabaseMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Feed is the feed argument value.
-			Feed *db.Feed
+			Feed *domain.Feed
 		}
 		// DeleteFeed holds details about calls to the DeleteFeed method.
 		DeleteFeed []struct {
@@ -222,13 +222,13 @@ type DatabaseMock struct {
 }
 
 // CreateFeed calls CreateFeedFunc.
-func (mock *DatabaseMock) CreateFeed(ctx context.Context, feed *db.Feed) error {
+func (mock *DatabaseMock) CreateFeed(ctx context.Context, feed *domain.Feed) error {
 	if mock.CreateFeedFunc == nil {
 		panic("DatabaseMock.CreateFeedFunc: method is nil but Database.CreateFeed was just called")
 	}
 	callInfo := struct {
 		Ctx  context.Context
-		Feed *db.Feed
+		Feed *domain.Feed
 	}{
 		Ctx:  ctx,
 		Feed: feed,
@@ -245,11 +245,11 @@ func (mock *DatabaseMock) CreateFeed(ctx context.Context, feed *db.Feed) error {
 //	len(mockedDatabase.CreateFeedCalls())
 func (mock *DatabaseMock) CreateFeedCalls() []struct {
 	Ctx  context.Context
-	Feed *db.Feed
+	Feed *domain.Feed
 } {
 	var calls []struct {
 		Ctx  context.Context
-		Feed *db.Feed
+		Feed *domain.Feed
 	}
 	mock.lockCreateFeed.RLock()
 	calls = mock.calls.CreateFeed
@@ -330,7 +330,7 @@ func (mock *DatabaseMock) GetActiveFeedNamesCalls() []struct {
 }
 
 // GetAllFeeds calls GetAllFeedsFunc.
-func (mock *DatabaseMock) GetAllFeeds(ctx context.Context) ([]db.Feed, error) {
+func (mock *DatabaseMock) GetAllFeeds(ctx context.Context) ([]domain.Feed, error) {
 	if mock.GetAllFeedsFunc == nil {
 		panic("DatabaseMock.GetAllFeedsFunc: method is nil but Database.GetAllFeeds was just called")
 	}

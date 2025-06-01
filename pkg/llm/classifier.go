@@ -9,7 +9,7 @@ import (
 	"github.com/sashabaranov/go-openai"
 
 	"github.com/umputun/newscope/pkg/config"
-	"github.com/umputun/newscope/pkg/db"
+	"github.com/umputun/newscope/pkg/domain"
 )
 
 // Classifier uses LLM to classify articles
@@ -73,16 +73,16 @@ Consider the user's previous feedback when provided.`
 
 // ClassifyRequest contains all parameters for article classification
 type ClassifyRequest struct {
-	Articles          []db.Item
-	Feedbacks         []db.FeedbackExample
+	Articles          []*domain.Item
+	Feedbacks         []*domain.FeedbackExample
 	CanonicalTopics   []string
 	PreferenceSummary string
 }
 
 // Classify classifies articles using the provided request parameters
-func (c *Classifier) Classify(ctx context.Context, req ClassifyRequest) ([]db.Classification, error) {
+func (c *Classifier) Classify(ctx context.Context, req ClassifyRequest) ([]*domain.Classification, error) {
 	if len(req.Articles) == 0 {
-		return []db.Classification{}, nil
+		return []*domain.Classification{}, nil
 	}
 
 	// prepare the prompt
@@ -148,12 +148,12 @@ func (c *Classifier) Classify(ctx context.Context, req ClassifyRequest) ([]db.Cl
 }
 
 // buildPrompt creates the prompt for the LLM
-func (c *Classifier) buildPrompt(articles []db.Item, feedbackExamples []db.FeedbackExample, canonicalTopics []string) string {
+func (c *Classifier) buildPrompt(articles []*domain.Item, feedbackExamples []*domain.FeedbackExample, canonicalTopics []string) string {
 	return c.buildPromptWithSummary(articles, feedbackExamples, canonicalTopics, "")
 }
 
 // buildPromptWithSummary creates the prompt for the LLM with optional preference summary
-func (c *Classifier) buildPromptWithSummary(articles []db.Item, feedbackExamples []db.FeedbackExample, canonicalTopics []string, preferenceSummary string) string {
+func (c *Classifier) buildPromptWithSummary(articles []*domain.Item, feedbackExamples []*domain.FeedbackExample, canonicalTopics []string, preferenceSummary string) string {
 	var sb strings.Builder
 
 	// add preference summary if available
@@ -186,7 +186,7 @@ func (c *Classifier) buildPromptWithSummary(articles []db.Item, feedbackExamples
 	if len(feedbackExamples) > 0 {
 		sb.WriteString("Recent user feedback:\n")
 		for _, ex := range feedbackExamples {
-			sb.WriteString(fmt.Sprintf("- %s article: %s\n", ex.Feedback, ex.Title))
+			sb.WriteString(fmt.Sprintf("- %s article: %s\n", string(ex.Feedback), ex.Title))
 			if len(ex.Topics) > 0 {
 				sb.WriteString(fmt.Sprintf("  Topics: %s\n", strings.Join(ex.Topics, ", ")))
 			}
@@ -202,9 +202,9 @@ func (c *Classifier) buildPromptWithSummary(articles []db.Item, feedbackExamples
 		if article.Description != "" {
 			sb.WriteString(fmt.Sprintf("   Description: %s\n", article.Description))
 		}
-		if article.ExtractedContent != "" {
+		if article.Content != "" {
 			// limit content to first 500 chars
-			content := article.ExtractedContent
+			content := article.Content
 			if len(content) > 500 {
 				content = content[:500] + "..."
 			}
@@ -222,13 +222,13 @@ func (c *Classifier) buildPromptWithSummary(articles []db.Item, feedbackExamples
 }
 
 // parseResponse parses the LLM response into classifications
-func (c *Classifier) parseResponse(content string, articles []db.Item) ([]db.Classification, error) {
-	var classifications []db.Classification
+func (c *Classifier) parseResponse(content string, articles []*domain.Item) ([]*domain.Classification, error) {
+	var classifications []*domain.Classification
 
 	if c.config.Classification.UseJSONMode {
 		// parse as JSON object with classifications array
 		var resp struct {
-			Classifications []db.Classification `json:"classifications"`
+			Classifications []*domain.Classification `json:"classifications"`
 		}
 		if err := json.Unmarshal([]byte(content), &resp); err != nil {
 			return nil, fmt.Errorf("failed to parse json object response: %w", err)
@@ -254,7 +254,7 @@ func (c *Classifier) parseResponse(content string, articles []db.Item) ([]db.Cla
 		guidMap[article.GUID] = true
 	}
 
-	var valid []db.Classification
+	var valid []*domain.Classification
 	for _, class := range classifications {
 		if guidMap[class.GUID] {
 			// ensure score is in valid range
@@ -270,6 +270,17 @@ func (c *Classifier) parseResponse(content string, articles []db.Item) ([]db.Cla
 	return valid, nil
 }
 
+// ClassifyItems implements the scheduler.Classifier interface
+func (c *Classifier) ClassifyItems(ctx context.Context, items []*domain.Item, feedbacks []*domain.FeedbackExample, topics []string, preferenceSummary string) ([]*domain.Classification, error) {
+	req := ClassifyRequest{
+		Articles:          items,
+		Feedbacks:         feedbacks,
+		CanonicalTopics:   topics,
+		PreferenceSummary: preferenceSummary,
+	}
+	return c.Classify(ctx, req)
+}
+
 // default prompts for preference summary operations
 const (
 	defaultGenerateSummaryPrompt = `Analyze the following user feedback on articles and create a comprehensive preference summary.
@@ -283,7 +294,7 @@ Keep the updated summary concise (200-300 words) but comprehensive.`
 )
 
 // GeneratePreferenceSummary creates initial summary from feedback history
-func (c *Classifier) GeneratePreferenceSummary(ctx context.Context, feedback []db.FeedbackExample) (string, error) {
+func (c *Classifier) GeneratePreferenceSummary(ctx context.Context, feedback []*domain.FeedbackExample) (string, error) {
 	if len(feedback) == 0 {
 		return "", fmt.Errorf("no feedback provided")
 	}
@@ -301,7 +312,7 @@ func (c *Classifier) GeneratePreferenceSummary(ctx context.Context, feedback []d
 
 	sb.WriteString("User feedback history:\n\n")
 	for _, ex := range feedback {
-		sb.WriteString(fmt.Sprintf("%s: %s\n", strings.ToUpper(ex.Feedback), ex.Title))
+		sb.WriteString(fmt.Sprintf("%s: %s\n", strings.ToUpper(string(ex.Feedback)), ex.Title))
 		if ex.Description != "" {
 			sb.WriteString(fmt.Sprintf("  Description: %s\n", ex.Description))
 		}
@@ -346,7 +357,7 @@ func (c *Classifier) GeneratePreferenceSummary(ctx context.Context, feedback []d
 }
 
 // UpdatePreferenceSummary updates existing summary with new feedback
-func (c *Classifier) UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []db.FeedbackExample) (string, error) {
+func (c *Classifier) UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []*domain.FeedbackExample) (string, error) {
 	if currentSummary == "" {
 		return "", fmt.Errorf("no current summary provided")
 	}
@@ -371,7 +382,7 @@ func (c *Classifier) UpdatePreferenceSummary(ctx context.Context, currentSummary
 
 	sb.WriteString("New user feedback:\n\n")
 	for _, ex := range newFeedback {
-		sb.WriteString(fmt.Sprintf("%s: %s\n", strings.ToUpper(ex.Feedback), ex.Title))
+		sb.WriteString(fmt.Sprintf("%s: %s\n", strings.ToUpper(string(ex.Feedback)), ex.Title))
 		if ex.Description != "" {
 			sb.WriteString(fmt.Sprintf("  Description: %s\n", ex.Description))
 		}

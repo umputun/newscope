@@ -75,8 +75,15 @@ func main() {
 		log.Printf("[ERROR] failed to initialize database: %v", err)
 		os.Exit(1)
 	}
-	defer repos.Close()
 
+	// setup LLM classifier - required for system to function
+	if cfg.LLM.Endpoint == "" || cfg.LLM.APIKey == "" {
+		log.Printf("[ERROR] LLM classifier is required - missing endpoint or API key configuration")
+		_ = repos.Close()
+		log.Fatal("LLM configuration required")
+	}
+
+	defer repos.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -100,24 +107,15 @@ func main() {
 		}
 		contentExtractor.SetOptions(cfg.Extraction.MinTextLength, cfg.Extraction.IncludeImages, cfg.Extraction.IncludeLinks)
 	}
-
-	// setup LLM classifier
-	var classifierAdapter *ClassifierAdapter
-	if cfg.LLM.Endpoint != "" && cfg.LLM.APIKey != "" {
-		classifier := llm.NewClassifier(cfg.LLM)
-		classifierAdapter = NewClassifierAdapter(classifier)
-		log.Printf("[INFO] LLM classifier enabled with model: %s", cfg.LLM.Model)
-	} else {
-		classifierAdapter = NewClassifierAdapter(nil)
-		log.Printf("[WARN] LLM classifier disabled - no endpoint or API key configured")
-	}
+	classifier := llm.NewClassifier(cfg.LLM)
+	log.Printf("[INFO] LLM classifier enabled with model: %s", cfg.LLM.Model)
 
 	// setup and start scheduler
 	schedulerCfg := scheduler.Config{
 		UpdateInterval: time.Duration(cfg.Schedule.UpdateInterval) * time.Minute,
 		MaxWorkers:     cfg.Schedule.MaxWorkers,
 	}
-	sched := scheduler.NewScheduler(repos.Feed, repos.Item, repos.Classification, repos.Setting, feedParser, contentExtractor, classifierAdapter, schedulerCfg)
+	sched := scheduler.NewScheduler(repos.Feed, repos.Item, repos.Classification, repos.Setting, feedParser, contentExtractor, classifier, schedulerCfg)
 	sched.Start(ctx)
 	defer sched.Stop()
 

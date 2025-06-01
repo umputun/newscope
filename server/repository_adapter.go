@@ -2,8 +2,9 @@ package server
 
 import (
 	"context"
+	"net/url"
+	"strings"
 
-	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/pkg/feed/types"
 	"github.com/umputun/newscope/pkg/repository"
@@ -39,7 +40,7 @@ func (r *RepositoryAdapter) GetFeeds(ctx context.Context) ([]types.Feed, error) 
 
 // GetItems adapts repository items to return types.Item
 func (r *RepositoryAdapter) GetItems(ctx context.Context, limit, _ int) ([]types.Item, error) {
-	// Repository uses minScore instead of offset
+	// repository uses minScore instead of offset
 	// for now, return all items with score >= 0
 	domainItems, err := r.repos.Item.GetItems(ctx, limit, 0)
 	if err != nil {
@@ -187,50 +188,23 @@ func (r *RepositoryAdapter) GetTopicsFiltered(ctx context.Context, minScore floa
 }
 
 // GetAllFeeds returns all feeds with full details
-func (r *RepositoryAdapter) GetAllFeeds(ctx context.Context) ([]db.Feed, error) {
+func (r *RepositoryAdapter) GetAllFeeds(ctx context.Context) ([]domain.Feed, error) {
 	domainFeeds, err := r.repos.Feed.GetFeeds(ctx, false) // get all feeds, not just enabled
 	if err != nil {
 		return nil, err
 	}
 
-	// convert domain feeds to db feeds
-	feeds := make([]db.Feed, len(domainFeeds))
+	// convert []*domain.Feed to []domain.Feed
+	feeds := make([]domain.Feed, len(domainFeeds))
 	for i, f := range domainFeeds {
-		feeds[i] = db.Feed{
-			ID:            f.ID,
-			URL:           f.URL,
-			Title:         f.Title,
-			Description:   f.Description,
-			LastFetched:   f.LastFetched,
-			NextFetch:     f.NextFetch,
-			FetchInterval: f.FetchInterval,
-			ErrorCount:    f.ErrorCount,
-			LastError:     f.LastError,
-			Enabled:       f.Enabled,
-			CreatedAt:     f.CreatedAt,
-		}
+		feeds[i] = *f
 	}
 	return feeds, nil
 }
 
 // CreateFeed adds a new feed
-func (r *RepositoryAdapter) CreateFeed(ctx context.Context, feed *db.Feed) error {
-	domainFeed := &domain.Feed{
-		URL:           feed.URL,
-		Title:         feed.Title,
-		Description:   feed.Description,
-		FetchInterval: feed.FetchInterval,
-		Enabled:       feed.Enabled,
-	}
-	
-	err := r.repos.Feed.CreateFeed(ctx, domainFeed)
-	if err != nil {
-		return err
-	}
-	
-	// update the original feed with the new ID
-	feed.ID = domainFeed.ID
-	return nil
+func (r *RepositoryAdapter) CreateFeed(ctx context.Context, feed *domain.Feed) error {
+	return r.repos.Feed.CreateFeed(ctx, feed)
 }
 
 // UpdateFeedStatus enables or disables a feed
@@ -248,3 +222,20 @@ func (r *RepositoryAdapter) GetActiveFeedNames(ctx context.Context, minScore flo
 	return r.repos.Feed.GetActiveFeedNames(ctx, minScore)
 }
 
+// getFeedDisplayName returns the feed title if available, otherwise extracts hostname from URL
+func getFeedDisplayName(title, feedURL string) string {
+	if title != "" {
+		return title
+	}
+
+	// try to extract hostname from URL
+	if u, err := url.Parse(feedURL); err == nil {
+		host := u.Hostname()
+		// remove www. prefix if present
+		host = strings.TrimPrefix(host, "www.")
+		return host
+	}
+
+	// fallback to the full URL
+	return feedURL
+}

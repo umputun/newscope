@@ -8,7 +8,6 @@ import (
 	"github.com/go-pkgz/repeater/v2"
 	"github.com/jmoiron/sqlx"
 
-	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/domain"
 )
 
@@ -17,14 +16,29 @@ type FeedRepository struct {
 	db *sqlx.DB
 }
 
+// feedSQL represents a feed for SQL operations
+type feedSQL struct {
+	ID            int64      `db:"id"`
+	URL           string     `db:"url"`
+	Title         string     `db:"title"`
+	Description   string     `db:"description"`
+	LastFetched   *time.Time `db:"last_fetched"`
+	NextFetch     *time.Time `db:"next_fetch"`
+	FetchInterval int        `db:"fetch_interval"`
+	ErrorCount    int        `db:"error_count"`
+	LastError     string     `db:"last_error"`
+	Enabled       bool       `db:"enabled"`
+	CreatedAt     time.Time  `db:"created_at"`
+}
+
 // NewFeedRepository creates a new feed repository
-func NewFeedRepository(db *sqlx.DB) *FeedRepository {
-	return &FeedRepository{db: db}
+func NewFeedRepository(database *sqlx.DB) *FeedRepository {
+	return &FeedRepository{db: database}
 }
 
 // CreateFeed inserts a new feed
 func (r *FeedRepository) CreateFeed(ctx context.Context, feed *domain.Feed) error {
-	dbFeed := &db.Feed{
+	sqlFeed := &feedSQL{
 		URL:           feed.URL,
 		Title:         feed.Title,
 		Description:   feed.Description,
@@ -36,7 +50,7 @@ func (r *FeedRepository) CreateFeed(ctx context.Context, feed *domain.Feed) erro
 		INSERT INTO feeds (url, title, description, fetch_interval, enabled)
 		VALUES (:url, :title, :description, :fetch_interval, :enabled)
 	`
-	result, err := r.db.NamedExecContext(ctx, query, dbFeed)
+	result, err := r.db.NamedExecContext(ctx, query, sqlFeed)
 	if err != nil {
 		return fmt.Errorf("create feed: %w", err)
 	}
@@ -52,12 +66,12 @@ func (r *FeedRepository) CreateFeed(ctx context.Context, feed *domain.Feed) erro
 
 // GetFeed retrieves a feed by ID
 func (r *FeedRepository) GetFeed(ctx context.Context, id int64) (*domain.Feed, error) {
-	var dbFeed db.Feed
-	err := r.db.GetContext(ctx, &dbFeed, "SELECT * FROM feeds WHERE id = ?", id)
+	var sqlFeed feedSQL
+	err := r.db.GetContext(ctx, &sqlFeed, "SELECT * FROM feeds WHERE id = ?", id)
 	if err != nil {
 		return nil, fmt.Errorf("get feed: %w", err)
 	}
-	return r.toDomainFeed(&dbFeed), nil
+	return r.toDomainFeed(&sqlFeed), nil
 }
 
 // GetFeeds retrieves feeds with optional filtering
@@ -68,14 +82,14 @@ func (r *FeedRepository) GetFeeds(ctx context.Context, enabledOnly bool) ([]*dom
 	}
 	query += " ORDER BY title"
 
-	var dbFeeds []db.Feed
-	err := r.db.SelectContext(ctx, &dbFeeds, query)
+	var sqlFeeds []feedSQL
+	err := r.db.SelectContext(ctx, &sqlFeeds, query)
 	if err != nil {
 		return nil, fmt.Errorf("get feeds: %w", err)
 	}
 
-	feeds := make([]*domain.Feed, len(dbFeeds))
-	for i, f := range dbFeeds {
+	feeds := make([]*domain.Feed, len(sqlFeeds))
+	for i, f := range sqlFeeds {
 		feeds[i] = r.toDomainFeed(&f)
 	}
 	return feeds, nil
@@ -90,14 +104,14 @@ func (r *FeedRepository) GetFeedsToFetch(ctx context.Context, limit int) ([]*dom
 		ORDER BY next_fetch ASC
 		LIMIT ?
 	`
-	var dbFeeds []db.Feed
-	err := r.db.SelectContext(ctx, &dbFeeds, query, limit)
+	var sqlFeeds []feedSQL
+	err := r.db.SelectContext(ctx, &sqlFeeds, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get feeds to fetch: %w", err)
 	}
 
-	feeds := make([]*domain.Feed, len(dbFeeds))
-	for i, f := range dbFeeds {
+	feeds := make([]*domain.Feed, len(sqlFeeds))
+	for i, f := range sqlFeeds {
 		feeds[i] = r.toDomainFeed(&f)
 	}
 	return feeds, nil
@@ -190,19 +204,19 @@ func (r *FeedRepository) GetActiveFeedNames(ctx context.Context, minScore float6
 	return feedNames, nil
 }
 
-// toDomainFeed converts db.Feed to domain.Feed
-func (r *FeedRepository) toDomainFeed(dbFeed *db.Feed) *domain.Feed {
+// toDomainFeed converts feedSQL to domain.Feed
+func (r *FeedRepository) toDomainFeed(sqlFeed *feedSQL) *domain.Feed {
 	return &domain.Feed{
-		ID:            dbFeed.ID,
-		URL:           dbFeed.URL,
-		Title:         dbFeed.Title,
-		Description:   dbFeed.Description,
-		LastFetched:   dbFeed.LastFetched,
-		NextFetch:     dbFeed.NextFetch,
-		FetchInterval: dbFeed.FetchInterval,
-		ErrorCount:    dbFeed.ErrorCount,
-		LastError:     dbFeed.LastError,
-		Enabled:       dbFeed.Enabled,
-		CreatedAt:     dbFeed.CreatedAt,
+		ID:            sqlFeed.ID,
+		URL:           sqlFeed.URL,
+		Title:         sqlFeed.Title,
+		Description:   sqlFeed.Description,
+		LastFetched:   sqlFeed.LastFetched,
+		NextFetch:     sqlFeed.NextFetch,
+		FetchInterval: sqlFeed.FetchInterval,
+		ErrorCount:    sqlFeed.ErrorCount,
+		LastError:     sqlFeed.LastError,
+		Enabled:       sqlFeed.Enabled,
+		CreatedAt:     sqlFeed.CreatedAt,
 	}
 }

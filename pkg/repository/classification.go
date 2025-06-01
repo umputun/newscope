@@ -3,12 +3,14 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/domain"
 )
 
@@ -17,9 +19,77 @@ type ClassificationRepository struct {
 	db *sqlx.DB
 }
 
+// itemWithFeedSQL represents an item with feed information for SQL operations
+type itemWithFeedSQL struct {
+	ID          int64     `db:"id"`
+	FeedID      int64     `db:"feed_id"`
+	GUID        string    `db:"guid"`
+	Title       string    `db:"title"`
+	Link        string    `db:"link"`
+	Description string    `db:"description"`
+	Content     string    `db:"content"`
+	Author      string    `db:"author"`
+	Published   time.Time `db:"published"`
+
+	// extracted content
+	ExtractedContent     string     `db:"extracted_content"`
+	ExtractedRichContent string     `db:"extracted_rich_content"`
+	ExtractedAt          *time.Time `db:"extracted_at"`
+	ExtractionError      string     `db:"extraction_error"`
+
+	// LLM classification
+	RelevanceScore float64           `db:"relevance_score"`
+	Explanation    string            `db:"explanation"`
+	Topics         classificationSQL `db:"topics"`
+	ClassifiedAt   *time.Time        `db:"classified_at"`
+
+	// user feedback
+	UserFeedback string     `db:"user_feedback"`
+	FeedbackAt   *time.Time `db:"feedback_at"`
+
+	// metadata
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+
+	// joined data (not stored in DB, populated by queries)
+	FeedTitle string `db:"feed_title"`
+	FeedURL   string `db:"feed_url"`
+}
+
+// classificationSQL is a JSON array of topic strings for SQL operations
+type classificationSQL []string
+
+// Value implements driver.Valuer for database storage
+func (c classificationSQL) Value() (driver.Value, error) {
+	if c == nil {
+		return "[]", nil
+	}
+	return json.Marshal(c)
+}
+
+// Scan implements sql.Scanner for database retrieval
+func (c *classificationSQL) Scan(value interface{}) error {
+	if value == nil {
+		*c = classificationSQL{}
+		return nil
+	}
+
+	var data []byte
+	switch v := value.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
+		return json.Unmarshal([]byte("[]"), c)
+	}
+
+	return json.Unmarshal(data, c)
+}
+
 // NewClassificationRepository creates a new classification repository
-func NewClassificationRepository(db *sqlx.DB) *ClassificationRepository {
-	return &ClassificationRepository{db: db}
+func NewClassificationRepository(database *sqlx.DB) *ClassificationRepository {
+	return &ClassificationRepository{db: database}
 }
 
 // GetClassifiedItems returns classified items with feed information
@@ -51,14 +121,14 @@ func (r *ClassificationRepository) GetClassifiedItems(ctx context.Context, filte
 	query += ` ORDER BY i.published DESC LIMIT ?`
 	args = append(args, filter.Limit)
 
-	var dbItems []db.Item
-	if err := r.db.SelectContext(ctx, &dbItems, query, args...); err != nil {
+	var sqlItems []itemWithFeedSQL
+	if err := r.db.SelectContext(ctx, &sqlItems, query, args...); err != nil {
 		return nil, fmt.Errorf("get classified items: %w", err)
 	}
 
-	items := make([]*domain.ClassifiedItem, len(dbItems))
-	for i, dbItem := range dbItems {
-		items[i] = r.toDomainClassifiedItem(&dbItem)
+	items := make([]*domain.ClassifiedItem, len(sqlItems))
+	for i, sqlItem := range sqlItems {
+		items[i] = r.toDomainClassifiedItem(&sqlItem)
 	}
 	return items, nil
 }
@@ -75,14 +145,14 @@ func (r *ClassificationRepository) GetClassifiedItem(ctx context.Context, itemID
 		WHERE i.id = ?
 	`
 
-	var dbItem db.Item
-	if err := r.db.GetContext(ctx, &dbItem, query, itemID); err != nil {
+	var sqlItem itemWithFeedSQL
+	if err := r.db.GetContext(ctx, &sqlItem, query, itemID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("item not found")
 		}
 		return nil, fmt.Errorf("get classified item: %w", err)
 	}
-	return r.toDomainClassifiedItem(&dbItem), nil
+	return r.toDomainClassifiedItem(&sqlItem), nil
 }
 
 // GetTopics returns all unique topics from classified items
@@ -197,14 +267,14 @@ func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedba
 	var examples []*domain.FeedbackExample
 	for rows.Next() {
 		var example domain.FeedbackExample
-		var topics db.Topics
+		var topics classificationSQL
 		var feedbackStr string
 		err := rows.Scan(&example.Title, &example.Description, &example.Content, &feedbackStr, &topics)
 		if err != nil {
 			return nil, fmt.Errorf("scan feedback row: %w", err)
 		}
 		example.Feedback = domain.FeedbackType(feedbackStr)
-		example.Topics = topics
+		example.Topics = []string(topics)
 		examples = append(examples, &example)
 	}
 
@@ -245,65 +315,65 @@ func (r *ClassificationRepository) GetFeedbackSince(ctx context.Context, offset 
 	var examples []*domain.FeedbackExample
 	for rows.Next() {
 		var example domain.FeedbackExample
-		var topics db.Topics
+		var topics classificationSQL
 		var feedbackStr string
 		err := rows.Scan(&example.Title, &example.Description, &example.Content, &feedbackStr, &topics)
 		if err != nil {
 			return nil, fmt.Errorf("scan feedback row: %w", err)
 		}
 		example.Feedback = domain.FeedbackType(feedbackStr)
-		example.Topics = topics
+		example.Topics = []string(topics)
 		examples = append(examples, &example)
 	}
 
 	return examples, nil
 }
 
-// toDomainClassifiedItem converts db.Item to domain.ClassifiedItem
-func (r *ClassificationRepository) toDomainClassifiedItem(dbItem *db.Item) *domain.ClassifiedItem {
+// toDomainClassifiedItem converts itemWithFeedSQL to domain.ClassifiedItem
+func (r *ClassificationRepository) toDomainClassifiedItem(sqlItem *itemWithFeedSQL) *domain.ClassifiedItem {
 	item := &domain.ClassifiedItem{
 		Item: &domain.Item{
-			ID:          dbItem.ID,
-			FeedID:      dbItem.FeedID,
-			GUID:        dbItem.GUID,
-			Title:       dbItem.Title,
-			Link:        dbItem.Link,
-			Description: dbItem.Description,
-			Content:     dbItem.Content,
-			Author:      dbItem.Author,
-			Published:   dbItem.Published,
-			CreatedAt:   dbItem.CreatedAt,
-			UpdatedAt:   dbItem.UpdatedAt,
+			ID:          sqlItem.ID,
+			FeedID:      sqlItem.FeedID,
+			GUID:        sqlItem.GUID,
+			Title:       sqlItem.Title,
+			Link:        sqlItem.Link,
+			Description: sqlItem.Description,
+			Content:     sqlItem.Content,
+			Author:      sqlItem.Author,
+			Published:   sqlItem.Published,
+			CreatedAt:   sqlItem.CreatedAt,
+			UpdatedAt:   sqlItem.UpdatedAt,
 		},
-		FeedName: dbItem.FeedTitle,
-		FeedURL:  dbItem.FeedURL,
+		FeedName: sqlItem.FeedTitle,
+		FeedURL:  sqlItem.FeedURL,
 	}
 
 	// add extraction if available
-	if dbItem.ExtractedAt != nil {
+	if sqlItem.ExtractedAt != nil {
 		item.Extraction = &domain.ExtractedContent{
-			PlainText:   dbItem.ExtractedContent,
-			RichHTML:    dbItem.ExtractedRichContent,
-			ExtractedAt: *dbItem.ExtractedAt,
-			Error:       dbItem.ExtractionError,
+			PlainText:   sqlItem.ExtractedContent,
+			RichHTML:    sqlItem.ExtractedRichContent,
+			ExtractedAt: *sqlItem.ExtractedAt,
+			Error:       sqlItem.ExtractionError,
 		}
 	}
 
 	// add classification if available
-	if dbItem.ClassifiedAt != nil {
+	if sqlItem.ClassifiedAt != nil {
 		item.Classification = &domain.Classification{
-			Score:        dbItem.RelevanceScore,
-			Explanation:  dbItem.Explanation,
-			Topics:       []string(dbItem.Topics),
-			ClassifiedAt: *dbItem.ClassifiedAt,
+			Score:        sqlItem.RelevanceScore,
+			Explanation:  sqlItem.Explanation,
+			Topics:       []string(sqlItem.Topics),
+			ClassifiedAt: *sqlItem.ClassifiedAt,
 		}
 	}
 
 	// add feedback if available
-	if dbItem.UserFeedback != "" {
+	if sqlItem.UserFeedback != "" {
 		item.UserFeedback = &domain.Feedback{
-			Type:      domain.FeedbackType(dbItem.UserFeedback),
-			Timestamp: *dbItem.FeedbackAt,
+			Type:      domain.FeedbackType(sqlItem.UserFeedback),
+			Timestamp: *sqlItem.FeedbackAt,
 		}
 	}
 

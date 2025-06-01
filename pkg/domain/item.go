@@ -27,6 +27,7 @@ type ExtractedContent struct {
 
 // Classification represents LLM classification results
 type Classification struct {
+	GUID         string
 	Score        float64
 	Explanation  string
 	Topics       []string
@@ -43,6 +44,7 @@ type Feedback struct {
 // FeedbackType represents the type of user feedback
 type FeedbackType string
 
+// feedback types
 const (
 	FeedbackLike    FeedbackType = "like"
 	FeedbackDislike FeedbackType = "dislike"
@@ -52,19 +54,19 @@ const (
 // ClassifiedItem represents an item with all processing completed
 type ClassifiedItem struct {
 	*Item
-	FeedName     string
-	FeedURL      string
-	Extraction   *ExtractedContent
+	FeedName       string
+	FeedURL        string
+	Extraction     *ExtractedContent
 	Classification *Classification
-	UserFeedback *Feedback
+	UserFeedback   *Feedback
 }
 
 // ItemFilter represents filtering criteria for items
 type ItemFilter struct {
-	MinScore     float64
-	Topic        string
-	FeedName     string
-	Limit        int
+	MinScore       float64
+	Topic          string
+	FeedName       string
+	Limit          int
 	OnlyClassified bool
 }
 

@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/umputun/newscope/pkg/db"
+	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/pkg/feed/types"
 	"github.com/umputun/newscope/server/mocks"
 )
@@ -597,8 +597,8 @@ func TestServer_feedsHandler(t *testing.T) {
 
 	now := time.Now()
 	database := &mocks.DatabaseMock{
-		GetAllFeedsFunc: func(ctx context.Context) ([]db.Feed, error) {
-			return []db.Feed{
+		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+			return []domain.Feed{
 				{
 					ID:            1,
 					URL:           "https://example.com/feed.xml",
@@ -651,7 +651,7 @@ func TestServer_createFeedHandler(t *testing.T) {
 	fetchTriggered := false
 
 	database := &mocks.DatabaseMock{
-		CreateFeedFunc: func(ctx context.Context, feed *db.Feed) error {
+		CreateFeedFunc: func(ctx context.Context, feed *domain.Feed) error {
 			feedCreated = true
 			assert.Equal(t, "https://newsite.com/feed", feed.URL)
 			assert.Equal(t, "New Site", feed.Title)
@@ -708,8 +708,8 @@ func TestServer_updateFeedStatus(t *testing.T) {
 			assert.True(t, enabled)
 			return nil
 		},
-		GetAllFeedsFunc: func(ctx context.Context) ([]db.Feed, error) {
-			return []db.Feed{
+		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+			return []domain.Feed{
 				{
 					ID:            42,
 					URL:           "https://example.com/feed",

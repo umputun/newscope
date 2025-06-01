@@ -20,7 +20,7 @@ import (
 	"github.com/go-pkgz/routegroup"
 
 	"github.com/umputun/newscope/pkg/config"
-	"github.com/umputun/newscope/pkg/db"
+	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/pkg/feed/types"
 )
 
@@ -66,8 +66,8 @@ type Database interface {
 	GetTopics(ctx context.Context) ([]string, error)
 	GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error)
 	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
-	GetAllFeeds(ctx context.Context) ([]db.Feed, error)
-	CreateFeed(ctx context.Context, feed *db.Feed) error
+	GetAllFeeds(ctx context.Context) ([]domain.Feed, error)
+	CreateFeed(ctx context.Context, feed *domain.Feed) error
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
 	DeleteFeed(ctx context.Context, feedID int64) error
 }
@@ -408,7 +408,7 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	feed := &db.Feed{
+	feed := &domain.Feed{
 		URL:           url,
 		Title:         r.FormValue("title"),
 		FetchInterval: fetchInterval,
@@ -434,7 +434,7 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // renderFeedCard renders a single feed card
-func (s *Server) renderFeedCard(w http.ResponseWriter, feed *db.Feed) {
+func (s *Server) renderFeedCard(w http.ResponseWriter, feed *domain.Feed) {
 	if err := s.templates.ExecuteTemplate(w, "feed-card.html", feed); err != nil {
 		log.Printf("[ERROR] failed to render feed card: %v", err)
 		http.Error(w, "Failed to render feed", http.StatusInternalServerError)
@@ -742,7 +742,7 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	// prepare template data
 	data := struct {
 		ActivePage string
-		Feeds      []db.Feed
+		Feeds      []domain.Feed
 	}{
 		ActivePage: "feeds",
 		Feeds:      feeds,
