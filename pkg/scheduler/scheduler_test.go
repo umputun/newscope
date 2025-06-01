@@ -10,7 +10,6 @@ import (
 
 	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/domain"
-	"github.com/umputun/newscope/pkg/feed/types"
 	"github.com/umputun/newscope/pkg/scheduler/mocks"
 )
 
@@ -75,9 +74,9 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		FetchInterval: 3600,
 	}
 
-	testParsedFeed := &types.Feed{
+	testParsedFeed := &domain.ParsedFeed{
 		Title: "Test Feed",
-		Items: []types.Item{
+		Items: []domain.ParsedItem{
 			{
 				GUID:        "item1",
 				Title:       "Test Item",

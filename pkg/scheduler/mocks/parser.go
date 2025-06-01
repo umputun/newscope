@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/umputun/newscope/pkg/feed/types"
+	"github.com/umputun/newscope/pkg/domain"
 )
 
 // ParserMock is a mock implementation of scheduler.Parser.
@@ -16,7 +16,7 @@ import (
 //
 //		// make and configure a mocked scheduler.Parser
 //		mockedParser := &ParserMock{
-//			ParseFunc: func(ctx context.Context, url string) (*types.Feed, error) {
+//			ParseFunc: func(ctx context.Context, url string) (*domain.ParsedFeed, error) {
 //				panic("mock out the Parse method")
 //			},
 //		}
@@ -27,7 +27,7 @@ import (
 //	}
 type ParserMock struct {
 	// ParseFunc mocks the Parse method.
-	ParseFunc func(ctx context.Context, url string) (*types.Feed, error)
+	ParseFunc func(ctx context.Context, url string) (*domain.ParsedFeed, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -43,7 +43,7 @@ type ParserMock struct {
 }
 
 // Parse calls ParseFunc.
-func (mock *ParserMock) Parse(ctx context.Context, url string) (*types.Feed, error) {
+func (mock *ParserMock) Parse(ctx context.Context, url string) (*domain.ParsedFeed, error) {
 	if mock.ParseFunc == nil {
 		panic("ParserMock.ParseFunc: method is nil but Parser.Parse was just called")
 	}

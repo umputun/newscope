@@ -21,7 +21,6 @@ import (
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
-	"github.com/umputun/newscope/pkg/feed/types"
 )
 
 //go:generate moq -out mocks/config.go -pkg mocks -skip-ensure -fmt goimports . ConfigProvider
@@ -48,7 +47,7 @@ type Server struct {
 
 // articlesPageRequest holds data for rendering articles page
 type articlesPageRequest struct {
-	articles      []types.ItemWithClassification
+	articles      []domain.ItemWithClassification
 	topics        []string
 	feeds         []string
 	selectedTopic string
@@ -57,11 +56,11 @@ type articlesPageRequest struct {
 
 // Database interface for server operations
 type Database interface {
-	GetFeeds(ctx context.Context) ([]types.Feed, error)
-	GetItems(ctx context.Context, limit, offset int) ([]types.Item, error)
-	GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error)
-	GetClassifiedItemsWithFilters(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]types.ItemWithClassification, error)
-	GetClassifiedItem(ctx context.Context, itemID int64) (*types.ItemWithClassification, error)
+	GetFeeds(ctx context.Context) ([]domain.Feed, error)
+	GetItems(ctx context.Context, limit, offset int) ([]domain.Item, error)
+	GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error)
+	GetClassifiedItemsWithFilters(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]domain.ItemWithClassification, error)
+	GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error)
 	UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error
 	GetTopics(ctx context.Context) ([]string, error)
 	GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error)
@@ -309,7 +308,7 @@ type rss struct {
 }
 
 // generateRSSFeed creates an RSS 2.0 feed from classified items
-func (s *Server) generateRSSFeed(topic string, minScore float64, items []types.ItemWithClassification) string {
+func (s *Server) generateRSSFeed(topic string, minScore float64, items []domain.ItemWithClassification) string {
 	// determine title
 	var title string
 	if topic != "" {
@@ -559,7 +558,7 @@ func (s *Server) renderPage(w http.ResponseWriter, templateName string, data int
 }
 
 // renderArticleCard renders a single article card as HTML
-func (s *Server) renderArticleCard(w http.ResponseWriter, article *types.ItemWithClassification) {
+func (s *Server) renderArticleCard(w http.ResponseWriter, article *domain.ItemWithClassification) {
 	if err := s.templates.ExecuteTemplate(w, "article-card.html", article); err != nil {
 		log.Printf("[ERROR] failed to render article card: %v", err)
 		http.Error(w, "Failed to render article", http.StatusInternalServerError)
@@ -626,7 +625,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	// prepare template data for full page render
 	data := struct {
 		ActivePage    string
-		Articles      []types.ItemWithClassification
+		Articles      []domain.ItemWithClassification
 		ArticleCount  int
 		Topics        []string
 		Feeds         []string

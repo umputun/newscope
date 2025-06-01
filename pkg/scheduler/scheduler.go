@@ -19,7 +19,6 @@ import (
 
 	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/domain"
-	"github.com/umputun/newscope/pkg/feed/types"
 )
 
 // FeedManager handles feed operations for scheduler
@@ -71,7 +70,7 @@ type Scheduler struct {
 
 // Parser interface for feed parsing
 type Parser interface {
-	Parse(ctx context.Context, url string) (*types.Feed, error)
+	Parse(ctx context.Context, url string) (*domain.ParsedFeed, error)
 }
 
 // Extractor interface for content extraction

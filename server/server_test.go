@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/newscope/pkg/domain"
-	"github.com/umputun/newscope/pkg/feed/types"
 	"github.com/umputun/newscope/server/mocks"
 )
 
@@ -57,11 +56,11 @@ func TestServer_Run(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		GetFeedsFunc: func(ctx context.Context) ([]types.Feed, error) {
-			return []types.Feed{}, nil
+		GetFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+			return []domain.Feed{}, nil
 		},
-		GetItemsFunc: func(ctx context.Context, limit, offset int) ([]types.Item, error) {
-			return []types.Item{}, nil
+		GetItemsFunc: func(ctx context.Context, limit, offset int) ([]domain.Item, error) {
+			return []domain.Item{}, nil
 		},
 	}
 
@@ -136,19 +135,17 @@ func TestServer_rssFeedHandler(t *testing.T) {
 
 	now := time.Now()
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
 			assert.InEpsilon(t, 5.0, minScore, 0.001) // default score
 			assert.Equal(t, "technology", topic)
 			assert.Equal(t, 100, limit)
 
-			return []types.ItemWithClassification{
+			return []domain.ItemWithClassification{
 				{
-					Item: types.Item{
-						GUID:      "guid-1",
-						Title:     "Tech News",
-						Link:      "https://example.com/tech",
-						Published: now,
-					},
+					GUID:           "guid-1",
+					Title:          "Tech News",
+					Link:           "https://example.com/tech",
+					Published:      now,
 					RelevanceScore: 8.5,
 					Explanation:    "Tech related",
 					Topics:         []string{"technology"},
@@ -245,16 +242,14 @@ func TestServer_articlesHandler(t *testing.T) {
 	classifiedAt := now
 
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, minScore float64, topic string, feedName string, limit int) ([]types.ItemWithClassification, error) {
-			return []types.ItemWithClassification{
+		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, minScore float64, topic string, feedName string, limit int) ([]domain.ItemWithClassification, error) {
+			return []domain.ItemWithClassification{
 				{
-					Item: types.Item{
-						GUID:        "guid-1",
-						Title:       "Test Article",
-						Link:        "https://example.com/article",
-						Description: "A test article",
-						Published:   now,
-					},
+					GUID:           "guid-1",
+					Title:          "Test Article",
+					Link:           "https://example.com/article",
+					Description:    "A test article",
+					Published:      now,
 					ID:             1,
 					FeedName:       "Test Feed",
 					RelevanceScore: 8.5,
@@ -310,8 +305,8 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w2.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(1)</span>`) // should update count
 
 	// test HTMX request with no articles
-	database.GetClassifiedItemsWithFiltersFunc = func(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]types.ItemWithClassification, error) {
-		return []types.ItemWithClassification{}, nil
+	database.GetClassifiedItemsWithFiltersFunc = func(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]domain.ItemWithClassification, error) {
+		return []domain.ItemWithClassification{}, nil
 	}
 
 	req3 := httptest.NewRequest("GET", "/articles?score=10.0", http.NoBody)
@@ -341,13 +336,11 @@ func TestServer_feedbackHandler(t *testing.T) {
 			assert.Equal(t, "like", feedback)
 			return nil
 		},
-		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
-			return &types.ItemWithClassification{
-				Item: types.Item{
-					Title:     "Test Article",
-					Link:      "https://example.com",
-					Published: time.Now(),
-				},
+		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+			return &domain.ItemWithClassification{
+				Title:          "Test Article",
+				Link:           "https://example.com",
+				Published:      time.Now(),
 				ID:             itemID,
 				FeedName:       "Test Feed",
 				RelevanceScore: 7.5,
@@ -390,13 +383,11 @@ func TestServer_extractHandler(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
-			return &types.ItemWithClassification{
-				Item: types.Item{
-					Title:     "Test Article",
-					Link:      "https://example.com",
-					Published: time.Now(),
-				},
+		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+			return &domain.ItemWithClassification{
+
+				Title:            "Test Article",
+				Published:        time.Now(),
 				ID:               itemID,
 				FeedName:         "Test Feed",
 				ExtractedContent: "Full article content here",
@@ -425,12 +416,11 @@ func TestServer_articleContentHandler(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
+		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
 			assert.Equal(t, int64(789), itemID)
-			return &types.ItemWithClassification{
-				Item: types.Item{
-					Title: "Full Article",
-				},
+			return &domain.ItemWithClassification{
+
+				Title:            "Full Article",
 				ExtractedContent: "This is the full article content.",
 			}, nil
 		},
@@ -462,22 +452,20 @@ func TestServer_rssHandler(t *testing.T) {
 	classifiedAt := now
 
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
 			// verify parameters
 			assert.InEpsilon(t, 7.0, minScore, 0.001)
 			assert.Equal(t, "technology", topic)
 			assert.Equal(t, 100, limit)
 
-			return []types.ItemWithClassification{
+			return []domain.ItemWithClassification{
 				{
-					Item: types.Item{
-						GUID:        "guid-1",
-						Title:       "AI Breakthrough & More",
-						Link:        "https://example.com/ai-news",
-						Description: "Major advances in AI",
-						Author:      "John Doe",
-						Published:   now,
-					},
+					GUID:           "guid-1",
+					Title:          "AI Breakthrough & More",
+					Link:           "https://example.com/ai-news",
+					Description:    "Major advances in AI",
+					Author:         "John Doe",
+					Published:      now,
 					ID:             1,
 					FeedName:       "Tech News",
 					RelevanceScore: 9.5,
@@ -486,13 +474,11 @@ func TestServer_rssHandler(t *testing.T) {
 					ClassifiedAt:   &classifiedAt,
 				},
 				{
-					Item: types.Item{
-						GUID:        "guid-2",
-						Title:       "Cloud Computing <Updates>",
-						Link:        "https://example.com/cloud",
-						Description: "New cloud services",
-						Published:   now.Add(-1 * time.Hour),
-					},
+					GUID:           "guid-2",
+					Title:          "Cloud Computing <Updates>",
+					Link:           "https://example.com/cloud",
+					Description:    "New cloud services",
+					Published:      now.Add(-1 * time.Hour),
 					ID:             2,
 					FeedName:       "Cloud Weekly",
 					RelevanceScore: 7.5,
@@ -554,24 +540,22 @@ func TestServer_generateRSSFeed(t *testing.T) {
 	database := &mocks.DatabaseMock{}
 	scheduler := &mocks.SchedulerMock{}
 
-	srv := New(cfg, database, scheduler, "1.0.0", false)
-
 	now := time.Now()
-	items := []types.ItemWithClassification{
+	items := []domain.ItemWithClassification{
 		{
-			Item: types.Item{
-				GUID:        "test-guid",
-				Title:       "Test & Article",
-				Link:        "https://example.com/test",
-				Description: "Test description with <special> chars",
-				Author:      "Test Author",
-				Published:   now,
-			},
+			GUID:           "test-guid",
+			Title:          "Test & Article",
+			Link:           "https://example.com/test",
+			Description:    "Test description with <special> chars",
+			Author:         "Test Author",
+			Published:      now,
 			RelevanceScore: 8.0,
 			Explanation:    "Test explanation",
 			Topics:         []string{"test", "example"},
 		},
 	}
+
+	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	rss := srv.generateRSSFeed("testing", 5.0, items)
 

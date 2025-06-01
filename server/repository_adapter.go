@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/umputun/newscope/pkg/domain"
-	"github.com/umputun/newscope/pkg/feed/types"
 	"github.com/umputun/newscope/pkg/repository"
 )
 
@@ -20,54 +19,45 @@ func NewRepositoryAdapter(repos *repository.Repositories) *RepositoryAdapter {
 	return &RepositoryAdapter{repos: repos}
 }
 
-// GetFeeds adapts repository feeds to return types.Feed
-func (r *RepositoryAdapter) GetFeeds(ctx context.Context) ([]types.Feed, error) {
-	domainFeeds, err := r.repos.Feed.GetFeeds(ctx, false) // get all feeds
+// GetFeeds returns all feeds from repository
+func (r *RepositoryAdapter) GetFeeds(ctx context.Context) ([]domain.Feed, error) {
+	feeds, err := r.repos.Feed.GetFeeds(ctx, false) // get all feeds
 	if err != nil {
 		return nil, err
 	}
 
-	feeds := make([]types.Feed, len(domainFeeds))
-	for i, f := range domainFeeds {
-		feeds[i] = types.Feed{
-			Title:       f.Title,
-			Description: f.Description,
-			Link:        f.URL,
-		}
+	// convert []*domain.Feed to []domain.Feed
+	result := make([]domain.Feed, len(feeds))
+	for i, feed := range feeds {
+		result[i] = *feed
 	}
-	return feeds, nil
+	return result, nil
 }
 
-// GetItems adapts repository items to return types.Item
-func (r *RepositoryAdapter) GetItems(ctx context.Context, limit, _ int) ([]types.Item, error) {
+// GetItems returns items from repository
+func (r *RepositoryAdapter) GetItems(ctx context.Context, limit, _ int) ([]domain.Item, error) {
 	// repository uses minScore instead of offset
 	// for now, return all items with score >= 0
-	domainItems, err := r.repos.Item.GetItems(ctx, limit, 0)
+	items, err := r.repos.Item.GetItems(ctx, limit, 0)
 	if err != nil {
 		return nil, err
 	}
 
-	items := make([]types.Item, len(domainItems))
-	for i, item := range domainItems {
-		items[i] = types.Item{
-			GUID:        item.GUID,
-			Title:       item.Title,
-			Link:        item.Link,
-			Description: item.Description,
-			Author:      item.Author,
-			Published:   item.Published,
-		}
+	// convert []*domain.Item to []domain.Item
+	result := make([]domain.Item, len(items))
+	for i, item := range items {
+		result[i] = *item
 	}
-	return items, nil
+	return result, nil
 }
 
 // GetClassifiedItems returns items with classification data
-func (r *RepositoryAdapter) GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error) {
+func (r *RepositoryAdapter) GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
 	return r.GetClassifiedItemsWithFilters(ctx, minScore, topic, "", limit)
 }
 
 // GetClassifiedItemsWithFilters returns items with classification data filtered by topic and feed
-func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]types.ItemWithClassification, error) {
+func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]domain.ItemWithClassification, error) {
 	filter := &domain.ItemFilter{
 		MinScore: minScore,
 		Topic:    topic,
@@ -81,22 +71,22 @@ func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, m
 		return nil, err
 	}
 
-	// convert to types
-	result := make([]types.ItemWithClassification, 0, len(items))
+	// convert to ItemWithClassification
+	result := make([]domain.ItemWithClassification, 0, len(items))
 	for _, item := range items {
 		feedDisplayName := getFeedDisplayName(item.FeedName, item.FeedURL)
 
-		itemWithClass := types.ItemWithClassification{
-			Item: types.Item{
-				GUID:        item.GUID,
-				Title:       item.Title,
-				Link:        item.Link,
-				Description: item.Description,
-				Author:      item.Author,
-				Published:   item.Published,
-			},
-			ID:       item.ID,
-			FeedName: feedDisplayName,
+		itemWithClass := domain.ItemWithClassification{
+			ID:          item.ID,
+			FeedID:      item.FeedID,
+			FeedName:    feedDisplayName,
+			GUID:        item.GUID,
+			Title:       item.Title,
+			Link:        item.Link,
+			Description: item.Description,
+			Content:     item.Content,
+			Author:      item.Author,
+			Published:   item.Published,
 		}
 
 		// handle extraction data if available
@@ -135,23 +125,23 @@ func (r *RepositoryAdapter) UpdateItemFeedback(ctx context.Context, itemID int64
 }
 
 // GetClassifiedItem returns a single item with classification data
-func (r *RepositoryAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*types.ItemWithClassification, error) {
+func (r *RepositoryAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
 	item, err := r.repos.Classification.GetClassifiedItem(ctx, itemID)
 	if err != nil {
 		return nil, err
 	}
 
-	result := &types.ItemWithClassification{
-		Item: types.Item{
-			GUID:        item.GUID,
-			Title:       item.Title,
-			Link:        item.Link,
-			Description: item.Description,
-			Author:      item.Author,
-			Published:   item.Published,
-		},
-		ID:       item.ID,
-		FeedName: getFeedDisplayName(item.FeedName, item.FeedURL),
+	result := &domain.ItemWithClassification{
+		ID:          item.ID,
+		FeedID:      item.FeedID,
+		FeedName:    getFeedDisplayName(item.FeedName, item.FeedURL),
+		GUID:        item.GUID,
+		Title:       item.Title,
+		Link:        item.Link,
+		Description: item.Description,
+		Content:     item.Content,
+		Author:      item.Author,
+		Published:   item.Published,
 	}
 
 	// handle extraction data if available

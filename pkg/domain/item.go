@@ -78,3 +78,45 @@ type FeedbackExample struct {
 	Feedback    FeedbackType
 	Topics      []string
 }
+
+// ParsedFeed represents a feed parsed from RSS/Atom (before database storage)
+type ParsedFeed struct {
+	Title       string
+	Description string
+	Link        string
+	Items       []ParsedItem
+}
+
+// ParsedItem represents an item parsed from RSS/Atom (before database storage)
+type ParsedItem struct {
+	FeedName    string // name of the feed this item belongs to (optional)
+	GUID        string
+	Title       string
+	Link        string
+	Description string
+	Content     string // content from RSS feed (if available)
+	Author      string
+	Published   time.Time
+}
+
+// ItemWithClassification represents an item with all processing data for UI display
+type ItemWithClassification struct {
+	ID                   int64  // database ID for actions
+	FeedID               int64  // feed ID
+	FeedName             string // name of the feed
+	GUID                 string
+	Title                string
+	Link                 string
+	Description          string
+	Content              string
+	Author               string
+	Published            time.Time
+	ExtractedContent     string     // extracted content as plain text
+	ExtractedRichContent string     // extracted content with HTML formatting
+	ExtractionError      string     // extraction error if any
+	RelevanceScore       float64    // LLM classification score (0-10)
+	Explanation          string     // LLM explanation for the score
+	Topics               []string   // topics identified by LLM
+	ClassifiedAt         *time.Time // when classified
+	UserFeedback         string     // user feedback: like, dislike
+}

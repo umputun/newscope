@@ -9,7 +9,7 @@ import (
 
 	"github.com/mmcdole/gofeed"
 
-	"github.com/umputun/newscope/pkg/feed/types"
+	"github.com/umputun/newscope/pkg/domain"
 )
 
 // Parser parses RSS/Atom feeds
@@ -32,7 +32,7 @@ func NewParser(timeout time.Duration) *Parser {
 }
 
 // Parse fetches and parses a feed from the given URL
-func (p *Parser) Parse(ctx context.Context, url string) (*types.Feed, error) {
+func (p *Parser) Parse(ctx context.Context, url string) (*domain.ParsedFeed, error) {
 	// fetch feed content
 	body, err := p.fetch(ctx, url)
 	if err != nil {
@@ -48,15 +48,15 @@ func (p *Parser) Parse(ctx context.Context, url string) (*types.Feed, error) {
 	}
 
 	// convert to our types
-	result := &types.Feed{
+	result := &domain.ParsedFeed{
 		Title:       feed.Title,
 		Description: feed.Description,
 		Link:        feed.Link,
-		Items:       make([]types.Item, 0, len(feed.Items)),
+		Items:       make([]domain.ParsedItem, 0, len(feed.Items)),
 	}
 
 	for _, item := range feed.Items {
-		parsedItem := types.Item{
+		parsedItem := domain.ParsedItem{
 			Title:       item.Title,
 			Link:        item.Link,
 			Description: item.Description,

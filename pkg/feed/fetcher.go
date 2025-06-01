@@ -7,7 +7,7 @@ import (
 
 	"github.com/mmcdole/gofeed"
 
-	"github.com/umputun/newscope/pkg/feed/types"
+	"github.com/umputun/newscope/pkg/domain"
 )
 
 // HTTPFetcher fetches RSS/Atom feeds via HTTP
@@ -25,7 +25,7 @@ func NewHTTPFetcher(timeout time.Duration) *HTTPFetcher {
 }
 
 // Fetch retrieves and parses a feed from the given URL
-func (f *HTTPFetcher) Fetch(ctx context.Context, feedURL, feedName string) ([]types.Item, error) {
+func (f *HTTPFetcher) Fetch(ctx context.Context, feedURL, feedName string) ([]domain.ParsedItem, error) {
 	ctx, cancel := context.WithTimeout(ctx, f.timeout)
 	defer cancel()
 
@@ -34,9 +34,9 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, feedURL, feedName string) ([]ty
 		return nil, fmt.Errorf("parse feed %s: %w", feedURL, err)
 	}
 
-	items := make([]types.Item, 0, len(feed.Items))
+	items := make([]domain.ParsedItem, 0, len(feed.Items))
 	for _, item := range feed.Items {
-		parsed := types.Item{
+		parsed := domain.ParsedItem{
 			FeedName:    feedName,
 			Title:       item.Title,
 			Link:        item.Link,
