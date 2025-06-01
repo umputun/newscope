@@ -4,7 +4,7 @@
         <div class="article-meta">
             <span class="feed-name">{{.FeedName}}</span>
             <time datetime="{{.Published.Format "2006-01-02T15:04:05Z07:00"}}">
-                {{.Published.Format "Jan 2, 2006 15:04"}}
+                {{.Published.Local.Format "Jan 2, 2006 15:04 MST"}}
             </time>
         </div>
     </div>

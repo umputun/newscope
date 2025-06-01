@@ -22,10 +22,10 @@
         <div class="feed-meta">
             <span>Update interval: {{.FetchInterval}} seconds</span>
             {{if .LastFetched}}
-            <span>Last fetched: <time datetime="{{.LastFetched.Format "2006-01-02T15:04:05Z07:00"}}">{{.LastFetched.Format "Jan 2, 15:04"}}</time></span>
+            <span>Last fetched: <time datetime="{{.LastFetched.Format "2006-01-02T15:04:05Z07:00"}}">{{.LastFetched.Local.Format "Jan 2, 15:04 MST"}}</time></span>
             {{end}}
             {{if .NextFetch}}
-            <span>Next fetch: <time datetime="{{.NextFetch.Format "2006-01-02T15:04:05Z07:00"}}">{{.NextFetch.Format "Jan 2, 15:04"}}</time></span>
+            <span>Next fetch: <time datetime="{{.NextFetch.Format "2006-01-02T15:04:05Z07:00"}}">{{.NextFetch.Local.Format "Jan 2, 15:04 MST"}}</time></span>
             {{end}}
         </div>
         
