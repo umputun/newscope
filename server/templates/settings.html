@@ -144,6 +144,38 @@
                     </span>
                 </div>
             </div>
+            
+            <h4 class="subsection-header">Topic Preferences</h4>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Preferred Topics</label>
+                    <div class="setting-value">
+                        {{if .Config.LLM.Classification.PreferredTopics}}
+                            <div class="topic-list">
+                                {{range .Config.LLM.Classification.PreferredTopics}}
+                                <span class="topic-tag topic-preferred">{{.}}</span>
+                                {{end}}
+                            </div>
+                        {{else}}
+                        <span class="text-muted">None configured</span>
+                        {{end}}
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <label>Avoided Topics</label>
+                    <div class="setting-value">
+                        {{if .Config.LLM.Classification.AvoidedTopics}}
+                            <div class="topic-list">
+                                {{range .Config.LLM.Classification.AvoidedTopics}}
+                                <span class="topic-tag topic-avoided">{{.}}</span>
+                                {{end}}
+                            </div>
+                        {{else}}
+                        <span class="text-muted">None configured</span>
+                        {{end}}
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="settings-section">

@@ -323,6 +323,23 @@ main {
     border-radius: 9999px;
 }
 
+/* Topic preferences in settings */
+.topic-list {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.topic-preferred {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.topic-avoided {
+    background-color: var(--danger-color);
+    color: white;
+}
+
 /* Article Actions */
 .article-actions {
     display: flex;
