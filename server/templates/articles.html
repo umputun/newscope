@@ -41,10 +41,17 @@
             <option value="{{.}}" {{if eq $.SelectedFeed .}}selected{{end}}>{{.}}</option>
             {{end}}
         </select>
+        
+        <!-- View mode toggle -->
+        <label>View:</label>
+        <div class="view-toggle-buttons">
+            <button id="view-expanded" class="btn-view-toggle active" title="Expanded view">⊞</button>
+            <button id="view-condensed" class="btn-view-toggle" title="Condensed view">☰</button>
+        </div>
     </div>
 </div>
 
-<div id="articles-container">
+<div id="articles-container" class="view-expanded">
     <div id="articles-list">
         {{range .Articles}}
         {{template "article-card.html" .}}
@@ -56,8 +63,9 @@
 
 <!-- Auto-update score display and localStorage -->
 <script>
-// Load saved min score from localStorage
+// Load saved preferences from localStorage
 document.addEventListener('DOMContentLoaded', function() {
+    // Load saved min score
     const savedScore = localStorage.getItem('newscopeMinScore');
     if (savedScore !== null && savedScore !== '{{.MinScore}}') {
         // If saved score differs from server default, navigate to it
@@ -68,6 +76,10 @@ document.addEventListener('DOMContentLoaded', function() {
         // Trigger HTMX request to load articles with saved score
         htmx.trigger(scoreFilter, 'change');
     }
+    
+    // Load saved view mode
+    const savedView = localStorage.getItem('newscopeViewMode') || 'expanded';
+    setViewMode(savedView);
 });
 
 // Update score display and save to localStorage
@@ -81,6 +93,37 @@ document.getElementById('score-filter').addEventListener('input', function(e) {
 // Also save when change event fires (for programmatic changes)
 document.getElementById('score-filter').addEventListener('change', function(e) {
     localStorage.setItem('newscopeMinScore', e.target.value);
+});
+
+// View mode functionality
+function setViewMode(mode) {
+    const container = document.getElementById('articles-container');
+    const expandedBtn = document.getElementById('view-expanded');
+    const condensedBtn = document.getElementById('view-condensed');
+    
+    // Update container class
+    container.className = 'view-' + mode;
+    
+    // Update button states
+    if (mode === 'expanded') {
+        expandedBtn.classList.add('active');
+        condensedBtn.classList.remove('active');
+    } else {
+        expandedBtn.classList.remove('active');
+        condensedBtn.classList.add('active');
+    }
+    
+    // Save to localStorage
+    localStorage.setItem('newscopeViewMode', mode);
+}
+
+// View mode toggle handlers
+document.getElementById('view-expanded').addEventListener('click', function() {
+    setViewMode('expanded');
+});
+
+document.getElementById('view-condensed').addEventListener('click', function() {
+    setViewMode('condensed');
 });
 </script>
 {{end}}

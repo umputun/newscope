@@ -93,7 +93,7 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		return testFeed, nil
 	}
 
-	parser.ParseFunc = func(ctx context.Context, url string) (*types.Feed, error) {
+	parser.ParseFunc = func(ctx context.Context, url string) (*domain.ParsedFeed, error) {
 		assert.Equal(t, testFeed.URL, url)
 		return testParsedFeed, nil
 	}
