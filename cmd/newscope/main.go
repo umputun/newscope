@@ -17,7 +17,6 @@ import (
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/content"
-	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed"
 	"github.com/umputun/newscope/pkg/llm"
 	"github.com/umputun/newscope/pkg/repository"
@@ -78,20 +77,6 @@ func main() {
 	}
 	defer repos.Close()
 
-	// TODO: Remove this when server is updated to use new repositories
-	// Keep old db connection for server compatibility
-	dbCfg := db.Config{
-		DSN:             cfg.Database.DSN,
-		MaxOpenConns:    cfg.Database.MaxOpenConns,
-		MaxIdleConns:    cfg.Database.MaxIdleConns,
-		ConnMaxLifetime: time.Duration(cfg.Database.ConnMaxLifetime) * time.Second,
-	}
-	dbConn, err := db.New(context.Background(), dbCfg)
-	if err != nil {
-		log.Printf("[ERROR] failed to initialize old database: %v", err)
-		os.Exit(1)
-	}
-	defer dbConn.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -132,13 +117,13 @@ func main() {
 		UpdateInterval: time.Duration(cfg.Schedule.UpdateInterval) * time.Minute,
 		MaxWorkers:     cfg.Schedule.MaxWorkers,
 	}
-	sched := scheduler.NewScheduler(repos, feedParser, contentExtractor, classifierAdapter, schedulerCfg)
+	sched := scheduler.NewScheduler(repos.Feed, repos.Item, repos.Classification, repos.Setting, feedParser, contentExtractor, classifierAdapter, schedulerCfg)
 	sched.Start(ctx)
 	defer sched.Stop()
 
-	// setup and run server with database adapter
-	dbAdapter := &server.DBAdapter{DB: dbConn}
-	srv := server.New(cfg, dbAdapter, sched, revision, opts.Debug)
+	// setup and run server with repository adapter
+	repoAdapter := server.NewRepositoryAdapter(repos)
+	srv := server.New(cfg, repoAdapter, sched, revision, opts.Debug)
 	if err := srv.Run(ctx); err != nil {
 		log.Printf("[ERROR] server failed: %v", err)
 		return

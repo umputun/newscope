@@ -12,15 +12,47 @@ import (
 	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/pkg/feed/types"
-	"github.com/umputun/newscope/pkg/repository"
 )
+
+// FeedManager handles feed operations for scheduler
+type FeedManager interface {
+	GetFeed(ctx context.Context, id int64) (*domain.Feed, error)
+	GetFeeds(ctx context.Context, enabledOnly bool) ([]*domain.Feed, error)
+	UpdateFeedFetched(ctx context.Context, feedID int64, nextFetch time.Time) error
+	UpdateFeedError(ctx context.Context, feedID int64, errMsg string) error
+}
+
+// ItemManager handles item operations for scheduler
+type ItemManager interface {
+	GetItem(ctx context.Context, id int64) (*domain.Item, error)
+	CreateItem(ctx context.Context, item *domain.Item) error
+	ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
+	ItemExistsByTitleOrURL(ctx context.Context, title, url string) (bool, error)
+	UpdateItemProcessed(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error
+	UpdateItemExtraction(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error
+}
+
+// ClassificationManager handles classification operations for scheduler
+type ClassificationManager interface {
+	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]*domain.FeedbackExample, error)
+	GetTopics(ctx context.Context) ([]string, error)
+}
+
+// SettingManager handles settings for scheduler
+type SettingManager interface {
+	GetSetting(ctx context.Context, key string) (string, error)
+	SetSetting(ctx context.Context, key, value string) error
+}
 
 // Scheduler manages periodic feed updates and content processing
 type Scheduler struct {
-	repos      *repository.Repositories
-	parser     Parser
-	extractor  Extractor
-	classifier Classifier
+	feedManager           FeedManager
+	itemManager           ItemManager
+	classificationManager ClassificationManager
+	settingManager        SettingManager
+	parser                Parser
+	extractor             Extractor
+	classifier            Classifier
 
 	updateInterval time.Duration
 	maxWorkers     int
@@ -53,7 +85,7 @@ type Config struct {
 }
 
 // NewScheduler creates a new scheduler instance
-func NewScheduler(repos *repository.Repositories, parser Parser, extractor Extractor, classifier Classifier, cfg Config) *Scheduler {
+func NewScheduler(feedManager FeedManager, itemManager ItemManager, classificationManager ClassificationManager, settingManager SettingManager, parser Parser, extractor Extractor, classifier Classifier, cfg Config) *Scheduler {
 	if cfg.UpdateInterval == 0 {
 		cfg.UpdateInterval = 30 * time.Minute
 	}
@@ -62,12 +94,15 @@ func NewScheduler(repos *repository.Repositories, parser Parser, extractor Extra
 	}
 
 	return &Scheduler{
-		repos:          repos,
-		parser:         parser,
-		extractor:      extractor,
-		classifier:     classifier,
-		updateInterval: cfg.UpdateInterval,
-		maxWorkers:     cfg.MaxWorkers,
+		feedManager:           feedManager,
+		itemManager:           itemManager,
+		classificationManager: classificationManager,
+		settingManager:        settingManager,
+		parser:                parser,
+		extractor:             extractor,
+		classifier:            classifier,
+		updateInterval:        cfg.UpdateInterval,
+		maxWorkers:            cfg.MaxWorkers,
 	}
 }
 
@@ -131,26 +166,26 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 			Error:       err.Error(),
 			ExtractedAt: time.Now(),
 		}
-		if updateErr := s.repos.Item.UpdateItemExtraction(ctx, item.ID, extraction); updateErr != nil {
+		if updateErr := s.itemManager.UpdateItemExtraction(ctx, item.ID, extraction); updateErr != nil {
 			lgr.Printf("[WARN] failed to update extraction error: %v", updateErr)
 		}
 		return
 	}
 
 	// 2. Get context for classification
-	feedbacks, err := s.repos.Classification.GetRecentFeedback(ctx, "", 10)
+	feedbacks, err := s.classificationManager.GetRecentFeedback(ctx, "", 10)
 	if err != nil {
 		lgr.Printf("[WARN] failed to get feedback examples: %v", err)
 		feedbacks = []*domain.FeedbackExample{}
 	}
 
-	topics, err := s.repos.Classification.GetTopics(ctx)
+	topics, err := s.classificationManager.GetTopics(ctx)
 	if err != nil {
 		lgr.Printf("[WARN] failed to get canonical topics: %v", err)
 		topics = []string{}
 	}
 
-	preferenceSummary, err := s.repos.Setting.GetSetting(ctx, "preference_summary")
+	preferenceSummary, err := s.settingManager.GetSetting(ctx, "preference_summary")
 	if err != nil {
 		lgr.Printf("[WARN] failed to get preference summary: %v", err)
 		preferenceSummary = ""
@@ -181,7 +216,7 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 	classification := classifications[0]
 	classification.ClassifiedAt = time.Now()
 
-	if err := s.repos.Item.UpdateItemProcessed(ctx, item.ID, extraction, classification); err != nil {
+	if err := s.itemManager.UpdateItemProcessed(ctx, item.ID, extraction, classification); err != nil {
 		lgr.Printf("[WARN] failed to update item processing: %v", err)
 		return
 	}
@@ -212,7 +247,7 @@ func (s *Scheduler) feedUpdateWorker(ctx context.Context, processCh chan<- *doma
 
 // updateAllFeeds fetches and updates all enabled feeds
 func (s *Scheduler) updateAllFeeds(ctx context.Context, processCh chan<- *domain.Item) {
-	feeds, err := s.repos.Feed.GetFeeds(ctx, true)
+	feeds, err := s.feedManager.GetFeeds(ctx, true)
 	if err != nil {
 		lgr.Printf("[ERROR] failed to get enabled feeds: %v", err)
 		return
@@ -248,7 +283,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 	parsedFeed, err := s.parser.Parse(ctx, f.URL)
 	if err != nil {
 		lgr.Printf("[WARN] failed to parse feed %s: %v", f.URL, err)
-		if err := s.repos.Feed.UpdateFeedError(ctx, f.ID, err.Error()); err != nil {
+		if err := s.feedManager.UpdateFeedError(ctx, f.ID, err.Error()); err != nil {
 			lgr.Printf("[WARN] failed to update feed error: %v", err)
 		}
 		return
@@ -258,7 +293,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 	newCount := 0
 	for _, item := range parsedFeed.Items {
 		// check if item exists
-		exists, err := s.repos.Item.ItemExists(ctx, f.ID, item.GUID)
+		exists, err := s.itemManager.ItemExists(ctx, f.ID, item.GUID)
 		if err != nil {
 			lgr.Printf("[WARN] failed to check item existence: %v", err)
 			continue
@@ -268,7 +303,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 		}
 
 		// check for duplicates
-		duplicateExists, err := s.repos.Item.ItemExistsByTitleOrURL(ctx, item.Title, item.Link)
+		duplicateExists, err := s.itemManager.ItemExistsByTitleOrURL(ctx, item.Title, item.Link)
 		if err != nil {
 			lgr.Printf("[WARN] failed to check duplicate item: %v", err)
 			continue
@@ -289,7 +324,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 			Published:   item.Published,
 		}
 
-		if err := s.repos.Item.CreateItem(ctx, domainItem); err != nil {
+		if err := s.itemManager.CreateItem(ctx, domainItem); err != nil {
 			lgr.Printf("[WARN] failed to create item: %v", err)
 			continue
 		}
@@ -306,7 +341,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 
 	// update last fetched timestamp
 	nextFetch := time.Now().Add(time.Duration(f.FetchInterval) * time.Second)
-	if err := s.repos.Feed.UpdateFeedFetched(ctx, f.ID, nextFetch); err != nil {
+	if err := s.feedManager.UpdateFeedFetched(ctx, f.ID, nextFetch); err != nil {
 		lgr.Printf("[WARN] failed to update last fetched: %v", err)
 	}
 
@@ -317,7 +352,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 
 // UpdateFeedNow triggers immediate update of a specific feed
 func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
-	feed, err := s.repos.Feed.GetFeed(ctx, feedID)
+	feed, err := s.feedManager.GetFeed(ctx, feedID)
 	if err != nil {
 		return fmt.Errorf("get feed: %w", err)
 	}
@@ -337,7 +372,7 @@ func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
 
 // ExtractContentNow triggers immediate content extraction for an item
 func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
-	item, err := s.repos.Item.GetItem(ctx, itemID)
+	item, err := s.itemManager.GetItem(ctx, itemID)
 	if err != nil {
 		return fmt.Errorf("get item: %w", err)
 	}
