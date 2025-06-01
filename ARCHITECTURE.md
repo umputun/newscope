@@ -22,7 +22,7 @@ Manages all application configuration through YAML files with schema validation.
 config.yaml → Config struct → Validation → Application components
 ```
 
-### 2. Database Layer (`pkg/db`)
+### 2. Repository Layer (`pkg/repository`)
 
 SQLite-based persistence using pure Go driver (modernc.org/sqlite) with sqlx for query building.
 

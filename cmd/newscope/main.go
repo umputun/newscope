@@ -17,9 +17,9 @@ import (
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/content"
-	"github.com/umputun/newscope/pkg/db"
 	"github.com/umputun/newscope/pkg/feed"
 	"github.com/umputun/newscope/pkg/llm"
+	"github.com/umputun/newscope/pkg/repository"
 	"github.com/umputun/newscope/pkg/scheduler"
 	"github.com/umputun/newscope/server"
 )
@@ -63,19 +63,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	// setup database
-	dbCfg := db.Config{
+	// setup database repositories
+	repoCfg := repository.Config{
 		DSN:             cfg.Database.DSN,
 		MaxOpenConns:    cfg.Database.MaxOpenConns,
 		MaxIdleConns:    cfg.Database.MaxIdleConns,
 		ConnMaxLifetime: time.Duration(cfg.Database.ConnMaxLifetime) * time.Second,
 	}
-	dbConn, err := db.New(context.Background(), dbCfg)
+	repos, err := repository.NewRepositories(context.Background(), repoCfg)
 	if err != nil {
 		log.Printf("[ERROR] failed to initialize database: %v", err)
 		os.Exit(1)
 	}
-	defer dbConn.Close()
+
+	// setup LLM classifier - required for system to function
+	if cfg.LLM.Endpoint == "" || cfg.LLM.APIKey == "" {
+		log.Printf("[ERROR] LLM classifier is required - missing endpoint or API key configuration")
+		_ = repos.Close()
+		log.Fatal("LLM configuration required")
+	}
+
+	defer repos.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -99,28 +107,21 @@ func main() {
 		}
 		contentExtractor.SetOptions(cfg.Extraction.MinTextLength, cfg.Extraction.IncludeImages, cfg.Extraction.IncludeLinks)
 	}
-
-	// setup LLM classifier
-	var classifier *llm.Classifier
-	if cfg.LLM.Endpoint != "" && cfg.LLM.APIKey != "" {
-		classifier = llm.NewClassifier(cfg.LLM)
-		log.Printf("[INFO] LLM classifier enabled with model: %s", cfg.LLM.Model)
-	} else {
-		log.Printf("[WARN] LLM classifier disabled - no endpoint or API key configured")
-	}
+	classifier := llm.NewClassifier(cfg.LLM)
+	log.Printf("[INFO] LLM classifier enabled with model: %s", cfg.LLM.Model)
 
 	// setup and start scheduler
 	schedulerCfg := scheduler.Config{
 		UpdateInterval: time.Duration(cfg.Schedule.UpdateInterval) * time.Minute,
 		MaxWorkers:     cfg.Schedule.MaxWorkers,
 	}
-	sched := scheduler.NewScheduler(dbConn, feedParser, contentExtractor, classifier, schedulerCfg)
+	sched := scheduler.NewScheduler(repos.Feed, repos.Item, repos.Classification, repos.Setting, feedParser, contentExtractor, classifier, schedulerCfg)
 	sched.Start(ctx)
 	defer sched.Stop()
 
-	// setup and run server with database adapter
-	dbAdapter := &server.DBAdapter{DB: dbConn}
-	srv := server.New(cfg, dbAdapter, sched, revision, opts.Debug)
+	// setup and run server with repository adapter
+	repoAdapter := server.NewRepositoryAdapter(repos)
+	srv := server.New(cfg, repoAdapter, sched, revision, opts.Debug)
 	if err := srv.Run(ctx); err != nil {
 		log.Printf("[ERROR] server failed: %v", err)
 		return

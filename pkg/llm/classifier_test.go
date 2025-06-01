@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/newscope/pkg/config"
-	"github.com/umputun/newscope/pkg/db"
+	"github.com/umputun/newscope/pkg/domain"
 )
 
 func TestClassifier_Classify(t *testing.T) {
@@ -66,12 +66,12 @@ func TestClassifier_Classify(t *testing.T) {
 	classifier := NewClassifier(cfg)
 
 	// test articles
-	articles := []db.Item{
+	articles := []*domain.Item{
 		{
-			GUID:             "item1",
-			Title:            "Go 1.22 Released",
-			Description:      "New features in Go",
-			ExtractedContent: "Go 1.22 brings exciting new features...",
+			GUID:        "item1",
+			Title:       "Go 1.22 Released",
+			Description: "New features in Go",
+			Content:     "Go 1.22 brings exciting new features...",
 		},
 		{
 			GUID:        "item2",
@@ -81,10 +81,10 @@ func TestClassifier_Classify(t *testing.T) {
 	}
 
 	// test feedback examples
-	feedback := []db.FeedbackExample{
+	feedback := []*domain.FeedbackExample{
 		{
 			Title:    "Previous Go Article",
-			Feedback: "like",
+			Feedback: domain.FeedbackLike,
 			Topics:   []string{"golang"},
 		},
 	}
@@ -129,7 +129,7 @@ func TestClassifier_ClassifyArticles_EmptyInput(t *testing.T) {
 
 	ctx := context.Background()
 	classifications, err := classifier.Classify(ctx, ClassifyRequest{
-		Articles: []db.Item{},
+		Articles: []*domain.Item{},
 	})
 	require.NoError(t, err)
 	assert.Empty(t, classifications)
@@ -160,7 +160,7 @@ func TestClassifier_TopicPreferences(t *testing.T) {
 	}
 	classifier := NewClassifier(cfg)
 
-	articles := []db.Item{{GUID: "item1", Title: "Test Article"}}
+	articles := []*domain.Item{{GUID: "item1", Title: "Test Article"}}
 	prompt := classifier.buildPrompt(articles, nil, nil)
 
 	// check topic preferences section
@@ -185,24 +185,24 @@ func TestClassifier_DefaultSystemPrompt(t *testing.T) {
 func TestClassifier_buildPrompt(t *testing.T) {
 	classifier := &Classifier{config: config.LLMConfig{}}
 
-	articles := []db.Item{
+	articles := []*domain.Item{
 		{
-			GUID:             "item1",
-			Title:            "Test Article",
-			Description:      "Test description",
-			ExtractedContent: "Long content that should be truncated " + strings.Repeat("x", 500),
+			GUID:        "item1",
+			Title:       "Test Article",
+			Description: "Test description",
+			Content:     "Long content that should be truncated " + strings.Repeat("x", 500),
 		},
 	}
 
-	feedback := []db.FeedbackExample{
+	feedback := []*domain.FeedbackExample{
 		{
 			Title:    "Liked Article",
-			Feedback: "like",
+			Feedback: domain.FeedbackLike,
 			Topics:   []string{"tech", "ai"},
 		},
 		{
 			Title:    "Disliked Article",
-			Feedback: "dislike",
+			Feedback: domain.FeedbackDislike,
 		},
 	}
 
@@ -234,7 +234,7 @@ func TestClassifier_buildPrompt(t *testing.T) {
 func TestClassifier_parseResponse(t *testing.T) {
 	classifier := &Classifier{config: config.LLMConfig{}}
 
-	articles := []db.Item{
+	articles := []*domain.Item{
 		{GUID: "item1"},
 		{GUID: "item2"},
 		{GUID: "item3"},
@@ -245,7 +245,7 @@ func TestClassifier_parseResponse(t *testing.T) {
 		response    string
 		wantErr     bool
 		wantCount   int
-		checkResult func(t *testing.T, classifications []db.Classification)
+		checkResult func(t *testing.T, classifications []*domain.Classification)
 	}{
 		{
 			name: "valid json array",
@@ -254,7 +254,7 @@ func TestClassifier_parseResponse(t *testing.T) {
 				{"guid": "item2", "score": 2.0, "explanation": "Bad", "topics": []}
 			]`,
 			wantCount: 2,
-			checkResult: func(t *testing.T, classifications []db.Classification) {
+			checkResult: func(t *testing.T, classifications []*domain.Classification) {
 				assert.Equal(t, "item1", classifications[0].GUID)
 				assert.InEpsilon(t, 7.5, classifications[0].Score, 0.001)
 			},
@@ -275,7 +275,7 @@ func TestClassifier_parseResponse(t *testing.T) {
 				{"guid": "item2", "score": -5, "explanation": "Too low"}
 			]`,
 			wantCount: 2,
-			checkResult: func(t *testing.T, classifications []db.Classification) {
+			checkResult: func(t *testing.T, classifications []*domain.Classification) {
 				assert.Equal(t, float64(10), classifications[0].Score) //nolint:testifylint // exact value comparison
 				assert.Equal(t, float64(0), classifications[1].Score)  //nolint:testifylint // exact value comparison
 			},
@@ -294,7 +294,7 @@ func TestClassifier_parseResponse(t *testing.T) {
 			name:      "unknown guid filtered out",
 			response:  `[{"guid": "unknown", "score": 5}, {"guid": "item1", "score": 7}]`,
 			wantCount: 1,
-			checkResult: func(t *testing.T, classifications []db.Classification) {
+			checkResult: func(t *testing.T, classifications []*domain.Classification) {
 				assert.Equal(t, "item1", classifications[0].GUID)
 			},
 		},
@@ -356,7 +356,7 @@ func TestClassifier_RetryOnInvalidJSON(t *testing.T) {
 	}
 	classifier := NewClassifier(cfg)
 
-	articles := []db.Item{{GUID: "item1", Title: "Test"}}
+	articles := []*domain.Item{{GUID: "item1", Title: "Test"}}
 	classifications, err := classifier.Classify(context.Background(), ClassifyRequest{
 		Articles: articles,
 	})
@@ -378,7 +378,7 @@ func TestClassifier_JSONMode(t *testing.T) {
 			},
 		}
 
-		articles := []db.Item{{GUID: "item1", Title: "Test"}}
+		articles := []*domain.Item{{GUID: "item1", Title: "Test"}}
 		prompt := classifier.buildPrompt(articles, nil, nil)
 
 		assert.Contains(t, prompt, "Respond with a JSON object containing a 'classifications' array")
@@ -393,7 +393,7 @@ func TestClassifier_JSONMode(t *testing.T) {
 			},
 		}
 
-		articles := []db.Item{{GUID: "item1", Title: "Test"}}
+		articles := []*domain.Item{{GUID: "item1", Title: "Test"}}
 		prompt := classifier.buildPrompt(articles, nil, nil)
 
 		assert.Contains(t, prompt, "Respond with a JSON array of classification objects")
@@ -408,7 +408,7 @@ func TestClassifier_JSONMode(t *testing.T) {
 			},
 		}
 
-		articles := []db.Item{
+		articles := []*domain.Item{
 			{GUID: "item1"},
 			{GUID: "item2"},
 		}
@@ -471,7 +471,7 @@ func TestClassifier_JSONMode(t *testing.T) {
 		}
 		classifier := NewClassifier(cfg)
 
-		articles := []db.Item{{GUID: "item1", Title: "Test"}}
+		articles := []*domain.Item{{GUID: "item1", Title: "Test"}}
 		classifications, err := classifier.Classify(context.Background(), ClassifyRequest{
 			Articles: articles,
 		})
@@ -512,17 +512,17 @@ func TestClassifier_GeneratePreferenceSummary(t *testing.T) {
 	}
 	classifier := NewClassifier(cfg)
 
-	feedback := []db.FeedbackExample{
+	feedback := []*domain.FeedbackExample{
 		{
 			Title:       "Go 1.22 Features",
 			Description: "New features in Go",
 			Content:     "Range-over-function iterators...",
-			Feedback:    "like",
+			Feedback:    domain.FeedbackLike,
 			Topics:      []string{"golang", "programming"},
 		},
 		{
 			Title:    "Sports News",
-			Feedback: "dislike",
+			Feedback: domain.FeedbackDislike,
 			Topics:   []string{"sports"},
 		},
 	}
@@ -561,15 +561,15 @@ func TestClassifier_UpdatePreferenceSummary(t *testing.T) {
 
 	currentSummary := "User prefers technical articles about Go, AI/ML, and backend development. Likes in-depth tutorials and implementation details. Dislikes sports and entertainment content."
 
-	newFeedback := []db.FeedbackExample{
+	newFeedback := []*domain.FeedbackExample{
 		{
 			Title:    "Kubernetes Best Practices",
-			Feedback: "like",
+			Feedback: domain.FeedbackLike,
 			Topics:   []string{"kubernetes", "cloud"},
 		},
 		{
 			Title:    "Political News",
-			Feedback: "dislike",
+			Feedback: domain.FeedbackDislike,
 			Topics:   []string{"politics"},
 		},
 	}
@@ -623,8 +623,8 @@ func TestClassifier_CustomPrompts(t *testing.T) {
 		}
 		classifier := NewClassifier(cfg)
 
-		feedback := []db.FeedbackExample{
-			{Title: "Test Article", Feedback: "like"},
+		feedback := []*domain.FeedbackExample{
+			{Title: "Test Article", Feedback: domain.FeedbackLike},
 		}
 
 		_, err := classifier.GeneratePreferenceSummary(context.Background(), feedback)
@@ -677,8 +677,8 @@ func TestClassifier_CustomPrompts(t *testing.T) {
 		classifier := NewClassifier(cfg)
 
 		currentSummary := "Current summary"
-		newFeedback := []db.FeedbackExample{
-			{Title: "New Article", Feedback: "like"},
+		newFeedback := []*domain.FeedbackExample{
+			{Title: "New Article", Feedback: domain.FeedbackLike},
 		}
 
 		_, err := classifier.UpdatePreferenceSummary(context.Background(), currentSummary, newFeedback)

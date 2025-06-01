@@ -306,7 +306,7 @@ newscope/
 ├── pkg/
 │   ├── config/              # Configuration
 │   │   └── config.go
-│   ├── db/                  # Minimal database layer
+│   ├── repository/          # Repository layer
 │   │   ├── db.go
 │   │   ├── schema.sql
 │   │   └── models.go        # Simple structs
