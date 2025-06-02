@@ -75,7 +75,7 @@ func (r *FeedRepository) GetFeed(ctx context.Context, id int64) (*domain.Feed, e
 }
 
 // GetFeeds retrieves feeds with optional filtering
-func (r *FeedRepository) GetFeeds(ctx context.Context, enabledOnly bool) ([]*domain.Feed, error) {
+func (r *FeedRepository) GetFeeds(ctx context.Context, enabledOnly bool) ([]domain.Feed, error) {
 	query := "SELECT * FROM feeds"
 	if enabledOnly {
 		query += " WHERE enabled = 1"
@@ -88,15 +88,15 @@ func (r *FeedRepository) GetFeeds(ctx context.Context, enabledOnly bool) ([]*dom
 		return nil, fmt.Errorf("get feeds: %w", err)
 	}
 
-	feeds := make([]*domain.Feed, len(sqlFeeds))
+	feeds := make([]domain.Feed, len(sqlFeeds))
 	for i, f := range sqlFeeds {
-		feeds[i] = r.toDomainFeed(&f)
+		feeds[i] = *r.toDomainFeed(&f)
 	}
 	return feeds, nil
 }
 
 // GetFeedsToFetch retrieves feeds that need updating
-func (r *FeedRepository) GetFeedsToFetch(ctx context.Context, limit int) ([]*domain.Feed, error) {
+func (r *FeedRepository) GetFeedsToFetch(ctx context.Context, limit int) ([]domain.Feed, error) {
 	query := `
 		SELECT * FROM feeds 
 		WHERE enabled = 1 
@@ -110,9 +110,9 @@ func (r *FeedRepository) GetFeedsToFetch(ctx context.Context, limit int) ([]*dom
 		return nil, fmt.Errorf("get feeds to fetch: %w", err)
 	}
 
-	feeds := make([]*domain.Feed, len(sqlFeeds))
+	feeds := make([]domain.Feed, len(sqlFeeds))
 	for i, f := range sqlFeeds {
-		feeds[i] = r.toDomainFeed(&f)
+		feeds[i] = *r.toDomainFeed(&f)
 	}
 	return feeds, nil
 }

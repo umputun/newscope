@@ -10,6 +10,7 @@ import (
 
 	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/domain"
+	"github.com/umputun/newscope/pkg/llm"
 	"github.com/umputun/newscope/pkg/scheduler/mocks"
 )
 
@@ -27,7 +28,16 @@ func TestNewScheduler(t *testing.T) {
 		MaxWorkers:     3,
 	}
 
-	scheduler := NewScheduler(feedManager, itemManager, classificationManager, settingManager, parser, extractor, classifier, cfg)
+	deps := Dependencies{
+		FeedManager:           feedManager,
+		ItemManager:           itemManager,
+		ClassificationManager: classificationManager,
+		SettingManager:        settingManager,
+		Parser:                parser,
+		Extractor:             extractor,
+		Classifier:            classifier,
+	}
+	scheduler := NewScheduler(deps, cfg)
 
 	assert.NotNil(t, scheduler)
 	assert.Equal(t, 5*time.Minute, scheduler.updateInterval)
@@ -45,7 +55,16 @@ func TestNewScheduler_DefaultConfig(t *testing.T) {
 
 	cfg := Config{} // empty config
 
-	scheduler := NewScheduler(feedManager, itemManager, classificationManager, settingManager, parser, extractor, classifier, cfg)
+	deps := Dependencies{
+		FeedManager:           feedManager,
+		ItemManager:           itemManager,
+		ClassificationManager: classificationManager,
+		SettingManager:        settingManager,
+		Parser:                parser,
+		Extractor:             extractor,
+		Classifier:            classifier,
+	}
+	scheduler := NewScheduler(deps, cfg)
 
 	assert.NotNil(t, scheduler)
 	assert.Equal(t, 30*time.Minute, scheduler.updateInterval) // default
@@ -65,7 +84,16 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		UpdateInterval: time.Hour, // long interval to prevent auto-updates
 		MaxWorkers:     1,         // single worker for processing
 	}
-	scheduler := NewScheduler(feedManager, itemManager, classificationManager, settingManager, parser, extractor, classifier, cfg)
+	deps := Dependencies{
+		FeedManager:           feedManager,
+		ItemManager:           itemManager,
+		ClassificationManager: classificationManager,
+		SettingManager:        settingManager,
+		Parser:                parser,
+		Extractor:             extractor,
+		Classifier:            classifier,
+	}
+	scheduler := NewScheduler(deps, cfg)
 
 	testFeed := &domain.Feed{
 		ID:            1,
@@ -132,8 +160,8 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		}, nil
 	}
 
-	classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]*domain.FeedbackExample, error) {
-		return []*domain.FeedbackExample{}, nil
+	classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+		return []domain.FeedbackExample{}, nil
 	}
 
 	classificationManager.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
@@ -144,9 +172,9 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		return "", nil
 	}
 
-	classifier.ClassifyItemsFunc = func(ctx context.Context, items []*domain.Item, feedbacks []*domain.FeedbackExample, topics []string, preferenceSummary string) ([]*domain.Classification, error) {
-		return []*domain.Classification{{
-			GUID:        items[0].GUID,
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+		return []domain.Classification{{
+			GUID:        req.Articles[0].GUID,
 			Score:       7.5,
 			Explanation: "test classification",
 			Topics:      []string{"tech"},
@@ -187,7 +215,16 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	scheduler := NewScheduler(feedManager, itemManager, classificationManager, settingManager, parser, extractor, classifier, Config{})
+	deps := Dependencies{
+		FeedManager:           feedManager,
+		ItemManager:           itemManager,
+		ClassificationManager: classificationManager,
+		SettingManager:        settingManager,
+		Parser:                parser,
+		Extractor:             extractor,
+		Classifier:            classifier,
+	}
+	scheduler := NewScheduler(deps, Config{})
 
 	testItem := &domain.Item{
 		ID:    1,
@@ -220,10 +257,10 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		return extractResult, nil
 	}
 
-	classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]*domain.FeedbackExample, error) {
+	classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
 		assert.Empty(t, feedbackType)
 		assert.Equal(t, 10, limit)
-		return []*domain.FeedbackExample{}, nil
+		return []domain.FeedbackExample{}, nil
 	}
 
 	classificationManager.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
@@ -235,20 +272,25 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		return "", nil
 	}
 
-	classifier.ClassifyItemsFunc = func(ctx context.Context, items []*domain.Item, feedbacks []*domain.FeedbackExample, topics []string, preferenceSummary string) ([]*domain.Classification, error) {
-		assert.Len(t, items, 1)
-		assert.Equal(t, extractResult.Content, items[0].Content) // content should be set
-		assert.Empty(t, feedbacks)
-		assert.Equal(t, []string{"tech", "news"}, topics)
-		assert.Empty(t, preferenceSummary)
-		return []*domain.Classification{classification}, nil
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+		assert.Len(t, req.Articles, 1)
+		assert.Equal(t, extractResult.Content, req.Articles[0].Content) // content should be set
+		assert.Empty(t, req.Feedbacks)
+		assert.Equal(t, []string{"tech", "news"}, req.CanonicalTopics)
+		assert.Empty(t, req.PreferenceSummary)
+		return []domain.Classification{*classification}, nil
 	}
 
 	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, class *domain.Classification) error {
 		assert.Equal(t, testItem.ID, itemID)
 		assert.Equal(t, extractResult.Content, extraction.PlainText)
 		assert.Equal(t, extractResult.RichContent, extraction.RichHTML)
-		assert.Equal(t, classification, class)
+		assert.Equal(t, classification.GUID, class.GUID)
+		assert.InEpsilon(t, classification.Score, class.Score, 0.001)
+		assert.Equal(t, classification.Explanation, class.Explanation)
+		assert.Equal(t, classification.Topics, class.Topics)
+		assert.Equal(t, classification.Summary, class.Summary)
+		assert.False(t, class.ClassifiedAt.IsZero()) // ensure ClassifiedAt is set
 		return nil
 	}
 
@@ -280,12 +322,21 @@ func TestScheduler_StartStop(t *testing.T) {
 		MaxWorkers:     1,
 	}
 
-	scheduler := NewScheduler(feedManager, itemManager, classificationManager, settingManager, parser, extractor, classifier, cfg)
+	deps := Dependencies{
+		FeedManager:           feedManager,
+		ItemManager:           itemManager,
+		ClassificationManager: classificationManager,
+		SettingManager:        settingManager,
+		Parser:                parser,
+		Extractor:             extractor,
+		Classifier:            classifier,
+	}
+	scheduler := NewScheduler(deps, cfg)
 
 	// setup minimal expectations for feed update
-	feedManager.GetFeedsFunc = func(ctx context.Context, enabledOnly bool) ([]*domain.Feed, error) {
+	feedManager.GetFeedsFunc = func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error) {
 		assert.True(t, enabledOnly)
-		return []*domain.Feed{}, nil
+		return []domain.Feed{}, nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

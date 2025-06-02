@@ -28,7 +28,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
                 👍
             </button>
             <button class="btn-feedback btn-dislike-small {{if eq .UserFeedback "dislike"}}active{{end}}"
@@ -36,7 +36,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
                 👎
             </button>
         </div>
@@ -73,7 +73,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
                 👍 Like
             </button>
             <button class="btn-feedback btn-dislike {{if eq .UserFeedback "dislike"}}active{{end}}"
@@ -81,7 +81,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
                 👎 Dislike
             </button>
             {{if .ExtractedContent}}

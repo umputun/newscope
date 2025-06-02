@@ -13,7 +13,7 @@
                hx-get="/articles"
                hx-trigger="change"
                hx-target="#articles-container"
-               hx-include="#topic-filter, #feed-filter">
+               hx-include="#topic-filter, #feed-filter, #sort-filter">
         <span id="score-value">{{.MinScore}}</span>
         
         <!-- Topic filter -->
@@ -22,7 +22,7 @@
                 hx-get="/articles"
                 hx-trigger="change"
                 hx-target="#articles-container"
-                hx-include="#score-filter, #feed-filter">
+                hx-include="#score-filter, #feed-filter, #sort-filter">
             <option value="">All Topics</option>
             {{range .Topics}}
             <option value="{{.}}" {{if eq $.SelectedTopic .}}selected{{end}}>{{.}}</option>
@@ -35,11 +35,22 @@
                 hx-get="/articles"
                 hx-trigger="change"
                 hx-target="#articles-container"
-                hx-include="#score-filter, #topic-filter">
+                hx-include="#score-filter, #topic-filter, #sort-filter">
             <option value="">All Feeds</option>
             {{range .Feeds}}
             <option value="{{.}}" {{if eq $.SelectedFeed .}}selected{{end}}>{{.}}</option>
             {{end}}
+        </select>
+        
+        <!-- Sort filter -->
+        <label for="sort-filter">Sort:</label>
+        <select id="sort-filter" name="sort"
+                hx-get="/articles"
+                hx-trigger="change"
+                hx-target="#articles-container"
+                hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
+            <option value="published" {{if eq .SelectedSort "published"}}selected{{end}}>Date</option>
+            <option value="score" {{if eq .SelectedSort "score"}}selected{{end}}>Score</option>
         </select>
         
         <!-- View mode toggle -->
@@ -80,6 +91,17 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load saved view mode
     const savedView = localStorage.getItem('newscopeViewMode') || 'expanded';
     setViewMode(savedView);
+    
+    // Load saved sort preference
+    const savedSort = localStorage.getItem('newscopeSortBy');
+    if (savedSort !== null && savedSort !== '{{.SelectedSort}}') {
+        // If saved sort differs from server default, navigate to it
+        const sortFilter = document.getElementById('sort-filter');
+        sortFilter.value = savedSort;
+        
+        // Trigger HTMX request to load articles with saved sort
+        htmx.trigger(sortFilter, 'change');
+    }
 });
 
 // Update score display and save to localStorage
@@ -124,6 +146,11 @@ document.getElementById('view-expanded').addEventListener('click', function() {
 
 document.getElementById('view-condensed').addEventListener('click', function() {
     setViewMode('condensed');
+});
+
+// Sort preference persistence
+document.getElementById('sort-filter').addEventListener('change', function(e) {
+    localStorage.setItem('newscopeSortBy', e.target.value);
 });
 </script>
 {{end}}

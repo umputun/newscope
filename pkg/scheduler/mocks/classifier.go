@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/umputun/newscope/pkg/domain"
+	"github.com/umputun/newscope/pkg/llm"
 )
 
 // ClassifierMock is a mock implementation of scheduler.Classifier.
@@ -16,13 +17,13 @@ import (
 //
 //		// make and configure a mocked scheduler.Classifier
 //		mockedClassifier := &ClassifierMock{
-//			ClassifyItemsFunc: func(ctx context.Context, items []*domain.Item, feedbacks []*domain.FeedbackExample, topics []string, preferenceSummary string) ([]*domain.Classification, error) {
+//			ClassifyItemsFunc: func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 //				panic("mock out the ClassifyItems method")
 //			},
-//			GeneratePreferenceSummaryFunc: func(ctx context.Context, feedback []*domain.FeedbackExample) (string, error) {
+//			GeneratePreferenceSummaryFunc: func(ctx context.Context, feedback []domain.FeedbackExample) (string, error) {
 //				panic("mock out the GeneratePreferenceSummary method")
 //			},
-//			UpdatePreferenceSummaryFunc: func(ctx context.Context, currentSummary string, newFeedback []*domain.FeedbackExample) (string, error) {
+//			UpdatePreferenceSummaryFunc: func(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error) {
 //				panic("mock out the UpdatePreferenceSummary method")
 //			},
 //		}
@@ -33,13 +34,13 @@ import (
 //	}
 type ClassifierMock struct {
 	// ClassifyItemsFunc mocks the ClassifyItems method.
-	ClassifyItemsFunc func(ctx context.Context, items []*domain.Item, feedbacks []*domain.FeedbackExample, topics []string, preferenceSummary string) ([]*domain.Classification, error)
+	ClassifyItemsFunc func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error)
 
 	// GeneratePreferenceSummaryFunc mocks the GeneratePreferenceSummary method.
-	GeneratePreferenceSummaryFunc func(ctx context.Context, feedback []*domain.FeedbackExample) (string, error)
+	GeneratePreferenceSummaryFunc func(ctx context.Context, feedback []domain.FeedbackExample) (string, error)
 
 	// UpdatePreferenceSummaryFunc mocks the UpdatePreferenceSummary method.
-	UpdatePreferenceSummaryFunc func(ctx context.Context, currentSummary string, newFeedback []*domain.FeedbackExample) (string, error)
+	UpdatePreferenceSummaryFunc func(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -47,21 +48,15 @@ type ClassifierMock struct {
 		ClassifyItems []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Items is the items argument value.
-			Items []*domain.Item
-			// Feedbacks is the feedbacks argument value.
-			Feedbacks []*domain.FeedbackExample
-			// Topics is the topics argument value.
-			Topics []string
-			// PreferenceSummary is the preferenceSummary argument value.
-			PreferenceSummary string
+			// Req is the req argument value.
+			Req llm.ClassifyRequest
 		}
 		// GeneratePreferenceSummary holds details about calls to the GeneratePreferenceSummary method.
 		GeneratePreferenceSummary []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Feedback is the feedback argument value.
-			Feedback []*domain.FeedbackExample
+			Feedback []domain.FeedbackExample
 		}
 		// UpdatePreferenceSummary holds details about calls to the UpdatePreferenceSummary method.
 		UpdatePreferenceSummary []struct {
@@ -70,7 +65,7 @@ type ClassifierMock struct {
 			// CurrentSummary is the currentSummary argument value.
 			CurrentSummary string
 			// NewFeedback is the newFeedback argument value.
-			NewFeedback []*domain.FeedbackExample
+			NewFeedback []domain.FeedbackExample
 		}
 	}
 	lockClassifyItems             sync.RWMutex
@@ -79,27 +74,21 @@ type ClassifierMock struct {
 }
 
 // ClassifyItems calls ClassifyItemsFunc.
-func (mock *ClassifierMock) ClassifyItems(ctx context.Context, items []*domain.Item, feedbacks []*domain.FeedbackExample, topics []string, preferenceSummary string) ([]*domain.Classification, error) {
+func (mock *ClassifierMock) ClassifyItems(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 	if mock.ClassifyItemsFunc == nil {
 		panic("ClassifierMock.ClassifyItemsFunc: method is nil but Classifier.ClassifyItems was just called")
 	}
 	callInfo := struct {
-		Ctx               context.Context
-		Items             []*domain.Item
-		Feedbacks         []*domain.FeedbackExample
-		Topics            []string
-		PreferenceSummary string
+		Ctx context.Context
+		Req llm.ClassifyRequest
 	}{
-		Ctx:               ctx,
-		Items:             items,
-		Feedbacks:         feedbacks,
-		Topics:            topics,
-		PreferenceSummary: preferenceSummary,
+		Ctx: ctx,
+		Req: req,
 	}
 	mock.lockClassifyItems.Lock()
 	mock.calls.ClassifyItems = append(mock.calls.ClassifyItems, callInfo)
 	mock.lockClassifyItems.Unlock()
-	return mock.ClassifyItemsFunc(ctx, items, feedbacks, topics, preferenceSummary)
+	return mock.ClassifyItemsFunc(ctx, req)
 }
 
 // ClassifyItemsCalls gets all the calls that were made to ClassifyItems.
@@ -107,18 +96,12 @@ func (mock *ClassifierMock) ClassifyItems(ctx context.Context, items []*domain.I
 //
 //	len(mockedClassifier.ClassifyItemsCalls())
 func (mock *ClassifierMock) ClassifyItemsCalls() []struct {
-	Ctx               context.Context
-	Items             []*domain.Item
-	Feedbacks         []*domain.FeedbackExample
-	Topics            []string
-	PreferenceSummary string
+	Ctx context.Context
+	Req llm.ClassifyRequest
 } {
 	var calls []struct {
-		Ctx               context.Context
-		Items             []*domain.Item
-		Feedbacks         []*domain.FeedbackExample
-		Topics            []string
-		PreferenceSummary string
+		Ctx context.Context
+		Req llm.ClassifyRequest
 	}
 	mock.lockClassifyItems.RLock()
 	calls = mock.calls.ClassifyItems
@@ -127,13 +110,13 @@ func (mock *ClassifierMock) ClassifyItemsCalls() []struct {
 }
 
 // GeneratePreferenceSummary calls GeneratePreferenceSummaryFunc.
-func (mock *ClassifierMock) GeneratePreferenceSummary(ctx context.Context, feedback []*domain.FeedbackExample) (string, error) {
+func (mock *ClassifierMock) GeneratePreferenceSummary(ctx context.Context, feedback []domain.FeedbackExample) (string, error) {
 	if mock.GeneratePreferenceSummaryFunc == nil {
 		panic("ClassifierMock.GeneratePreferenceSummaryFunc: method is nil but Classifier.GeneratePreferenceSummary was just called")
 	}
 	callInfo := struct {
 		Ctx      context.Context
-		Feedback []*domain.FeedbackExample
+		Feedback []domain.FeedbackExample
 	}{
 		Ctx:      ctx,
 		Feedback: feedback,
@@ -150,11 +133,11 @@ func (mock *ClassifierMock) GeneratePreferenceSummary(ctx context.Context, feedb
 //	len(mockedClassifier.GeneratePreferenceSummaryCalls())
 func (mock *ClassifierMock) GeneratePreferenceSummaryCalls() []struct {
 	Ctx      context.Context
-	Feedback []*domain.FeedbackExample
+	Feedback []domain.FeedbackExample
 } {
 	var calls []struct {
 		Ctx      context.Context
-		Feedback []*domain.FeedbackExample
+		Feedback []domain.FeedbackExample
 	}
 	mock.lockGeneratePreferenceSummary.RLock()
 	calls = mock.calls.GeneratePreferenceSummary
@@ -163,14 +146,14 @@ func (mock *ClassifierMock) GeneratePreferenceSummaryCalls() []struct {
 }
 
 // UpdatePreferenceSummary calls UpdatePreferenceSummaryFunc.
-func (mock *ClassifierMock) UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []*domain.FeedbackExample) (string, error) {
+func (mock *ClassifierMock) UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error) {
 	if mock.UpdatePreferenceSummaryFunc == nil {
 		panic("ClassifierMock.UpdatePreferenceSummaryFunc: method is nil but Classifier.UpdatePreferenceSummary was just called")
 	}
 	callInfo := struct {
 		Ctx            context.Context
 		CurrentSummary string
-		NewFeedback    []*domain.FeedbackExample
+		NewFeedback    []domain.FeedbackExample
 	}{
 		Ctx:            ctx,
 		CurrentSummary: currentSummary,
@@ -189,12 +172,12 @@ func (mock *ClassifierMock) UpdatePreferenceSummary(ctx context.Context, current
 func (mock *ClassifierMock) UpdatePreferenceSummaryCalls() []struct {
 	Ctx            context.Context
 	CurrentSummary string
-	NewFeedback    []*domain.FeedbackExample
+	NewFeedback    []domain.FeedbackExample
 } {
 	var calls []struct {
 		Ctx            context.Context
 		CurrentSummary string
-		NewFeedback    []*domain.FeedbackExample
+		NewFeedback    []domain.FeedbackExample
 	}
 	mock.lockUpdatePreferenceSummary.RLock()
 	calls = mock.calls.UpdatePreferenceSummary

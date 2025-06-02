@@ -73,16 +73,16 @@ Consider the user's previous feedback when provided.`
 
 // ClassifyRequest contains all parameters for article classification
 type ClassifyRequest struct {
-	Articles          []*domain.Item
-	Feedbacks         []*domain.FeedbackExample
+	Articles          []domain.Item
+	Feedbacks         []domain.FeedbackExample
 	CanonicalTopics   []string
 	PreferenceSummary string
 }
 
 // Classify classifies articles using the provided request parameters
-func (c *Classifier) Classify(ctx context.Context, req ClassifyRequest) ([]*domain.Classification, error) {
+func (c *Classifier) Classify(ctx context.Context, req ClassifyRequest) ([]domain.Classification, error) {
 	if len(req.Articles) == 0 {
-		return []*domain.Classification{}, nil
+		return []domain.Classification{}, nil
 	}
 
 	// prepare the prompt
@@ -148,12 +148,12 @@ func (c *Classifier) Classify(ctx context.Context, req ClassifyRequest) ([]*doma
 }
 
 // buildPrompt creates the prompt for the LLM
-func (c *Classifier) buildPrompt(articles []*domain.Item, feedbackExamples []*domain.FeedbackExample, canonicalTopics []string) string {
+func (c *Classifier) buildPrompt(articles []domain.Item, feedbackExamples []domain.FeedbackExample, canonicalTopics []string) string {
 	return c.buildPromptWithSummary(articles, feedbackExamples, canonicalTopics, "")
 }
 
 // buildPromptWithSummary creates the prompt for the LLM with optional preference summary
-func (c *Classifier) buildPromptWithSummary(articles []*domain.Item, feedbackExamples []*domain.FeedbackExample, canonicalTopics []string, preferenceSummary string) string {
+func (c *Classifier) buildPromptWithSummary(articles []domain.Item, feedbackExamples []domain.FeedbackExample, canonicalTopics []string, preferenceSummary string) string {
 	var sb strings.Builder
 
 	// add preference summary if available
@@ -222,13 +222,13 @@ func (c *Classifier) buildPromptWithSummary(articles []*domain.Item, feedbackExa
 }
 
 // parseResponse parses the LLM response into classifications
-func (c *Classifier) parseResponse(content string, articles []*domain.Item) ([]*domain.Classification, error) {
-	var classifications []*domain.Classification
+func (c *Classifier) parseResponse(content string, articles []domain.Item) ([]domain.Classification, error) {
+	var classifications []domain.Classification
 
 	if c.config.Classification.UseJSONMode {
 		// parse as JSON object with classifications array
 		var resp struct {
-			Classifications []*domain.Classification `json:"classifications"`
+			Classifications []domain.Classification `json:"classifications"`
 		}
 		if err := json.Unmarshal([]byte(content), &resp); err != nil {
 			return nil, fmt.Errorf("failed to parse json object response: %w", err)
@@ -254,7 +254,7 @@ func (c *Classifier) parseResponse(content string, articles []*domain.Item) ([]*
 		guidMap[article.GUID] = true
 	}
 
-	var valid []*domain.Classification
+	var valid []domain.Classification
 	for _, class := range classifications {
 		if guidMap[class.GUID] {
 			// ensure score is in valid range
@@ -271,13 +271,7 @@ func (c *Classifier) parseResponse(content string, articles []*domain.Item) ([]*
 }
 
 // ClassifyItems implements the scheduler.Classifier interface
-func (c *Classifier) ClassifyItems(ctx context.Context, items []*domain.Item, feedbacks []*domain.FeedbackExample, topics []string, preferenceSummary string) ([]*domain.Classification, error) {
-	req := ClassifyRequest{
-		Articles:          items,
-		Feedbacks:         feedbacks,
-		CanonicalTopics:   topics,
-		PreferenceSummary: preferenceSummary,
-	}
+func (c *Classifier) ClassifyItems(ctx context.Context, req ClassifyRequest) ([]domain.Classification, error) {
 	return c.Classify(ctx, req)
 }
 
@@ -294,7 +288,7 @@ Keep the updated summary concise (200-300 words) but comprehensive.`
 )
 
 // GeneratePreferenceSummary creates initial summary from feedback history
-func (c *Classifier) GeneratePreferenceSummary(ctx context.Context, feedback []*domain.FeedbackExample) (string, error) {
+func (c *Classifier) GeneratePreferenceSummary(ctx context.Context, feedback []domain.FeedbackExample) (string, error) {
 	if len(feedback) == 0 {
 		return "", fmt.Errorf("no feedback provided")
 	}
@@ -357,7 +351,7 @@ func (c *Classifier) GeneratePreferenceSummary(ctx context.Context, feedback []*
 }
 
 // UpdatePreferenceSummary updates existing summary with new feedback
-func (c *Classifier) UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []*domain.FeedbackExample) (string, error) {
+func (c *Classifier) UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error) {
 	if currentSummary == "" {
 		return "", fmt.Errorf("no current summary provided")
 	}

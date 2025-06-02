@@ -26,12 +26,7 @@ func (r *RepositoryAdapter) GetFeeds(ctx context.Context) ([]domain.Feed, error)
 		return nil, err
 	}
 
-	// convert []*domain.Feed to []domain.Feed
-	result := make([]domain.Feed, len(feeds))
-	for i, feed := range feeds {
-		result[i] = *feed
-	}
-	return result, nil
+	return feeds, nil
 }
 
 // GetItems returns items from repository
@@ -43,26 +38,29 @@ func (r *RepositoryAdapter) GetItems(ctx context.Context, limit, _ int) ([]domai
 		return nil, err
 	}
 
-	// convert []*domain.Item to []domain.Item
-	result := make([]domain.Item, len(items))
-	for i, item := range items {
-		result[i] = *item
-	}
-	return result, nil
+	return items, nil
 }
 
 // GetClassifiedItems returns items with classification data
 func (r *RepositoryAdapter) GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
-	return r.GetClassifiedItemsWithFilters(ctx, minScore, topic, "", limit)
+	req := domain.ArticlesRequest{
+		MinScore: minScore,
+		Topic:    topic,
+		FeedName: "",
+		SortBy:   "published",
+		Limit:    limit,
+	}
+	return r.GetClassifiedItemsWithFilters(ctx, req)
 }
 
 // GetClassifiedItemsWithFilters returns items with classification data filtered by topic and feed
-func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]domain.ItemWithClassification, error) {
+func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
 	filter := &domain.ItemFilter{
-		MinScore: minScore,
-		Topic:    topic,
-		FeedName: feedName,
-		Limit:    limit,
+		MinScore: req.MinScore,
+		Topic:    req.Topic,
+		FeedName: req.FeedName,
+		SortBy:   req.SortBy,
+		Limit:    req.Limit,
 	}
 
 	// get items from repository
@@ -184,12 +182,7 @@ func (r *RepositoryAdapter) GetAllFeeds(ctx context.Context) ([]domain.Feed, err
 		return nil, err
 	}
 
-	// convert []*domain.Feed to []domain.Feed
-	feeds := make([]domain.Feed, len(domainFeeds))
-	for i, f := range domainFeeds {
-		feeds[i] = *f
-	}
-	return feeds, nil
+	return domainFeeds, nil
 }
 
 // CreateFeed adds a new feed

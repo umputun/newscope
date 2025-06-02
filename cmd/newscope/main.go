@@ -115,7 +115,16 @@ func main() {
 		UpdateInterval: time.Duration(cfg.Schedule.UpdateInterval) * time.Minute,
 		MaxWorkers:     cfg.Schedule.MaxWorkers,
 	}
-	sched := scheduler.NewScheduler(repos.Feed, repos.Item, repos.Classification, repos.Setting, feedParser, contentExtractor, classifier, schedulerCfg)
+	deps := scheduler.Dependencies{
+		FeedManager:           repos.Feed,
+		ItemManager:           repos.Item,
+		ClassificationManager: repos.Classification,
+		SettingManager:        repos.Setting,
+		Parser:                feedParser,
+		Extractor:             contentExtractor,
+		Classifier:            classifier,
+	}
+	sched := scheduler.NewScheduler(deps, schedulerCfg)
 	sched.Start(ctx)
 	defer sched.Stop()
 

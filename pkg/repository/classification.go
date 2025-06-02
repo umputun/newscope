@@ -224,7 +224,7 @@ func (r *ClassificationRepository) UpdateItemFeedback(ctx context.Context, itemI
 }
 
 // GetRecentFeedback retrieves recent user feedback for LLM context
-func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]*domain.FeedbackExample, error) {
+func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
 	var query string
 	var args []interface{}
 
@@ -264,7 +264,7 @@ func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedba
 	}
 	defer rows.Close()
 
-	var examples []*domain.FeedbackExample
+	var examples []domain.FeedbackExample
 	for rows.Next() {
 		var example domain.FeedbackExample
 		var topics classificationSQL
@@ -275,7 +275,7 @@ func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedba
 		}
 		example.Feedback = domain.FeedbackType(feedbackStr)
 		example.Topics = []string(topics)
-		examples = append(examples, &example)
+		examples = append(examples, example)
 	}
 
 	return examples, nil
@@ -293,7 +293,7 @@ func (r *ClassificationRepository) GetFeedbackCount(ctx context.Context) (int64,
 }
 
 // GetFeedbackSince retrieves feedback items after a certain count offset
-func (r *ClassificationRepository) GetFeedbackSince(ctx context.Context, offset int64, limit int) ([]*domain.FeedbackExample, error) {
+func (r *ClassificationRepository) GetFeedbackSince(ctx context.Context, offset int64, limit int) ([]domain.FeedbackExample, error) {
 	query := `
 		SELECT title, description, 
 		       SUBSTR(extracted_content, 1, 500) as content,
@@ -312,7 +312,7 @@ func (r *ClassificationRepository) GetFeedbackSince(ctx context.Context, offset 
 	}
 	defer rows.Close()
 
-	var examples []*domain.FeedbackExample
+	var examples []domain.FeedbackExample
 	for rows.Next() {
 		var example domain.FeedbackExample
 		var topics classificationSQL
@@ -323,7 +323,7 @@ func (r *ClassificationRepository) GetFeedbackSince(ctx context.Context, offset 
 		}
 		example.Feedback = domain.FeedbackType(feedbackStr)
 		example.Topics = []string(topics)
-		examples = append(examples, &example)
+		examples = append(examples, example)
 	}
 
 	return examples, nil

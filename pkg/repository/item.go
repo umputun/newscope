@@ -138,7 +138,7 @@ func (r *ItemRepository) GetItem(ctx context.Context, id int64) (*domain.Item, e
 }
 
 // GetItems retrieves items with optional filters
-func (r *ItemRepository) GetItems(ctx context.Context, limit int, minScore float64) ([]*domain.Item, error) {
+func (r *ItemRepository) GetItems(ctx context.Context, limit int, minScore float64) ([]domain.Item, error) {
 	query := `
 		SELECT * FROM items 
 		WHERE relevance_score >= ?
@@ -151,15 +151,15 @@ func (r *ItemRepository) GetItems(ctx context.Context, limit int, minScore float
 		return nil, fmt.Errorf("get items: %w", err)
 	}
 
-	items := make([]*domain.Item, len(sqlItems))
+	items := make([]domain.Item, len(sqlItems))
 	for i, item := range sqlItems {
-		items[i] = r.toDomainItem(&item)
+		items[i] = *r.toDomainItem(&item)
 	}
 	return items, nil
 }
 
 // GetUnclassifiedItems retrieves items that need classification
-func (r *ItemRepository) GetUnclassifiedItems(ctx context.Context, limit int) ([]*domain.Item, error) {
+func (r *ItemRepository) GetUnclassifiedItems(ctx context.Context, limit int) ([]domain.Item, error) {
 	query := `
 		SELECT * FROM items 
 		WHERE classified_at IS NULL
@@ -174,15 +174,15 @@ func (r *ItemRepository) GetUnclassifiedItems(ctx context.Context, limit int) ([
 		return nil, fmt.Errorf("get unclassified items: %w", err)
 	}
 
-	items := make([]*domain.Item, len(sqlItems))
+	items := make([]domain.Item, len(sqlItems))
 	for i, item := range sqlItems {
-		items[i] = r.toDomainItem(&item)
+		items[i] = *r.toDomainItem(&item)
 	}
 	return items, nil
 }
 
 // GetItemsNeedingExtraction retrieves items that need content extraction
-func (r *ItemRepository) GetItemsNeedingExtraction(ctx context.Context, limit int) ([]*domain.Item, error) {
+func (r *ItemRepository) GetItemsNeedingExtraction(ctx context.Context, limit int) ([]domain.Item, error) {
 	query := `
 		SELECT * FROM items 
 		WHERE extracted_at IS NULL
@@ -196,9 +196,9 @@ func (r *ItemRepository) GetItemsNeedingExtraction(ctx context.Context, limit in
 		return nil, fmt.Errorf("get items needing extraction: %w", err)
 	}
 
-	items := make([]*domain.Item, len(sqlItems))
+	items := make([]domain.Item, len(sqlItems))
 	for i, item := range sqlItems {
-		items[i] = r.toDomainItem(&item)
+		items[i] = *r.toDomainItem(&item)
 	}
 	return items, nil
 }

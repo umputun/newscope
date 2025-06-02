@@ -16,7 +16,7 @@ import (
 //
 //		// make and configure a mocked scheduler.ClassificationManager
 //		mockedClassificationManager := &ClassificationManagerMock{
-//			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]*domain.FeedbackExample, error) {
+//			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
 //				panic("mock out the GetRecentFeedback method")
 //			},
 //			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
@@ -30,7 +30,7 @@ import (
 //	}
 type ClassificationManagerMock struct {
 	// GetRecentFeedbackFunc mocks the GetRecentFeedback method.
-	GetRecentFeedbackFunc func(ctx context.Context, feedbackType string, limit int) ([]*domain.FeedbackExample, error)
+	GetRecentFeedbackFunc func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error)
 
 	// GetTopicsFunc mocks the GetTopics method.
 	GetTopicsFunc func(ctx context.Context) ([]string, error)
@@ -57,7 +57,7 @@ type ClassificationManagerMock struct {
 }
 
 // GetRecentFeedback calls GetRecentFeedbackFunc.
-func (mock *ClassificationManagerMock) GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]*domain.FeedbackExample, error) {
+func (mock *ClassificationManagerMock) GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
 	if mock.GetRecentFeedbackFunc == nil {
 		panic("ClassificationManagerMock.GetRecentFeedbackFunc: method is nil but ClassificationManager.GetRecentFeedback was just called")
 	}

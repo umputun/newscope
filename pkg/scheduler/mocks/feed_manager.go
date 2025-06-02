@@ -20,7 +20,7 @@ import (
 //			GetFeedFunc: func(ctx context.Context, id int64) (*domain.Feed, error) {
 //				panic("mock out the GetFeed method")
 //			},
-//			GetFeedsFunc: func(ctx context.Context, enabledOnly bool) ([]*domain.Feed, error) {
+//			GetFeedsFunc: func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error) {
 //				panic("mock out the GetFeeds method")
 //			},
 //			UpdateFeedErrorFunc: func(ctx context.Context, feedID int64, errMsg string) error {
@@ -40,7 +40,7 @@ type FeedManagerMock struct {
 	GetFeedFunc func(ctx context.Context, id int64) (*domain.Feed, error)
 
 	// GetFeedsFunc mocks the GetFeeds method.
-	GetFeedsFunc func(ctx context.Context, enabledOnly bool) ([]*domain.Feed, error)
+	GetFeedsFunc func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error)
 
 	// UpdateFeedErrorFunc mocks the UpdateFeedError method.
 	UpdateFeedErrorFunc func(ctx context.Context, feedID int64, errMsg string) error
@@ -126,7 +126,7 @@ func (mock *FeedManagerMock) GetFeedCalls() []struct {
 }
 
 // GetFeeds calls GetFeedsFunc.
-func (mock *FeedManagerMock) GetFeeds(ctx context.Context, enabledOnly bool) ([]*domain.Feed, error) {
+func (mock *FeedManagerMock) GetFeeds(ctx context.Context, enabledOnly bool) ([]domain.Feed, error) {
 	if mock.GetFeedsFunc == nil {
 		panic("FeedManagerMock.GetFeedsFunc: method is nil but FeedManager.GetFeeds was just called")
 	}

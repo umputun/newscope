@@ -66,8 +66,18 @@ type ItemFilter struct {
 	MinScore       float64
 	Topic          string
 	FeedName       string
+	SortBy         string
 	Limit          int
 	OnlyClassified bool
+}
+
+// ArticlesRequest holds parameters for fetching articles
+type ArticlesRequest struct {
+	MinScore float64
+	Topic    string
+	FeedName string
+	SortBy   string
+	Limit    int
 }
 
 // FeedbackExample represents feedback for LLM training

@@ -19,12 +19,13 @@ import (
 
 	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/domain"
+	"github.com/umputun/newscope/pkg/llm"
 )
 
 // FeedManager handles feed operations for scheduler
 type FeedManager interface {
 	GetFeed(ctx context.Context, id int64) (*domain.Feed, error)
-	GetFeeds(ctx context.Context, enabledOnly bool) ([]*domain.Feed, error)
+	GetFeeds(ctx context.Context, enabledOnly bool) ([]domain.Feed, error)
 	UpdateFeedFetched(ctx context.Context, feedID int64, nextFetch time.Time) error
 	UpdateFeedError(ctx context.Context, feedID int64, errMsg string) error
 }
@@ -41,7 +42,7 @@ type ItemManager interface {
 
 // ClassificationManager handles classification operations for scheduler
 type ClassificationManager interface {
-	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]*domain.FeedbackExample, error)
+	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error)
 	GetTopics(ctx context.Context) ([]string, error)
 }
 
@@ -80,9 +81,9 @@ type Extractor interface {
 
 // Classifier interface for LLM classification (simplified for now)
 type Classifier interface {
-	ClassifyItems(ctx context.Context, items []*domain.Item, feedbacks []*domain.FeedbackExample, topics []string, preferenceSummary string) ([]*domain.Classification, error)
-	GeneratePreferenceSummary(ctx context.Context, feedback []*domain.FeedbackExample) (string, error)
-	UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []*domain.FeedbackExample) (string, error)
+	ClassifyItems(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error)
+	GeneratePreferenceSummary(ctx context.Context, feedback []domain.FeedbackExample) (string, error)
+	UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error)
 }
 
 // Config holds scheduler configuration
@@ -91,8 +92,19 @@ type Config struct {
 	MaxWorkers     int
 }
 
+// Dependencies groups all dependencies needed by the scheduler
+type Dependencies struct {
+	FeedManager           FeedManager
+	ItemManager           ItemManager
+	ClassificationManager ClassificationManager
+	SettingManager        SettingManager
+	Parser                Parser
+	Extractor             Extractor
+	Classifier            Classifier
+}
+
 // NewScheduler creates a new scheduler instance
-func NewScheduler(feedManager FeedManager, itemManager ItemManager, classificationManager ClassificationManager, settingManager SettingManager, parser Parser, extractor Extractor, classifier Classifier, cfg Config) *Scheduler {
+func NewScheduler(deps Dependencies, cfg Config) *Scheduler {
 	if cfg.UpdateInterval == 0 {
 		cfg.UpdateInterval = 30 * time.Minute
 	}
@@ -101,13 +113,13 @@ func NewScheduler(feedManager FeedManager, itemManager ItemManager, classificati
 	}
 
 	return &Scheduler{
-		feedManager:           feedManager,
-		itemManager:           itemManager,
-		classificationManager: classificationManager,
-		settingManager:        settingManager,
-		parser:                parser,
-		extractor:             extractor,
-		classifier:            classifier,
+		feedManager:           deps.FeedManager,
+		itemManager:           deps.ItemManager,
+		classificationManager: deps.ClassificationManager,
+		settingManager:        deps.SettingManager,
+		parser:                deps.Parser,
+		extractor:             deps.Extractor,
+		classifier:            deps.Classifier,
 		updateInterval:        cfg.UpdateInterval,
 		maxWorkers:            cfg.MaxWorkers,
 	}
@@ -118,7 +130,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 	ctx, s.cancel = context.WithCancel(ctx)
 
 	// channel for items to process
-	processCh := make(chan *domain.Item, 100)
+	processCh := make(chan domain.Item, 100)
 
 	// start processing worker
 	s.wg.Add(1)
@@ -143,7 +155,7 @@ func (s *Scheduler) Stop() {
 }
 
 // processingWorker processes items from the channel
-func (s *Scheduler) processingWorker(ctx context.Context, items <-chan *domain.Item) {
+func (s *Scheduler) processingWorker(ctx context.Context, items <-chan domain.Item) {
 	defer s.wg.Done()
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -151,7 +163,7 @@ func (s *Scheduler) processingWorker(ctx context.Context, items <-chan *domain.I
 
 	for item := range items {
 		g.Go(func() error {
-			s.processItem(ctx, item)
+			s.processItem(ctx, &item)
 			return nil
 		})
 	}
@@ -183,7 +195,7 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 	feedbacks, err := s.classificationManager.GetRecentFeedback(ctx, "", 10)
 	if err != nil {
 		lgr.Printf("[WARN] failed to get feedback examples: %v", err)
-		feedbacks = []*domain.FeedbackExample{}
+		feedbacks = []domain.FeedbackExample{}
 	}
 
 	topics, err := s.classificationManager.GetTopics(ctx)
@@ -202,7 +214,13 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 	item.Content = extracted.Content
 
 	// 3. Classify the item
-	classifications, err := s.classifier.ClassifyItems(ctx, []*domain.Item{item}, feedbacks, topics, preferenceSummary)
+	req := llm.ClassifyRequest{
+		Articles:          []domain.Item{*item},
+		Feedbacks:         feedbacks,
+		CanonicalTopics:   topics,
+		PreferenceSummary: preferenceSummary,
+	}
+	classifications, err := s.classifier.ClassifyItems(ctx, req)
 	if err != nil {
 		lgr.Printf("[WARN] failed to classify item: %v", err)
 		return
@@ -223,7 +241,7 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 	classification := classifications[0]
 	classification.ClassifiedAt = time.Now()
 
-	if err := s.itemManager.UpdateItemProcessed(ctx, item.ID, extraction, classification); err != nil {
+	if err := s.itemManager.UpdateItemProcessed(ctx, item.ID, extraction, &classification); err != nil {
 		lgr.Printf("[WARN] failed to update item processing: %v", err)
 		return
 	}
@@ -232,7 +250,7 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 }
 
 // feedUpdateWorker periodically updates all enabled feeds
-func (s *Scheduler) feedUpdateWorker(ctx context.Context, processCh chan<- *domain.Item) {
+func (s *Scheduler) feedUpdateWorker(ctx context.Context, processCh chan<- domain.Item) {
 	defer s.wg.Done()
 	defer close(processCh)
 
@@ -253,7 +271,7 @@ func (s *Scheduler) feedUpdateWorker(ctx context.Context, processCh chan<- *doma
 }
 
 // updateAllFeeds fetches and updates all enabled feeds
-func (s *Scheduler) updateAllFeeds(ctx context.Context, processCh chan<- *domain.Item) {
+func (s *Scheduler) updateAllFeeds(ctx context.Context, processCh chan<- domain.Item) {
 	feeds, err := s.feedManager.GetFeeds(ctx, true)
 	if err != nil {
 		lgr.Printf("[ERROR] failed to get enabled feeds: %v", err)
@@ -267,7 +285,7 @@ func (s *Scheduler) updateAllFeeds(ctx context.Context, processCh chan<- *domain
 
 	for _, f := range feeds {
 		g.Go(func() error {
-			s.updateFeed(ctx, f, processCh)
+			s.updateFeed(ctx, &f, processCh)
 			return nil
 		})
 	}
@@ -280,7 +298,7 @@ func (s *Scheduler) updateAllFeeds(ctx context.Context, processCh chan<- *domain
 }
 
 // updateFeed fetches and stores new items for a single feed
-func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh chan<- *domain.Item) {
+func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh chan<- domain.Item) {
 	feedName := f.Title
 	if feedName == "" {
 		feedName = f.URL
@@ -320,7 +338,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 			continue
 		}
 
-		domainItem := &domain.Item{
+		domainItem := domain.Item{
 			FeedID:      f.ID,
 			GUID:        item.GUID,
 			Title:       item.Title,
@@ -331,7 +349,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 			Published:   item.Published,
 		}
 
-		if err := s.itemManager.CreateItem(ctx, domainItem); err != nil {
+		if err := s.itemManager.CreateItem(ctx, &domainItem); err != nil {
 			lgr.Printf("[WARN] failed to create item: %v", err)
 			continue
 		}
@@ -364,12 +382,12 @@ func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
 		return fmt.Errorf("get feed: %w", err)
 	}
 
-	processCh := make(chan *domain.Item, 10)
+	processCh := make(chan domain.Item, 10)
 	defer close(processCh)
 
 	go func() {
 		for item := range processCh {
-			s.processItem(ctx, item)
+			s.processItem(ctx, &item)
 		}
 	}()
 

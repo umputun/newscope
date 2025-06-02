@@ -52,6 +52,7 @@ type articlesPageRequest struct {
 	feeds         []string
 	selectedTopic string
 	selectedFeed  string
+	selectedSort  string
 }
 
 // Database interface for server operations
@@ -59,7 +60,7 @@ type Database interface {
 	GetFeeds(ctx context.Context) ([]domain.Feed, error)
 	GetItems(ctx context.Context, limit, offset int) ([]domain.Item, error)
 	GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error)
-	GetClassifiedItemsWithFilters(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]domain.ItemWithClassification, error)
+	GetClassifiedItemsWithFilters(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error)
 	GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error)
 	UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error
 	GetTopics(ctx context.Context) ([]string, error)
@@ -587,9 +588,20 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	topic := r.URL.Query().Get("topic")
 	feedName := r.URL.Query().Get("feed")
+	sortBy := r.URL.Query().Get("sort")
+	if sortBy == "" {
+		sortBy = "published" // default sort
+	}
 
 	// get articles with classification
-	articles, err := s.db.GetClassifiedItemsWithFilters(ctx, minScore, topic, feedName, 100)
+	req := domain.ArticlesRequest{
+		MinScore: minScore,
+		Topic:    topic,
+		FeedName: feedName,
+		SortBy:   sortBy,
+		Limit:    100,
+	}
+	articles, err := s.db.GetClassifiedItemsWithFilters(ctx, req)
 	if err != nil {
 		log.Printf("[ERROR] failed to get classified items: %v", err)
 		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
@@ -618,6 +630,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 			feeds:         feeds,
 			selectedTopic: topic,
 			selectedFeed:  feedName,
+			selectedSort:  sortBy,
 		})
 		return
 	}
@@ -632,6 +645,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		MinScore      float64
 		SelectedTopic string
 		SelectedFeed  string
+		SelectedSort  string
 	}{
 		ActivePage:    "home",
 		Articles:      articles,
@@ -641,6 +655,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		MinScore:      minScore,
 		SelectedTopic: topic,
 		SelectedFeed:  feedName,
+		SelectedSort:  sortBy,
 	}
 
 	// render full page with base template and article card component

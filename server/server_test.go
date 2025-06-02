@@ -242,7 +242,7 @@ func TestServer_articlesHandler(t *testing.T) {
 	classifiedAt := now
 
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, minScore float64, topic string, feedName string, limit int) ([]domain.ItemWithClassification, error) {
+		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
 			return []domain.ItemWithClassification{
 				{
 					GUID:           "guid-1",
@@ -305,7 +305,7 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w2.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(1)</span>`) // should update count
 
 	// test HTMX request with no articles
-	database.GetClassifiedItemsWithFiltersFunc = func(ctx context.Context, minScore float64, topic, feedName string, limit int) ([]domain.ItemWithClassification, error) {
+	database.GetClassifiedItemsWithFiltersFunc = func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
 		return []domain.ItemWithClassification{}, nil
 	}
 
