@@ -458,16 +458,27 @@ func NewScore(s float64) (Score, error) {
 // Keep it simple - just validation, not elaborate APIs
 ```
 
-### 14. Dead Code - `repository/repository.go:117-135`
-**Location:** Lines 117-135  
-**Description:** `criticalError` type and `isLockError` function may be unused
+### 14. Dead Code - Multiple locations
+**Location:** Various files  
+**Description:** Unused code, legacy implementations, and obsolete functions
+
+**Examples Found and RESOLVED:**
+- ✅ **REMOVED**: `pkg/feed/fetcher.go` - Legacy HTTPFetcher completely removed (was 60 lines + tests)
+- ✅ **REMOVED**: `pkg/config/` unused methods - GetExtractionConfig, GetLLMConfig removed entirely
+- **Still to audit**: `repository/repository.go:117-135` - `criticalError` type and `isLockError` function may be unused
 
 **Impact:**
 - Code bloat and confusion
-- Unclear if error types are actually needed
+- Maintenance burden for unused code
+- Unclear API boundaries
+
+**Our Policy: REMOVE, DON'T KEEP**
+- Remove unused/legacy code entirely rather than making it private
+- Don't keep "just in case" code that isn't being used
+- Clean removal is better than deprecated/private legacy code
 
 **Recommended Solution:**
-- Audit usage of these types
+- Continue auditing for unused types/functions
 - Remove if unused or document usage clearly
 - Consolidate error handling if multiple similar types exist
 
@@ -635,11 +646,21 @@ func (sc ServerConfig) Validate() error
 **Philosophy: Fix only what's causing real problems. Simple solutions preferred.**
 
 ### Immediate (High Impact, Low Effort) - Do These First
-1. **Fix unnecessary public exports** - make internal functions/types private (~25 items)
-2. **Extract constants** for magic numbers and strings - simple and immediate benefit
-3. **Fix naming** issues (itemSQL → itemEntity, etc.) - clarity with zero complexity cost
+1. ✅ **COMPLETED: Fix unnecessary public exports** - made internal functions/types private in server package
+2. ✅ **COMPLETED: Extract constants** for magic numbers and strings - added server and scheduler constants
+3. ✅ **COMPLETED: Fix naming** issues (generateRSSFeed → buildRSSFeed) - improved clarity
 4. **Remove dead code** after usage audit - reduces confusion
 5. **Standardize error handling** - pick one pattern and use it consistently
+
+### Completed Work Summary:
+- **Server Package**: Made `RenderJSON`/`RenderError` → `renderJSON`/`renderError` private, renamed `generateRSSFeed` → `buildRSSFeed`
+- **Magic Numbers**: Added constants for throttle limits, RSS defaults, base URLs, fetch intervals, buffer sizes
+- **Config Package**: Removed unused `GetExtractionConfig` and `GetLLMConfig` methods entirely
+- **Feed Package**: **REMOVED legacy HTTPFetcher completely** - no legacy code kept
+- **LLM Package**: Made internal `Classify` method private, external code uses `ClassifyItems`
+- **Tests Updated**: All test files updated to use new private function names
+- **Dead Code Policy**: We remove unused/legacy code entirely rather than keeping it around
+- **Status**: All tests passing, linter clean, API surface significantly improved
 
 ### Short Term (High Impact, Medium Effort) - Consider These
 1. **Address God Object** in `server.go` - but only split what's actually unrelated

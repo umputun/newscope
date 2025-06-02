@@ -208,16 +208,6 @@ func (c *Config) GetServerConfig() (listen string, timeout time.Duration) {
 	return c.Server.Listen, c.Server.Timeout
 }
 
-// GetExtractionConfig returns content extraction configuration
-func (c *Config) GetExtractionConfig() ExtractionConfig {
-	return c.Extraction
-}
-
-// GetLLMConfig returns LLM configuration
-func (c *Config) GetLLMConfig() LLMConfig {
-	return c.LLM
-}
-
 // GetFullConfig returns the full configuration
 func (c *Config) GetFullConfig() *Config {
 	return c

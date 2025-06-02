@@ -92,7 +92,7 @@ func TestClassifier_Classify(t *testing.T) {
 	// classify articles
 	ctx := context.Background()
 	canonicalTopics := []string{"golang", "programming", "backend", "sports", "news", "tech"}
-	classifications, err := classifier.Classify(ctx, ClassifyRequest{
+	classifications, err := classifier.ClassifyItems(ctx, ClassifyRequest{
 		Articles:        articles,
 		Feedbacks:       feedback,
 		CanonicalTopics: canonicalTopics,
@@ -128,7 +128,7 @@ func TestClassifier_ClassifyArticles_EmptyInput(t *testing.T) {
 	classifier := NewClassifier(cfg)
 
 	ctx := context.Background()
-	classifications, err := classifier.Classify(ctx, ClassifyRequest{
+	classifications, err := classifier.ClassifyItems(ctx, ClassifyRequest{
 		Articles: []domain.Item{},
 	})
 	require.NoError(t, err)
@@ -357,7 +357,7 @@ func TestClassifier_RetryOnInvalidJSON(t *testing.T) {
 	classifier := NewClassifier(cfg)
 
 	articles := []domain.Item{{GUID: "item1", Title: "Test"}}
-	classifications, err := classifier.Classify(context.Background(), ClassifyRequest{
+	classifications, err := classifier.ClassifyItems(context.Background(), ClassifyRequest{
 		Articles: articles,
 	})
 
@@ -472,7 +472,7 @@ func TestClassifier_JSONMode(t *testing.T) {
 		classifier := NewClassifier(cfg)
 
 		articles := []domain.Item{{GUID: "item1", Title: "Test"}}
-		classifications, err := classifier.Classify(context.Background(), ClassifyRequest{
+		classifications, err := classifier.ClassifyItems(context.Background(), ClassifyRequest{
 			Articles: articles,
 		})
 

@@ -79,8 +79,8 @@ type ClassifyRequest struct {
 	PreferenceSummary string
 }
 
-// Classify classifies articles using the provided request parameters
-func (c *Classifier) Classify(ctx context.Context, req ClassifyRequest) ([]domain.Classification, error) {
+// classify classifies articles using the provided request parameters (internal implementation)
+func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domain.Classification, error) {
 	if len(req.Articles) == 0 {
 		return []domain.Classification{}, nil
 	}
@@ -272,7 +272,7 @@ func (c *Classifier) parseResponse(content string, articles []domain.Item) ([]do
 
 // ClassifyItems implements the scheduler.Classifier interface
 func (c *Classifier) ClassifyItems(ctx context.Context, req ClassifyRequest) ([]domain.Classification, error) {
-	return c.Classify(ctx, req)
+	return c.classify(ctx, req)
 }
 
 // default prompts for preference summary operations
