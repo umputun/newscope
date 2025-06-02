@@ -9,19 +9,62 @@ import (
 	"github.com/umputun/newscope/pkg/repository"
 )
 
+//go:generate moq -out mocks/feed_repo.go -pkg mocks -skip-ensure -fmt goimports . FeedRepo
+//go:generate moq -out mocks/item_repo.go -pkg mocks -skip-ensure -fmt goimports . ItemRepo
+//go:generate moq -out mocks/classification_repo.go -pkg mocks -skip-ensure -fmt goimports . ClassificationRepo
+
 // RepositoryAdapter adapts repositories to server.Database interface
 type RepositoryAdapter struct {
-	repos *repository.Repositories
+	feedRepo           FeedRepo
+	itemRepo           ItemRepo
+	classificationRepo ClassificationRepo
 }
 
-// NewRepositoryAdapter creates a new repository adapter
+// FeedRepo defines the feed repository interface used by the adapter
+type FeedRepo interface {
+	GetFeeds(ctx context.Context, enabledOnly bool) ([]domain.Feed, error)
+	CreateFeed(ctx context.Context, feed *domain.Feed) error
+	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
+	DeleteFeed(ctx context.Context, feedID int64) error
+	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
+}
+
+// ItemRepo defines the item repository interface used by the adapter
+type ItemRepo interface {
+	GetItems(ctx context.Context, limit int, minScore float64) ([]domain.Item, error)
+}
+
+// ClassificationRepo defines the classification repository interface used by the adapter
+type ClassificationRepo interface {
+	GetClassifiedItems(ctx context.Context, filter *domain.ItemFilter) ([]*domain.ClassifiedItem, error)
+	GetClassifiedItemsCount(ctx context.Context, filter *domain.ItemFilter) (int, error)
+	GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error)
+	UpdateItemFeedback(ctx context.Context, itemID int64, feedback *domain.Feedback) error
+	GetTopics(ctx context.Context) ([]string, error)
+	GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error)
+}
+
+// NewRepositoryAdapter creates a new repository adapter from concrete repositories
 func NewRepositoryAdapter(repos *repository.Repositories) *RepositoryAdapter {
-	return &RepositoryAdapter{repos: repos}
+	return &RepositoryAdapter{
+		feedRepo:           repos.Feed,
+		itemRepo:           repos.Item,
+		classificationRepo: repos.Classification,
+	}
+}
+
+// NewRepositoryAdapterWithInterfaces creates a new repository adapter with interface dependencies for testing
+func NewRepositoryAdapterWithInterfaces(feedRepo FeedRepo, itemRepo ItemRepo, classificationRepo ClassificationRepo) *RepositoryAdapter {
+	return &RepositoryAdapter{
+		feedRepo:           feedRepo,
+		itemRepo:           itemRepo,
+		classificationRepo: classificationRepo,
+	}
 }
 
 // GetFeeds returns all feeds from repository
 func (r *RepositoryAdapter) GetFeeds(ctx context.Context) ([]domain.Feed, error) {
-	feeds, err := r.repos.Feed.GetFeeds(ctx, false) // get all feeds
+	feeds, err := r.feedRepo.GetFeeds(ctx, false) // get all feeds
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +76,7 @@ func (r *RepositoryAdapter) GetFeeds(ctx context.Context) ([]domain.Feed, error)
 func (r *RepositoryAdapter) GetItems(ctx context.Context, limit, _ int) ([]domain.Item, error) {
 	// repository uses minScore instead of offset
 	// for now, return all items with score >= 0
-	items, err := r.repos.Item.GetItems(ctx, limit, 0)
+	items, err := r.itemRepo.GetItems(ctx, limit, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +114,7 @@ func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, r
 	}
 
 	// get items from repository
-	items, err := r.repos.Classification.GetClassifiedItems(ctx, filter)
+	items, err := r.classificationRepo.GetClassifiedItems(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +173,7 @@ func (r *RepositoryAdapter) GetClassifiedItemsCount(ctx context.Context, req dom
 		Limit:    req.Limit,
 	}
 
-	return r.repos.Classification.GetClassifiedItemsCount(ctx, filter)
+	return r.classificationRepo.GetClassifiedItemsCount(ctx, filter)
 }
 
 // UpdateItemFeedback updates user feedback for an item
@@ -139,12 +182,12 @@ func (r *RepositoryAdapter) UpdateItemFeedback(ctx context.Context, itemID int64
 	domainFeedback := &domain.Feedback{
 		Type: feedbackType,
 	}
-	return r.repos.Classification.UpdateItemFeedback(ctx, itemID, domainFeedback)
+	return r.classificationRepo.UpdateItemFeedback(ctx, itemID, domainFeedback)
 }
 
 // GetClassifiedItem returns a single item with classification data
 func (r *RepositoryAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
-	item, err := r.repos.Classification.GetClassifiedItem(ctx, itemID)
+	item, err := r.classificationRepo.GetClassifiedItem(ctx, itemID)
 	if err != nil {
 		return nil, err
 	}
@@ -187,17 +230,17 @@ func (r *RepositoryAdapter) GetClassifiedItem(ctx context.Context, itemID int64)
 
 // GetTopics returns all unique topics from classified items
 func (r *RepositoryAdapter) GetTopics(ctx context.Context) ([]string, error) {
-	return r.repos.Classification.GetTopics(ctx)
+	return r.classificationRepo.GetTopics(ctx)
 }
 
 // GetTopicsFiltered returns unique topics from items with score >= minScore
 func (r *RepositoryAdapter) GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error) {
-	return r.repos.Classification.GetTopicsFiltered(ctx, minScore)
+	return r.classificationRepo.GetTopicsFiltered(ctx, minScore)
 }
 
 // GetAllFeeds returns all feeds with full details
 func (r *RepositoryAdapter) GetAllFeeds(ctx context.Context) ([]domain.Feed, error) {
-	domainFeeds, err := r.repos.Feed.GetFeeds(ctx, false) // get all feeds, not just enabled
+	domainFeeds, err := r.feedRepo.GetFeeds(ctx, false) // get all feeds, not just enabled
 	if err != nil {
 		return nil, err
 	}
@@ -207,22 +250,22 @@ func (r *RepositoryAdapter) GetAllFeeds(ctx context.Context) ([]domain.Feed, err
 
 // CreateFeed adds a new feed
 func (r *RepositoryAdapter) CreateFeed(ctx context.Context, feed *domain.Feed) error {
-	return r.repos.Feed.CreateFeed(ctx, feed)
+	return r.feedRepo.CreateFeed(ctx, feed)
 }
 
 // UpdateFeedStatus enables or disables a feed
 func (r *RepositoryAdapter) UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error {
-	return r.repos.Feed.UpdateFeedStatus(ctx, feedID, enabled)
+	return r.feedRepo.UpdateFeedStatus(ctx, feedID, enabled)
 }
 
 // DeleteFeed removes a feed
 func (r *RepositoryAdapter) DeleteFeed(ctx context.Context, feedID int64) error {
-	return r.repos.Feed.DeleteFeed(ctx, feedID)
+	return r.feedRepo.DeleteFeed(ctx, feedID)
 }
 
 // GetActiveFeedNames returns names of feeds that have classified articles
 func (r *RepositoryAdapter) GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error) {
-	return r.repos.Feed.GetActiveFeedNames(ctx, minScore)
+	return r.feedRepo.GetActiveFeedNames(ctx, minScore)
 }
 
 // getFeedDisplayName returns the feed title if available, otherwise extracts hostname from URL
@@ -232,7 +275,7 @@ func getFeedDisplayName(title, feedURL string) string {
 	}
 
 	// try to extract hostname from URL
-	if u, err := url.Parse(feedURL); err == nil {
+	if u, err := url.Parse(feedURL); err == nil && u.Hostname() != "" {
 		host := u.Hostname()
 		// remove www. prefix if present
 		host = strings.TrimPrefix(host, "www.")
