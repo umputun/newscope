@@ -234,7 +234,7 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 		"version": s.version,
 		"time":    time.Now().UTC(),
 	}
-	RenderJSON(w, r, http.StatusOK, status)
+	renderJSON(w, r, http.StatusOK, status)
 }
 
 // rssHandler serves RSS feed for articles
@@ -265,7 +265,7 @@ func (s *Server) rssHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// create RSS feed
-	rss := s.generateRSSFeed(topic, minScore, items)
+	rss := s.buildRSSFeed(topic, minScore, items)
 
 	// set content type and write RSS
 	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
@@ -308,8 +308,8 @@ type rss struct {
 	Channel rssChannel `xml:"channel"`
 }
 
-// generateRSSFeed creates an RSS 2.0 feed from classified items
-func (s *Server) generateRSSFeed(topic string, minScore float64, items []domain.ItemWithClassification) string {
+// buildRSSFeed creates an RSS 2.0 feed from classified items
+func (s *Server) buildRSSFeed(topic string, minScore float64, items []domain.ItemWithClassification) string {
 	// determine title
 	var title string
 	if topic != "" {
@@ -372,8 +372,8 @@ func (s *Server) generateRSSFeed(topic string, minScore float64, items []domain.
 	return xml.Header + string(output)
 }
 
-// RenderJSON sends JSON response
-func RenderJSON(w http.ResponseWriter, _ *http.Request, code int, data interface{}) {
+// renderJSON sends JSON response
+func renderJSON(w http.ResponseWriter, _ *http.Request, code int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	if data != nil {
@@ -390,13 +390,13 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 	// parse form data
 	err := r.ParseForm()
 	if err != nil {
-		RenderError(w, r, fmt.Errorf("invalid form data"), http.StatusBadRequest)
+		renderError(w, r, fmt.Errorf("invalid form data"), http.StatusBadRequest)
 		return
 	}
 
 	url := r.FormValue("url")
 	if url == "" {
-		RenderError(w, r, fmt.Errorf("feed URL is required"), http.StatusBadRequest)
+		renderError(w, r, fmt.Errorf("feed URL is required"), http.StatusBadRequest)
 		return
 	}
 
@@ -418,7 +418,7 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 	// create feed in database
 	if err := s.db.CreateFeed(ctx, feed); err != nil {
 		log.Printf("[ERROR] failed to create feed: %v", err)
-		RenderError(w, r, err, http.StatusInternalServerError)
+		renderError(w, r, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -458,14 +458,14 @@ func (s *Server) updateFeedStatus(w http.ResponseWriter, r *http.Request, enable
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		RenderError(w, r, fmt.Errorf("invalid feed ID"), http.StatusBadRequest)
+		renderError(w, r, fmt.Errorf("invalid feed ID"), http.StatusBadRequest)
 		return
 	}
 
 	// update status
 	if err := s.db.UpdateFeedStatus(ctx, id, enabled); err != nil {
 		log.Printf("[ERROR] failed to update feed status: %v", err)
-		RenderError(w, r, err, http.StatusInternalServerError)
+		renderError(w, r, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -494,14 +494,14 @@ func (s *Server) fetchFeedHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		RenderError(w, r, fmt.Errorf("invalid feed ID"), http.StatusBadRequest)
+		renderError(w, r, fmt.Errorf("invalid feed ID"), http.StatusBadRequest)
 		return
 	}
 
 	// trigger fetch with background context to avoid cancellation when HTTP request completes
 	if err := s.scheduler.UpdateFeedNow(context.Background(), id); err != nil {
 		log.Printf("[ERROR] failed to fetch feed: %v", err)
-		RenderError(w, r, err, http.StatusInternalServerError)
+		renderError(w, r, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -531,14 +531,14 @@ func (s *Server) deleteFeedHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		RenderError(w, r, fmt.Errorf("invalid feed ID"), http.StatusBadRequest)
+		renderError(w, r, fmt.Errorf("invalid feed ID"), http.StatusBadRequest)
 		return
 	}
 
 	// delete feed
 	if err := s.db.DeleteFeed(ctx, id); err != nil {
 		log.Printf("[ERROR] failed to delete feed: %v", err)
-		RenderError(w, r, err, http.StatusInternalServerError)
+		renderError(w, r, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -566,13 +566,13 @@ func (s *Server) renderArticleCard(w http.ResponseWriter, article *domain.ItemWi
 	}
 }
 
-// RenderError sends error response as JSON
-func RenderError(w http.ResponseWriter, r *http.Request, err error, code int) {
+// renderError sends error response as JSON
+func renderError(w http.ResponseWriter, r *http.Request, err error, code int) {
 	errMsg := "unknown error"
 	if err != nil {
 		errMsg = err.Error()
 	}
-	RenderJSON(w, r, code, map[string]string{"error": errMsg})
+	renderJSON(w, r, code, map[string]string{"error": errMsg})
 }
 
 // articlesHandler displays the main articles page
@@ -803,20 +803,20 @@ func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		RenderError(w, r, fmt.Errorf("invalid item ID"), http.StatusBadRequest)
+		renderError(w, r, fmt.Errorf("invalid item ID"), http.StatusBadRequest)
 		return
 	}
 
 	// validate action
 	if action != "like" && action != "dislike" {
-		RenderError(w, r, fmt.Errorf("invalid action"), http.StatusBadRequest)
+		renderError(w, r, fmt.Errorf("invalid action"), http.StatusBadRequest)
 		return
 	}
 
 	// update feedback
 	if err := s.db.UpdateItemFeedback(ctx, id, action); err != nil {
 		log.Printf("[ERROR] failed to update feedback: %v", err)
-		RenderError(w, r, err, http.StatusInternalServerError)
+		renderError(w, r, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -857,14 +857,14 @@ func (s *Server) extractHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		RenderError(w, r, fmt.Errorf("invalid item ID"), http.StatusBadRequest)
+		renderError(w, r, fmt.Errorf("invalid item ID"), http.StatusBadRequest)
 		return
 	}
 
 	// trigger extraction
 	if err := s.scheduler.ExtractContentNow(ctx, id); err != nil {
 		log.Printf("[ERROR] failed to extract content: %v", err)
-		RenderError(w, r, err, http.StatusInternalServerError)
+		renderError(w, r, err, http.StatusInternalServerError)
 		return
 	}
 

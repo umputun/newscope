@@ -181,7 +181,7 @@ func TestRenderJSON(t *testing.T) {
 	req := httptest.NewRequest("GET", "/test", http.NoBody)
 	w := httptest.NewRecorder()
 
-	RenderJSON(w, req, http.StatusOK, data)
+	renderJSON(w, req, http.StatusOK, data)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -218,7 +218,7 @@ func TestRenderError(t *testing.T) {
 			req := httptest.NewRequest("GET", "/test", http.NoBody)
 			w := httptest.NewRecorder()
 
-			RenderError(w, req, tt.err, tt.expectedCode)
+			renderError(w, req, tt.err, tt.expectedCode)
 
 			assert.Equal(t, tt.expectedCode, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -557,7 +557,7 @@ func TestServer_generateRSSFeed(t *testing.T) {
 
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 
-	rss := srv.generateRSSFeed("testing", 5.0, items)
+	rss := srv.buildRSSFeed("testing", 5.0, items)
 
 	// verify RSS structure
 	assert.Contains(t, rss, `<?xml version="1.0" encoding="UTF-8"?>`)
@@ -568,7 +568,7 @@ func TestServer_generateRSSFeed(t *testing.T) {
 	assert.Contains(t, rss, `<category>example</category>`)
 
 	// test empty topic
-	rss = srv.generateRSSFeed("", 7.5, items)
+	rss = srv.buildRSSFeed("", 7.5, items)
 	assert.Contains(t, rss, `<title>Newscope - All Topics (Score ≥ 7.5)</title>`)
 }
 
