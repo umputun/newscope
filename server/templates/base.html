@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{block "title" .}}Newscope{{end}}</title>
     
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+    <link rel="icon" type="image/png" href="/static/img/favicon.svg">
+    
     <!-- HTMX v2 -->
     <script src="https://unpkg.com/htmx.org@2.0.0"></script>
     
@@ -15,7 +19,7 @@
     <header>
         <nav>
             <div class="container">
-                <h1><a href="/">Newscope</a></h1>
+                <h1><a href="/" class="logo-link"><img src="/static/img/logo.svg" alt="Newscope Logo" class="logo"> Newscope</a></h1>
                 <div class="nav-links">
                     <a href="/" class="{{if eq .ActivePage "home"}}active{{end}}">Articles</a>
                     <a href="/feeds" class="{{if eq .ActivePage "feeds"}}active{{end}}">Feeds</a>

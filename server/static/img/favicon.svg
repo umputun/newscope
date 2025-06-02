@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="140 125 120 150" width="120" height="150">
+  <!-- Document frame -->
+  <rect x="150" y="135" width="100" height="130" rx="15" ry="15" fill="none" stroke="#3b82f6" stroke-width="12"/>
+
+  <!-- Single bold element inside - document/page symbol -->
+  <rect x="170" y="165" width="60" height="70" rx="8" ry="8" fill="#3b82f6"/>
+</svg>

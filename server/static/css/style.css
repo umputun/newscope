@@ -8,7 +8,7 @@
 /* Light Theme (Default) */
 :root {
     /* Primary colors */
-    --primary-color: #2563eb;
+    --primary-color: #0f5faf;
     --primary-hover: #1d4ed8;
     --success-color: #10b981;
     --danger-color: #ef4444;
@@ -132,6 +132,23 @@ nav h1 a {
     text-decoration: none;
 }
 
+.logo-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.logo {
+    width: 24px;
+    height: 24px;
+    color: var(--primary-color);
+    transition: transform 0.2s ease;
+}
+
+.logo-link:hover .logo {
+    transform: scale(1.1);
+}
+
 .nav-links {
     display: flex;
     gap: 2rem;
@@ -161,9 +178,12 @@ main {
 }
 
 .articles-header h2 {
-    font-size: 2rem;
+    font-size: 1.5rem;
+    margin-top: 1rem;
     margin-bottom: 1.5rem;
     color: var(--text-primary);
+    display: flex;
+    align-items: baseline;
 }
 
 /* View Toggle in Filters */
@@ -204,10 +224,11 @@ main {
 }
 
 .article-count {
-    font-size: 1.25rem;
+    font-size: 1.5rem;
     font-weight: normal;
     color: var(--text-secondary);
     margin-left: 0.5rem;
+    opacity: 0.7;
 }
 
 /* Filters */
