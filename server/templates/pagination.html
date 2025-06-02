@@ -1,0 +1,53 @@
+{{define "pagination"}}
+<div class="pagination" id="pagination">
+    {{if gt .TotalPages 1}}
+    <div class="pagination-info">
+        Showing {{len .Articles}} of {{.TotalCount}} articles (Page {{.CurrentPage}} of {{.TotalPages}})
+    </div>
+    <div class="pagination-controls">
+        {{if .HasPrev}}
+            <a href="/articles?page=1&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}" 
+               class="pagination-btn"
+               hx-get="/articles?page=1&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}"
+               hx-target="#articles-with-pagination"
+               hx-push-url="true"
+               title="First page">⏮</a>
+            <a href="/articles?page={{sub .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}" 
+               class="pagination-btn"
+               hx-get="/articles?page={{sub .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}"
+               hx-target="#articles-with-pagination"
+               hx-push-url="true"
+               title="Previous page">◀</a>
+        {{end}}
+        
+        <!-- Page numbers -->
+        {{range $page := .PageNumbers}}
+            {{if eq $page $.CurrentPage}}
+                <span class="pagination-btn current">{{$page}}</span>
+            {{else}}
+                <a href="/articles?page={{$page}}&score={{$.MinScore}}&topic={{$.SelectedTopic}}&feed={{$.SelectedFeed}}&sort={{$.SelectedSort}}" 
+                   class="pagination-btn"
+                   hx-get="/articles?page={{$page}}&score={{$.MinScore}}&topic={{$.SelectedTopic}}&feed={{$.SelectedFeed}}&sort={{$.SelectedSort}}"
+                   hx-target="#articles-with-pagination"
+                   hx-push-url="true">{{$page}}</a>
+            {{end}}
+        {{end}}
+        
+        {{if .HasNext}}
+            <a href="/articles?page={{add .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}" 
+               class="pagination-btn"
+               hx-get="/articles?page={{add .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}"
+               hx-target="#articles-with-pagination"
+               hx-push-url="true"
+               title="Next page">▶</a>
+            <a href="/articles?page={{.TotalPages}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}" 
+               class="pagination-btn"
+               hx-get="/articles?page={{.TotalPages}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}"
+               hx-target="#articles-with-pagination"
+               hx-push-url="true"
+               title="Last page">⏭</a>
+        {{end}}
+    </div>
+    {{end}}
+</div>
+{{end}}

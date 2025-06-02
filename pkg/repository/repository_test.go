@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -458,5 +459,174 @@ func TestClassificationRepository_GetClassifiedItems_Sorting(t *testing.T) {
 		// verify scores are descending within each feed group
 		assert.GreaterOrEqual(t, items[0].Classification.Score, items[1].Classification.Score) // within Alpha Feed
 		assert.GreaterOrEqual(t, items[2].Classification.Score, items[3].Classification.Score) // within Test Feed
+	})
+}
+
+func TestClassificationRepository_Pagination(t *testing.T) {
+	// setup test database
+	cfg := Config{
+		DSN:             ":memory:",
+		MaxOpenConns:    1,
+		MaxIdleConns:    1,
+		ConnMaxLifetime: 30 * time.Second,
+	}
+
+	repos, err := NewRepositories(context.Background(), cfg)
+	require.NoError(t, err)
+	defer func() {
+		assert.NoError(t, repos.Close())
+	}()
+
+	// create test feed
+	testFeed := &domain.Feed{
+		URL:           "https://example.com/feed.xml",
+		Title:         "Pagination Test Feed",
+		Description:   "Feed for testing pagination",
+		FetchInterval: 3600,
+		Enabled:       true,
+	}
+	err = repos.Feed.CreateFeed(context.Background(), testFeed)
+	require.NoError(t, err)
+
+	// create multiple test items for pagination testing
+	baseTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	testItems := make([]*domain.Item, 15) // create 15 items for pagination testing
+
+	for i := 0; i < 15; i++ {
+		testItems[i] = &domain.Item{
+			FeedID:      testFeed.ID,
+			GUID:        fmt.Sprintf("pagination-item-%d", i+1),
+			Title:       fmt.Sprintf("Pagination Test Item %d", i+1),
+			Link:        fmt.Sprintf("https://example.com/item%d", i+1),
+			Description: fmt.Sprintf("Description for test item %d", i+1),
+			Published:   baseTime.Add(time.Duration(i) * time.Hour), // incrementing times
+		}
+	}
+
+	// create items
+	for _, item := range testItems {
+		err = repos.Item.CreateItem(context.Background(), item)
+		require.NoError(t, err)
+	}
+
+	// add classifications to all items
+	for i, item := range testItems {
+		classification := &domain.Classification{
+			GUID:        item.GUID,
+			Score:       float64(5 + i%6), // scores from 5-10
+			Explanation: fmt.Sprintf("Classification for item %d", i+1),
+			Topics:      []string{"pagination", "test"},
+		}
+		err = repos.Item.UpdateItemClassification(context.Background(), item.ID, classification)
+		require.NoError(t, err)
+	}
+
+	t.Run("get total count", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 0.0,
+			SortBy:   "published",
+			Limit:    10,
+			Offset:   0,
+		}
+
+		count, err := repos.Classification.GetClassifiedItemsCount(context.Background(), filter)
+		require.NoError(t, err)
+		assert.Equal(t, 15, count)
+	})
+
+	t.Run("first page pagination", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 0.0,
+			SortBy:   "published",
+			Limit:    5,
+			Offset:   0,
+		}
+
+		items, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		require.Len(t, items, 5)
+
+		// should be newest items (items with highest index since they have later times)
+		assert.Equal(t, "pagination-item-15", items[0].GUID) // newest
+		assert.Equal(t, "pagination-item-14", items[1].GUID)
+		assert.Equal(t, "pagination-item-13", items[2].GUID)
+		assert.Equal(t, "pagination-item-12", items[3].GUID)
+		assert.Equal(t, "pagination-item-11", items[4].GUID)
+	})
+
+	t.Run("second page pagination", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 0.0,
+			SortBy:   "published",
+			Limit:    5,
+			Offset:   5,
+		}
+
+		items, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		require.Len(t, items, 5)
+
+		// should be the next 5 items
+		assert.Equal(t, "pagination-item-10", items[0].GUID)
+		assert.Equal(t, "pagination-item-9", items[1].GUID)
+		assert.Equal(t, "pagination-item-8", items[2].GUID)
+		assert.Equal(t, "pagination-item-7", items[3].GUID)
+		assert.Equal(t, "pagination-item-6", items[4].GUID)
+	})
+
+	t.Run("third page pagination", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 0.0,
+			SortBy:   "published",
+			Limit:    5,
+			Offset:   10,
+		}
+
+		items, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		require.Len(t, items, 5)
+
+		// should be the last 5 items
+		assert.Equal(t, "pagination-item-5", items[0].GUID)
+		assert.Equal(t, "pagination-item-4", items[1].GUID)
+		assert.Equal(t, "pagination-item-3", items[2].GUID)
+		assert.Equal(t, "pagination-item-2", items[3].GUID)
+		assert.Equal(t, "pagination-item-1", items[4].GUID) // oldest
+	})
+
+	t.Run("pagination with filters", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 7.0, // should filter out some items
+			SortBy:   "published",
+			Limit:    3,
+			Offset:   0,
+		}
+
+		items, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+
+		// count should be fewer due to score filter
+		count, err := repos.Classification.GetClassifiedItemsCount(context.Background(), filter)
+		require.NoError(t, err)
+		assert.Less(t, count, 15)            // should be less than total
+		assert.LessOrEqual(t, len(items), 3) // should respect limit
+
+		// all returned items should have score >= 7.0
+		for _, item := range items {
+			assert.GreaterOrEqual(t, item.Classification.Score, 7.0)
+		}
+	})
+
+	t.Run("empty page beyond available items", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 0.0,
+			SortBy:   "published",
+			Limit:    5,
+			Offset:   20, // beyond available items
+		}
+
+		items, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		assert.Empty(t, items) // should return empty slice
 	})
 }

@@ -38,7 +38,6 @@ const (
 	minutesToSeconds     = 60
 
 	// article pagination
-	defaultArticleLimit = 100
 )
 
 //go:generate moq -out mocks/config.go -pkg mocks -skip-ensure -fmt goimports . ConfigProvider
@@ -71,6 +70,15 @@ type articlesPageRequest struct {
 	selectedTopic string
 	selectedFeed  string
 	selectedSort  string
+	// pagination
+	currentPage int
+	totalPages  int
+	totalCount  int
+	pageSize    int
+	pageNumbers []int
+	hasNext     bool
+	hasPrev     bool
+	minScore    float64
 }
 
 // Database interface for server operations
@@ -79,6 +87,7 @@ type Database interface {
 	GetItems(ctx context.Context, limit, offset int) ([]domain.Item, error)
 	GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error)
 	GetClassifiedItemsWithFilters(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error)
+	GetClassifiedItemsCount(ctx context.Context, req domain.ArticlesRequest) (int, error)
 	GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error)
 	UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error
 	GetTopics(ctx context.Context) ([]string, error)
@@ -102,12 +111,56 @@ type ConfigProvider interface {
 	GetFullConfig() *config.Config // returns the full config struct for display
 }
 
+// GetPageSize returns the configured page size for pagination
+func (s *Server) GetPageSize() int {
+	cfg := s.config.GetFullConfig()
+	return cfg.Server.PageSize
+}
+
+// generatePageNumbers creates a slice of page numbers for pagination display
+func generatePageNumbers(currentPage, totalPages int) []int {
+	if totalPages <= 0 {
+		return []int{}
+	}
+
+	var pages []int
+
+	// show up to 5 page numbers centered around current page
+	start := currentPage - 2
+	end := currentPage + 2
+
+	// adjust bounds
+	if start < 1 {
+		start = 1
+		end = start + 4
+	}
+	if end > totalPages {
+		end = totalPages
+		start = end - 4
+		if start < 1 {
+			start = 1
+		}
+	}
+
+	for i := start; i <= end; i++ {
+		pages = append(pages, i)
+	}
+
+	return pages
+}
+
 // New initializes a new server instance
 func New(cfg ConfigProvider, database Database, scheduler Scheduler, version string, debug bool) *Server {
 	// template functions
 	funcMap := template.FuncMap{
 		"mul": func(a, b float64) float64 {
 			return a * b
+		},
+		"add": func(a, b int) int {
+			return a + b
+		},
+		"sub": func(a, b int) int {
+			return a - b
 		},
 		"printf": fmt.Sprintf,
 		"safeHTML": func(s string) template.HTML {
@@ -122,7 +175,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 	templates, err := templates.ParseFS(templateFS,
 		"templates/article-card.html",
 		"templates/feed-card.html",
-		"templates/article-content.html")
+		"templates/article-content.html",
+		"templates/pagination.html")
 	if err != nil {
 		log.Printf("[ERROR] failed to parse templates: %v", err)
 	}
@@ -137,7 +191,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			"templates/base.html",
 			"templates/"+pageName,
 			"templates/article-card.html",
-			"templates/feed-card.html")
+			"templates/feed-card.html",
+			"templates/pagination.html")
 		if err != nil {
 			log.Printf("[ERROR] failed to parse %s: %v", pageName, err)
 			continue
@@ -611,13 +666,23 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		sortBy = "published" // default sort
 	}
 
+	// get page parameter
+	page := 1
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
 	// get articles with classification
+	pageSize := s.GetPageSize()
 	req := domain.ArticlesRequest{
 		MinScore: minScore,
 		Topic:    topic,
 		FeedName: feedName,
 		SortBy:   sortBy,
-		Limit:    defaultArticleLimit,
+		Limit:    pageSize,
+		Page:     page,
 	}
 	articles, err := s.db.GetClassifiedItemsWithFilters(ctx, req)
 	if err != nil {
@@ -625,6 +690,19 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
 		return
 	}
+
+	// get total count for pagination
+	totalCount, err := s.db.GetClassifiedItemsCount(ctx, req)
+	if err != nil {
+		log.Printf("[ERROR] failed to get classified items count: %v", err)
+		http.Error(w, "Failed to load articles count", http.StatusInternalServerError)
+		return
+	}
+
+	// calculate pagination info
+	totalPages := (totalCount + pageSize - 1) / pageSize
+	hasNext := page < totalPages
+	hasPrev := page > 1
 
 	// get topics filtered by current score
 	topics, err := s.db.GetTopicsFiltered(ctx, minScore)
@@ -649,6 +727,15 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 			selectedTopic: topic,
 			selectedFeed:  feedName,
 			selectedSort:  sortBy,
+			// pagination
+			currentPage: page,
+			totalPages:  totalPages,
+			totalCount:  totalCount,
+			pageSize:    pageSize,
+			pageNumbers: generatePageNumbers(page, totalPages),
+			hasNext:     hasNext,
+			hasPrev:     hasPrev,
+			minScore:    minScore,
 		})
 		return
 	}
@@ -658,22 +745,40 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		ActivePage    string
 		Articles      []domain.ItemWithClassification
 		ArticleCount  int
+		TotalCount    int
 		Topics        []string
 		Feeds         []string
 		MinScore      float64
 		SelectedTopic string
 		SelectedFeed  string
 		SelectedSort  string
+		// pagination
+		CurrentPage int
+		TotalPages  int
+		PageSize    int
+		PageNumbers []int
+		HasNext     bool
+		HasPrev     bool
+		IsHTMX      bool
 	}{
 		ActivePage:    "home",
 		Articles:      articles,
 		ArticleCount:  len(articles),
+		TotalCount:    totalCount,
 		Topics:        topics,
 		Feeds:         feeds,
 		MinScore:      minScore,
 		SelectedTopic: topic,
 		SelectedFeed:  feedName,
 		SelectedSort:  sortBy,
+		// pagination
+		CurrentPage: page,
+		TotalPages:  totalPages,
+		PageSize:    pageSize,
+		PageNumbers: generatePageNumbers(page, totalPages),
+		HasNext:     hasNext,
+		HasPrev:     hasPrev,
+		IsHTMX:      false,
 	}
 
 	// render full page with base template and article card component
@@ -685,9 +790,9 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 
 // handleHTMXArticlesRequest handles HTMX requests for articles page
 func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, req articlesPageRequest) {
-	// for HTMX requests, return updated count, topic dropdown, feed dropdown, and articles list
+	// for HTMX requests, return updated count, topic dropdown, feed dropdown, and articles with pagination
 	// first update the count using out-of-band swap
-	if _, err := fmt.Fprintf(w, `<span id="article-count" class="article-count" hx-swap-oob="true">(%d)</span>`, len(req.articles)); err != nil {
+	if _, err := fmt.Fprintf(w, `<span id="article-count" class="article-count" hx-swap-oob="true">(%d/%d)</span>`, len(req.articles), req.totalCount); err != nil {
 		log.Printf("[ERROR] failed to write article count: %v", err)
 	}
 
@@ -697,9 +802,9 @@ func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, req articlesPa
 	// update feed dropdown using out-of-band swap
 	s.writeFeedDropdown(w, req.feeds, req.selectedFeed)
 
-	// then render the articles list
-	if _, err := w.Write([]byte(`<div id="articles-list">`)); err != nil {
-		log.Printf("[ERROR] failed to write articles list start: %v", err)
+	// render the complete articles-with-pagination wrapper
+	if _, err := w.Write([]byte(`<div id="articles-container" class="view-expanded"><div id="articles-list">`)); err != nil {
+		log.Printf("[ERROR] failed to write articles container start: %v", err)
 	}
 
 	for i := range req.articles {
@@ -712,15 +817,18 @@ func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, req articlesPa
 		}
 	}
 
-	if _, err := w.Write([]byte(`</div>`)); err != nil {
-		log.Printf("[ERROR] failed to write articles list end: %v", err)
+	if _, err := w.Write([]byte(`</div></div>`)); err != nil {
+		log.Printf("[ERROR] failed to write articles container end: %v", err)
 	}
+
+	// render pagination controls directly (not out-of-band)
+	s.writePaginationControls(w, req)
 }
 
 // writeTopicDropdown writes the topic dropdown HTML
 func (s *Server) writeTopicDropdown(w http.ResponseWriter, topics []string, selectedTopic string) {
 	var topicHTML strings.Builder
-	topicHTML.WriteString(`<select id="topic-filter" name="topic" hx-get="/articles" hx-trigger="change" hx-target="#articles-container" hx-include="#score-filter, #feed-filter" hx-swap-oob="true">`)
+	topicHTML.WriteString(`<select id="topic-filter" name="topic" hx-get="/articles" hx-trigger="change" hx-target="#articles-with-pagination" hx-include="#score-filter, #feed-filter" hx-swap-oob="true">`)
 	topicHTML.WriteString(`<option value="">All Topics</option>`)
 
 	for _, t := range topics {
@@ -741,7 +849,7 @@ func (s *Server) writeTopicDropdown(w http.ResponseWriter, topics []string, sele
 // writeFeedDropdown writes the feed dropdown HTML
 func (s *Server) writeFeedDropdown(w http.ResponseWriter, feeds []string, selectedFeed string) {
 	var feedHTML strings.Builder
-	feedHTML.WriteString(`<select id="feed-filter" name="feed" hx-get="/articles" hx-trigger="change" hx-target="#articles-container" hx-include="#score-filter, #topic-filter" hx-swap-oob="true">`)
+	feedHTML.WriteString(`<select id="feed-filter" name="feed" hx-get="/articles" hx-trigger="change" hx-target="#articles-with-pagination" hx-include="#score-filter, #topic-filter" hx-swap-oob="true">`)
 	feedHTML.WriteString(`<option value="">All Feeds</option>`)
 
 	for _, f := range feeds {
@@ -756,6 +864,43 @@ func (s *Server) writeFeedDropdown(w http.ResponseWriter, feeds []string, select
 
 	if _, err := w.Write([]byte(feedHTML.String())); err != nil {
 		log.Printf("[ERROR] failed to write feed dropdown: %v", err)
+	}
+}
+
+// writePaginationControls renders pagination using the pagination template
+func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPageRequest) {
+	// create template data matching the structure used by full page render
+	paginationData := struct {
+		Articles      []domain.ItemWithClassification
+		TotalCount    int
+		MinScore      float64
+		SelectedTopic string
+		SelectedFeed  string
+		SelectedSort  string
+		CurrentPage   int
+		TotalPages    int
+		PageNumbers   []int
+		HasNext       bool
+		HasPrev       bool
+		IsHTMX        bool
+	}{
+		Articles:      req.articles,
+		TotalCount:    req.totalCount,
+		MinScore:      req.minScore,
+		SelectedTopic: req.selectedTopic,
+		SelectedFeed:  req.selectedFeed,
+		SelectedSort:  req.selectedSort,
+		CurrentPage:   req.currentPage,
+		TotalPages:    req.totalPages,
+		PageNumbers:   req.pageNumbers,
+		HasNext:       req.hasNext,
+		HasPrev:       req.hasPrev,
+		IsHTMX:        true,
+	}
+
+	// execute the pagination template
+	if err := s.templates.ExecuteTemplate(w, "pagination", paginationData); err != nil {
+		log.Printf("[ERROR] failed to render pagination: %v", err)
 	}
 }
 

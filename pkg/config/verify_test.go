@@ -19,11 +19,13 @@ func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
 			name: "valid config",
 			config: &Config{
 				Server: struct {
-					Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-					Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
 				}{
-					Listen:  ":8080",
-					Timeout: 30 * time.Second,
+					Listen:   ":8080",
+					Timeout:  30 * time.Second,
+					PageSize: 50,
 				},
 				Database: struct {
 					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
@@ -58,11 +60,13 @@ func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
 			name: "missing server listen",
 			config: &Config{
 				Server: struct {
-					Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-					Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
 				}{
-					Listen:  "",
-					Timeout: 30 * time.Second,
+					Listen:   "",
+					Timeout:  30 * time.Second,
+					PageSize: 50,
 				},
 				Database: struct {
 					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
@@ -85,11 +89,13 @@ func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
 			name: "extraction enabled without timeout",
 			config: &Config{
 				Server: struct {
-					Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-					Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
 				}{
-					Listen:  ":8080",
-					Timeout: 30 * time.Second,
+					Listen:   ":8080",
+					Timeout:  30 * time.Second,
+					PageSize: 50,
 				},
 				Database: struct {
 					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
@@ -149,11 +155,13 @@ func TestValidateRequiredFields(t *testing.T) {
 			name: "valid minimal config",
 			config: &Config{
 				Server: struct {
-					Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-					Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
 				}{
-					Listen:  ":8080",
-					Timeout: 30 * time.Second,
+					Listen:   ":8080",
+					Timeout:  30 * time.Second,
+					PageSize: 50,
 				},
 				Database: struct {
 					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
@@ -182,11 +190,13 @@ func TestValidateRequiredFields(t *testing.T) {
 			name: "extraction enabled with missing max_concurrent",
 			config: &Config{
 				Server: struct {
-					Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-					Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
 				}{
-					Listen:  ":8080",
-					Timeout: 30 * time.Second,
+					Listen:   ":8080",
+					Timeout:  30 * time.Second,
+					PageSize: 50,
 				},
 				Database: struct {
 					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`

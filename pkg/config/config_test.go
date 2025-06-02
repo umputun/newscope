@@ -82,11 +82,13 @@ invalid yaml content
 func TestConfig_GetServerConfig(t *testing.T) {
 	cfg := &Config{
 		Server: struct {
-			Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-			Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+			Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+			Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+			PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
 		}{
-			Listen:  ":9090",
-			Timeout: 45 * time.Second,
+			Listen:   ":9090",
+			Timeout:  45 * time.Second,
+			PageSize: 50,
 		},
 	}
 

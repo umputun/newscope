@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/server/mocks"
 )
@@ -236,6 +237,19 @@ func TestServer_articlesHandler(t *testing.T) {
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				}{
+					Listen:   ":8080",
+					Timeout:  30 * time.Second,
+					PageSize: 50,
+				},
+			}
+		},
 	}
 
 	now := time.Now()
@@ -258,6 +272,9 @@ func TestServer_articlesHandler(t *testing.T) {
 					ClassifiedAt:   &classifiedAt,
 				},
 			}, nil
+		},
+		GetClassifiedItemsCountFunc: func(ctx context.Context, req domain.ArticlesRequest) (int, error) {
+			return 1, nil // return count of 1 item for testing
 		},
 		GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 			return []string{"Test Feed", "Example Feed"}, nil
@@ -287,8 +304,8 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "Test Article")
 	assert.Contains(t, w.Body.String(), "Test Feed")
 	assert.Contains(t, w.Body.String(), "Score: 8.5/10")
-	assert.Contains(t, w.Body.String(), "<html")                                                                  // should contain full HTML
-	assert.Contains(t, w.Body.String(), "Articles <span id=\"article-count\" class=\"article-count\">(1)</span>") // should show count
+	assert.Contains(t, w.Body.String(), "<html")                                                                    // should contain full HTML
+	assert.Contains(t, w.Body.String(), "Articles <span id=\"article-count\" class=\"article-count\">(1/1)</span>") // should show count
 
 	// test HTMX request (partial update)
 	req2 := httptest.NewRequest("GET", "/articles?score=5.0&topic=tech", http.NoBody)
@@ -301,8 +318,8 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w2.Body.String(), "Test Article")
 	assert.Contains(t, w2.Body.String(), "Test Feed")
 	assert.Contains(t, w2.Body.String(), "Score: 8.5/10")
-	assert.NotContains(t, w2.Body.String(), "<html")                                                                     // should NOT contain full HTML for HTMX request
-	assert.Contains(t, w2.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(1)</span>`) // should update count
+	assert.NotContains(t, w2.Body.String(), "<html")                                                                       // should NOT contain full HTML for HTMX request
+	assert.Contains(t, w2.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(1/1)</span>`) // should update count
 
 	// test HTMX request with no articles
 	database.GetClassifiedItemsWithFiltersFunc = func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
@@ -317,8 +334,8 @@ func TestServer_articlesHandler(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w3.Code)
 	assert.Contains(t, w3.Body.String(), "No articles found")
-	assert.NotContains(t, w3.Body.String(), "<html")                                                                     // should NOT contain full HTML
-	assert.Contains(t, w3.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(0)</span>`) // should show 0 count
+	assert.NotContains(t, w3.Body.String(), "<html")                                                                       // should NOT contain full HTML
+	assert.Contains(t, w3.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(0/1)</span>`) // should show 0 count
 }
 
 func TestServer_feedbackHandler(t *testing.T) {

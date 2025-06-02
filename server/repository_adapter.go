@@ -55,12 +55,19 @@ func (r *RepositoryAdapter) GetClassifiedItems(ctx context.Context, minScore flo
 
 // GetClassifiedItemsWithFilters returns items with classification data filtered by topic and feed
 func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+	// calculate offset from page number
+	offset := 0
+	if req.Page > 1 {
+		offset = (req.Page - 1) * req.Limit
+	}
+
 	filter := &domain.ItemFilter{
 		MinScore: req.MinScore,
 		Topic:    req.Topic,
 		FeedName: req.FeedName,
 		SortBy:   req.SortBy,
 		Limit:    req.Limit,
+		Offset:   offset,
 	}
 
 	// get items from repository
@@ -111,6 +118,19 @@ func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, r
 	}
 
 	return result, nil
+}
+
+// GetClassifiedItemsCount returns total count of classified items matching filters
+func (r *RepositoryAdapter) GetClassifiedItemsCount(ctx context.Context, req domain.ArticlesRequest) (int, error) {
+	filter := &domain.ItemFilter{
+		MinScore: req.MinScore,
+		Topic:    req.Topic,
+		FeedName: req.FeedName,
+		SortBy:   req.SortBy,
+		Limit:    req.Limit,
+	}
+
+	return r.repos.Classification.GetClassifiedItemsCount(ctx, filter)
 }
 
 // UpdateItemFeedback updates user feedback for an item

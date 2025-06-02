@@ -130,8 +130,14 @@ func (r *ClassificationRepository) GetClassifiedItems(ctx context.Context, filte
 		query += ` ORDER BY i.published DESC`
 	}
 
-	query += ` LIMIT ?`
-	args = append(args, filter.Limit)
+	// add pagination
+	if filter.Offset > 0 {
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, filter.Limit, filter.Offset)
+	} else {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
 
 	var sqlItems []itemWithFeedSQL
 	if err := r.db.SelectContext(ctx, &sqlItems, query, args...); err != nil {
@@ -390,4 +396,35 @@ func (r *ClassificationRepository) toDomainClassifiedItem(sqlItem *itemWithFeedS
 	}
 
 	return item
+}
+
+// GetClassifiedItemsCount returns the total count of classified items matching the filter
+func (r *ClassificationRepository) GetClassifiedItemsCount(ctx context.Context, filter *domain.ItemFilter) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM items i
+		JOIN feeds f ON i.feed_id = f.id
+		WHERE i.relevance_score >= ?
+		AND i.classified_at IS NOT NULL`
+
+	args := []interface{}{filter.MinScore}
+
+	// add topic filter if specified
+	if filter.Topic != "" {
+		query += ` AND JSON_EXTRACT(i.topics, '$') LIKE ?`
+		args = append(args, "%\""+filter.Topic+"\"%")
+	}
+
+	// add feed filter if specified
+	if filter.FeedName != "" {
+		query += ` AND (f.title = ? OR f.title = '' AND ? LIKE '%' || REPLACE(REPLACE(SUBSTR(f.url, INSTR(f.url, '://') + 3), 'www.', ''), '/', '') || '%')`
+		args = append(args, filter.FeedName, filter.FeedName)
+	}
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, query, args...); err != nil {
+		return 0, fmt.Errorf("get classified items count: %w", err)
+	}
+
+	return count, nil
 }

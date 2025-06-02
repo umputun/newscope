@@ -5,6 +5,7 @@ app:
 server:
   listen: ":8080"
   timeout: "30s"
+  page_size: 50              # Articles per page for pagination
 
 database:
   dsn: "./var/newscope.db"

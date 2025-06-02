@@ -34,6 +34,9 @@ import (
 //			GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
 //				panic("mock out the GetClassifiedItems method")
 //			},
+//			GetClassifiedItemsCountFunc: func(ctx context.Context, req domain.ArticlesRequest) (int, error) {
+//				panic("mock out the GetClassifiedItemsCount method")
+//			},
 //			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
 //				panic("mock out the GetClassifiedItemsWithFilters method")
 //			},
@@ -79,6 +82,9 @@ type DatabaseMock struct {
 
 	// GetClassifiedItemsFunc mocks the GetClassifiedItems method.
 	GetClassifiedItemsFunc func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error)
+
+	// GetClassifiedItemsCountFunc mocks the GetClassifiedItemsCount method.
+	GetClassifiedItemsCountFunc func(ctx context.Context, req domain.ArticlesRequest) (int, error)
 
 	// GetClassifiedItemsWithFiltersFunc mocks the GetClassifiedItemsWithFilters method.
 	GetClassifiedItemsWithFiltersFunc func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error)
@@ -147,6 +153,13 @@ type DatabaseMock struct {
 			// Limit is the limit argument value.
 			Limit int
 		}
+		// GetClassifiedItemsCount holds details about calls to the GetClassifiedItemsCount method.
+		GetClassifiedItemsCount []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Req is the req argument value.
+			Req domain.ArticlesRequest
+		}
 		// GetClassifiedItemsWithFilters holds details about calls to the GetClassifiedItemsWithFilters method.
 		GetClassifiedItemsWithFilters []struct {
 			// Ctx is the ctx argument value.
@@ -205,6 +218,7 @@ type DatabaseMock struct {
 	lockGetAllFeeds                   sync.RWMutex
 	lockGetClassifiedItem             sync.RWMutex
 	lockGetClassifiedItems            sync.RWMutex
+	lockGetClassifiedItemsCount       sync.RWMutex
 	lockGetClassifiedItemsWithFilters sync.RWMutex
 	lockGetFeeds                      sync.RWMutex
 	lockGetItems                      sync.RWMutex
@@ -431,6 +445,42 @@ func (mock *DatabaseMock) GetClassifiedItemsCalls() []struct {
 	mock.lockGetClassifiedItems.RLock()
 	calls = mock.calls.GetClassifiedItems
 	mock.lockGetClassifiedItems.RUnlock()
+	return calls
+}
+
+// GetClassifiedItemsCount calls GetClassifiedItemsCountFunc.
+func (mock *DatabaseMock) GetClassifiedItemsCount(ctx context.Context, req domain.ArticlesRequest) (int, error) {
+	if mock.GetClassifiedItemsCountFunc == nil {
+		panic("DatabaseMock.GetClassifiedItemsCountFunc: method is nil but Database.GetClassifiedItemsCount was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		Req domain.ArticlesRequest
+	}{
+		Ctx: ctx,
+		Req: req,
+	}
+	mock.lockGetClassifiedItemsCount.Lock()
+	mock.calls.GetClassifiedItemsCount = append(mock.calls.GetClassifiedItemsCount, callInfo)
+	mock.lockGetClassifiedItemsCount.Unlock()
+	return mock.GetClassifiedItemsCountFunc(ctx, req)
+}
+
+// GetClassifiedItemsCountCalls gets all the calls that were made to GetClassifiedItemsCount.
+// Check the length with:
+//
+//	len(mockedDatabase.GetClassifiedItemsCountCalls())
+func (mock *DatabaseMock) GetClassifiedItemsCountCalls() []struct {
+	Ctx context.Context
+	Req domain.ArticlesRequest
+} {
+	var calls []struct {
+		Ctx context.Context
+		Req domain.ArticlesRequest
+	}
+	mock.lockGetClassifiedItemsCount.RLock()
+	calls = mock.calls.GetClassifiedItemsCount
+	mock.lockGetClassifiedItemsCount.RUnlock()
 	return calls
 }
 

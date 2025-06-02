@@ -13,8 +13,9 @@ import (
 // Config holds the application configuration
 type Config struct {
 	Server struct {
-		Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-		Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+		Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+		Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+		PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
 	} `yaml:"server" json:"server" jsonschema:"description=Server configuration"`
 
 	Database struct {
@@ -96,6 +97,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Server.Timeout == 0 {
 		cfg.Server.Timeout = 30 * time.Second
+	}
+	if cfg.Server.PageSize == 0 {
+		cfg.Server.PageSize = 50
 	}
 
 	// set defaults for database
@@ -198,6 +202,9 @@ func validate(cfg *Config) error {
 	// validate server config
 	if cfg.Server.Timeout < time.Second {
 		return fmt.Errorf("server timeout must be at least 1 second")
+	}
+	if cfg.Server.PageSize < 1 {
+		return fmt.Errorf("server page_size must be at least 1")
 	}
 
 	return nil

@@ -4,7 +4,7 @@
 
 {{define "content"}}
 <div class="articles-header">
-    <h2>Articles <span id="article-count" class="article-count">({{.ArticleCount}})</span></h2>
+    <h2>Articles <span id="article-count" class="article-count">({{.ArticleCount}}/{{.TotalCount}})</span></h2>
     
     <!-- Score filter -->
     <div class="filters">
@@ -12,7 +12,7 @@
         <input type="range" id="score-filter" name="score" min="0" max="10" value="{{.MinScore}}" step="0.5"
                hx-get="/articles"
                hx-trigger="change"
-               hx-target="#articles-container"
+               hx-target="#articles-with-pagination"
                hx-include="#topic-filter, #feed-filter, #sort-filter">
         <span id="score-value">{{.MinScore}}</span>
         
@@ -21,7 +21,7 @@
         <select id="topic-filter" name="topic"
                 hx-get="/articles"
                 hx-trigger="change"
-                hx-target="#articles-container"
+                hx-target="#articles-with-pagination"
                 hx-include="#score-filter, #feed-filter, #sort-filter">
             <option value="">All Topics</option>
             {{range .Topics}}
@@ -34,7 +34,7 @@
         <select id="feed-filter" name="feed"
                 hx-get="/articles"
                 hx-trigger="change"
-                hx-target="#articles-container"
+                hx-target="#articles-with-pagination"
                 hx-include="#score-filter, #topic-filter, #sort-filter">
             <option value="">All Feeds</option>
             {{range .Feeds}}
@@ -47,7 +47,7 @@
         <select id="sort-filter" name="sort"
                 hx-get="/articles"
                 hx-trigger="change"
-                hx-target="#articles-container"
+                hx-target="#articles-with-pagination"
                 hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
             <option value="published" {{if eq .SelectedSort "published"}}selected{{end}}>Date</option>
             <option value="score" {{if eq .SelectedSort "score"}}selected{{end}}>Score</option>
@@ -64,14 +64,19 @@
     </div>
 </div>
 
-<div id="articles-container" class="view-expanded">
-    <div id="articles-list">
-        {{range .Articles}}
-        {{template "article-card.html" .}}
-        {{else}}
-        <p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>
-        {{end}}
+<div id="articles-with-pagination">
+    <div id="articles-container" class="view-expanded">
+        <div id="articles-list">
+            {{range .Articles}}
+            {{template "article-card.html" .}}
+            {{else}}
+            <p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>
+            {{end}}
+        </div>
     </div>
+
+    <!-- Pagination Controls -->
+    {{template "pagination" .}}
 </div>
 
 <!-- Auto-update score display and localStorage -->

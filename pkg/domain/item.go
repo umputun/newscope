@@ -67,6 +67,7 @@ type ItemFilter struct {
 	FeedName       string
 	SortBy         string
 	Limit          int
+	Offset         int
 	OnlyClassified bool
 }
 
@@ -77,6 +78,18 @@ type ArticlesRequest struct {
 	FeedName string
 	SortBy   string
 	Limit    int
+	Page     int
+}
+
+// PaginatedResponse represents a paginated response with metadata
+type PaginatedResponse struct {
+	Items       []ClassifiedItem `json:"items"`
+	TotalCount  int              `json:"total_count"`
+	CurrentPage int              `json:"current_page"`
+	PageSize    int              `json:"page_size"`
+	TotalPages  int              `json:"total_pages"`
+	HasNext     bool             `json:"has_next"`
+	HasPrev     bool             `json:"has_prev"`
 }
 
 // FeedbackExample represents feedback for LLM training
