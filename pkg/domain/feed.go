@@ -17,9 +17,3 @@ type Feed struct {
 	CreatedAt     time.Time
 }
 
-// FetchStatus represents the result of a feed fetch operation
-type FetchStatus struct {
-	Success   bool
-	NextFetch time.Time
-	Error     string
-}
