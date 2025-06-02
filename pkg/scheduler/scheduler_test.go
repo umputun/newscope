@@ -709,10 +709,10 @@ func TestScheduler_UpdateFeed_DuplicateItems(t *testing.T) {
 
 	// verify
 	require.NoError(t, err)
-	assert.Len(t, itemManager.ItemExistsCalls(), 2)               // checked both items
-	assert.Len(t, itemManager.ItemExistsByTitleOrURLCalls(), 1)  // only for new item
-	assert.Len(t, itemManager.CreateItemCalls(), 1)              // only created new item
-	assert.Len(t, feedManager.UpdateFeedFetchedCalls(), 1)       // updated feed timestamp
+	assert.Len(t, itemManager.ItemExistsCalls(), 2)             // checked both items
+	assert.Len(t, itemManager.ItemExistsByTitleOrURLCalls(), 1) // only for new item
+	assert.Len(t, itemManager.CreateItemCalls(), 1)             // only created new item
+	assert.Len(t, feedManager.UpdateFeedFetchedCalls(), 1)      // updated feed timestamp
 }
 
 func TestScheduler_UpdateAllFeeds_GetFeedsError(t *testing.T) {
@@ -881,7 +881,7 @@ func TestScheduler_UpdateAllFeeds_MultipleFeeds(t *testing.T) {
 
 	// verify - should process both feeds
 	assert.GreaterOrEqual(t, len(feedManager.GetFeedsCalls()), 1)
-	assert.GreaterOrEqual(t, len(parser.ParseCalls()), 2)               // should parse both feeds
+	assert.GreaterOrEqual(t, len(parser.ParseCalls()), 2)                  // should parse both feeds
 	assert.GreaterOrEqual(t, len(feedManager.UpdateFeedFetchedCalls()), 2) // should update both feeds
 }
 

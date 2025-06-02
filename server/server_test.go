@@ -1763,4 +1763,3 @@ func TestServer_RSSHandler_DatabaseError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "Failed to generate RSS feed")
 }
-

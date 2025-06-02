@@ -376,7 +376,7 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Model:    "gpt-4",
 			},
 			Extraction: ExtractionConfig{
-				Enabled:       false, // disabled
+				Enabled:       false,                  // disabled
 				Timeout:       999 * time.Millisecond, // would be invalid if enabled
 				MinTextLength: -1,                     // would be invalid if enabled
 			},
