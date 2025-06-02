@@ -48,7 +48,6 @@ type FeedbackType string
 const (
 	FeedbackLike    FeedbackType = "like"
 	FeedbackDislike FeedbackType = "dislike"
-	FeedbackSpam    FeedbackType = "spam"
 )
 
 // ClassifiedItem represents an item with all processing completed

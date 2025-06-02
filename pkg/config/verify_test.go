@@ -1,8 +1,6 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,21 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestVerifyAgainstSchema(t *testing.T) {
-	// create a temporary schema file
-	tmpDir := t.TempDir()
-	schemaPath := filepath.Join(tmpDir, "test.schema.json")
-
-	// generate and write schema
-	schema, err := GenerateSchema()
-	require.NoError(t, err)
-
-	schemaJSON, err := schema.MarshalJSON()
-	require.NoError(t, err)
-
-	err = os.WriteFile(schemaPath, schemaJSON, 0o644)
-	require.NoError(t, err)
-
+func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
 	tests := []struct {
 		name    string
 		config  *Config
@@ -40,6 +24,26 @@ func TestVerifyAgainstSchema(t *testing.T) {
 				}{
 					Listen:  ":8080",
 					Timeout: 30 * time.Second,
+				},
+				Database: struct {
+					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
+					MaxOpenConns    int    `yaml:"max_open_conns" json:"max_open_conns" jsonschema:"default=10,description=Maximum number of open connections"`
+					MaxIdleConns    int    `yaml:"max_idle_conns" json:"max_idle_conns" jsonschema:"default=5,description=Maximum number of idle connections"`
+					ConnMaxLifetime int    `yaml:"conn_max_lifetime" json:"conn_max_lifetime" jsonschema:"default=3600,description=Connection maximum lifetime in seconds"`
+				}{
+					DSN: "file:test.db",
+				},
+				LLM: LLMConfig{
+					Endpoint: "http://localhost:8080",
+					APIKey:   "test-key",
+					Model:    "test-model",
+				},
+				Schedule: struct {
+					UpdateInterval int `yaml:"update_interval" json:"update_interval" jsonschema:"default=30,description=Feed update interval in minutes"`
+					MaxWorkers     int `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
+				}{
+					UpdateInterval: 30,
+					MaxWorkers:     5,
 				},
 				Extraction: ExtractionConfig{
 					Enabled:       false,
@@ -60,6 +64,19 @@ func TestVerifyAgainstSchema(t *testing.T) {
 					Listen:  "",
 					Timeout: 30 * time.Second,
 				},
+				Database: struct {
+					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
+					MaxOpenConns    int    `yaml:"max_open_conns" json:"max_open_conns" jsonschema:"default=10,description=Maximum number of open connections"`
+					MaxIdleConns    int    `yaml:"max_idle_conns" json:"max_idle_conns" jsonschema:"default=5,description=Maximum number of idle connections"`
+					ConnMaxLifetime int    `yaml:"conn_max_lifetime" json:"conn_max_lifetime" jsonschema:"default=3600,description=Connection maximum lifetime in seconds"`
+				}{
+					DSN: "file:test.db",
+				},
+				LLM: LLMConfig{
+					Endpoint: "http://localhost:8080",
+					APIKey:   "test-key",
+					Model:    "test-model",
+				},
 			},
 			wantErr: true,
 			errMsg:  "server.listen is required",
@@ -73,6 +90,26 @@ func TestVerifyAgainstSchema(t *testing.T) {
 				}{
 					Listen:  ":8080",
 					Timeout: 30 * time.Second,
+				},
+				Database: struct {
+					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
+					MaxOpenConns    int    `yaml:"max_open_conns" json:"max_open_conns" jsonschema:"default=10,description=Maximum number of open connections"`
+					MaxIdleConns    int    `yaml:"max_idle_conns" json:"max_idle_conns" jsonschema:"default=5,description=Maximum number of idle connections"`
+					ConnMaxLifetime int    `yaml:"conn_max_lifetime" json:"conn_max_lifetime" jsonschema:"default=3600,description=Connection maximum lifetime in seconds"`
+				}{
+					DSN: "file:test.db",
+				},
+				LLM: LLMConfig{
+					Endpoint: "http://localhost:8080",
+					APIKey:   "test-key",
+					Model:    "test-model",
+				},
+				Schedule: struct {
+					UpdateInterval int `yaml:"update_interval" json:"update_interval" jsonschema:"default=30,description=Feed update interval in minutes"`
+					MaxWorkers     int `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
+				}{
+					UpdateInterval: 30,
+					MaxWorkers:     5,
 				},
 				Extraction: ExtractionConfig{
 					Enabled:       true,
@@ -88,7 +125,7 @@ func TestVerifyAgainstSchema(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := VerifyAgainstSchema(tt.config, schemaPath)
+			err := VerifyAgainstEmbeddedSchema(tt.config)
 			if tt.wantErr {
 				require.Error(t, err)
 				if tt.errMsg != "" {
@@ -118,6 +155,26 @@ func TestValidateRequiredFields(t *testing.T) {
 					Listen:  ":8080",
 					Timeout: 30 * time.Second,
 				},
+				Database: struct {
+					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
+					MaxOpenConns    int    `yaml:"max_open_conns" json:"max_open_conns" jsonschema:"default=10,description=Maximum number of open connections"`
+					MaxIdleConns    int    `yaml:"max_idle_conns" json:"max_idle_conns" jsonschema:"default=5,description=Maximum number of idle connections"`
+					ConnMaxLifetime int    `yaml:"conn_max_lifetime" json:"conn_max_lifetime" jsonschema:"default=3600,description=Connection maximum lifetime in seconds"`
+				}{
+					DSN: "file:test.db",
+				},
+				LLM: LLMConfig{
+					Endpoint: "http://localhost:8080",
+					APIKey:   "test-key",
+					Model:    "test-model",
+				},
+				Schedule: struct {
+					UpdateInterval int `yaml:"update_interval" json:"update_interval" jsonschema:"default=30,description=Feed update interval in minutes"`
+					MaxWorkers     int `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
+				}{
+					UpdateInterval: 30,
+					MaxWorkers:     5,
+				},
 			},
 			wantErr: false,
 		},
@@ -130,6 +187,26 @@ func TestValidateRequiredFields(t *testing.T) {
 				}{
 					Listen:  ":8080",
 					Timeout: 30 * time.Second,
+				},
+				Database: struct {
+					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
+					MaxOpenConns    int    `yaml:"max_open_conns" json:"max_open_conns" jsonschema:"default=10,description=Maximum number of open connections"`
+					MaxIdleConns    int    `yaml:"max_idle_conns" json:"max_idle_conns" jsonschema:"default=5,description=Maximum number of idle connections"`
+					ConnMaxLifetime int    `yaml:"conn_max_lifetime" json:"conn_max_lifetime" jsonschema:"default=3600,description=Connection maximum lifetime in seconds"`
+				}{
+					DSN: "file:test.db",
+				},
+				LLM: LLMConfig{
+					Endpoint: "http://localhost:8080",
+					APIKey:   "test-key",
+					Model:    "test-model",
+				},
+				Schedule: struct {
+					UpdateInterval int `yaml:"update_interval" json:"update_interval" jsonschema:"default=30,description=Feed update interval in minutes"`
+					MaxWorkers     int `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
+				}{
+					UpdateInterval: 30,
+					MaxWorkers:     5,
 				},
 				Extraction: ExtractionConfig{
 					Enabled:       true,
@@ -158,62 +235,6 @@ func TestValidateRequiredFields(t *testing.T) {
 	}
 }
 
-func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
-	tests := []struct {
-		name    string
-		config  *Config
-		wantErr bool
-		errMsg  string
-	}{
-		{
-			name: "valid config",
-			config: &Config{
-				Server: struct {
-					Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-					Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
-				}{
-					Listen:  ":8080",
-					Timeout: 30 * time.Second,
-				},
-				Extraction: ExtractionConfig{
-					Enabled:       false,
-					Timeout:       30 * time.Second,
-					MaxConcurrent: 5,
-					RateLimit:     100 * time.Millisecond,
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "missing required field",
-			config: &Config{
-				Server: struct {
-					Listen  string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-					Timeout time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
-				}{
-					Listen:  "",
-					Timeout: 30 * time.Second,
-				},
-			},
-			wantErr: true,
-			errMsg:  "server.listen is required",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := VerifyAgainstEmbeddedSchema(tt.config)
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
 
 func TestGenerateSchema(t *testing.T) {
 	schema, err := GenerateSchema()

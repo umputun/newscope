@@ -465,7 +465,7 @@ func NewScore(s float64) (Score, error) {
 **Examples Found and RESOLVED:**
 - ✅ **REMOVED**: `pkg/feed/fetcher.go` - Legacy HTTPFetcher completely removed (was 60 lines + tests)
 - ✅ **REMOVED**: `pkg/config/` unused methods - GetExtractionConfig, GetLLMConfig removed entirely
-- **Still to audit**: `repository/repository.go:117-135` - `criticalError` type and `isLockError` function may be unused
+- ✅ **AUDITED**: `repository/repository.go:117-135` - `criticalError` and `isLockError` are **ACTIVELY USED** for SQLite retry logic (NOT dead code)
 
 **Impact:**
 - Code bloat and confusion

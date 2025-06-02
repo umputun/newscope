@@ -5,6 +5,7 @@ go 1.24
 require (
 	github.com/fatih/color v1.18.0
 	github.com/go-pkgz/lgr v0.12.0
+	github.com/go-pkgz/repeater/v2 v2.0.1
 	github.com/go-pkgz/rest v1.20.3
 	github.com/go-pkgz/routegroup v1.4.1
 	github.com/invopop/jsonschema v0.13.0
@@ -31,8 +32,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elliotchance/pie/v2 v2.9.0 // indirect
 	github.com/forPelevin/gomoji v1.2.0 // indirect
-	github.com/go-pkgz/repeater v1.2.0 // indirect
-	github.com/go-pkgz/repeater/v2 v2.0.1 // indirect
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c // indirect
 	github.com/go-shiori/go-readability v0.0.0-20241012063810-92284fa8a71f // indirect
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
