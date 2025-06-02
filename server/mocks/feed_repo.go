@@ -28,6 +28,9 @@ import (
 //			GetFeedsFunc: func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error) {
 //				panic("mock out the GetFeeds method")
 //			},
+//			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+//				panic("mock out the UpdateFeed method")
+//			},
 //			UpdateFeedStatusFunc: func(ctx context.Context, feedID int64, enabled bool) error {
 //				panic("mock out the UpdateFeedStatus method")
 //			},
@@ -49,6 +52,9 @@ type FeedRepoMock struct {
 
 	// GetFeedsFunc mocks the GetFeeds method.
 	GetFeedsFunc func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error)
+
+	// UpdateFeedFunc mocks the UpdateFeed method.
+	UpdateFeedFunc func(ctx context.Context, feedID int64, title string, fetchInterval int) error
 
 	// UpdateFeedStatusFunc mocks the UpdateFeedStatus method.
 	UpdateFeedStatusFunc func(ctx context.Context, feedID int64, enabled bool) error
@@ -83,6 +89,17 @@ type FeedRepoMock struct {
 			// EnabledOnly is the enabledOnly argument value.
 			EnabledOnly bool
 		}
+		// UpdateFeed holds details about calls to the UpdateFeed method.
+		UpdateFeed []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// FeedID is the feedID argument value.
+			FeedID int64
+			// Title is the title argument value.
+			Title string
+			// FetchInterval is the fetchInterval argument value.
+			FetchInterval int
+		}
 		// UpdateFeedStatus holds details about calls to the UpdateFeedStatus method.
 		UpdateFeedStatus []struct {
 			// Ctx is the ctx argument value.
@@ -97,6 +114,7 @@ type FeedRepoMock struct {
 	lockDeleteFeed         sync.RWMutex
 	lockGetActiveFeedNames sync.RWMutex
 	lockGetFeeds           sync.RWMutex
+	lockUpdateFeed         sync.RWMutex
 	lockUpdateFeedStatus   sync.RWMutex
 }
 
@@ -241,6 +259,50 @@ func (mock *FeedRepoMock) GetFeedsCalls() []struct {
 	mock.lockGetFeeds.RLock()
 	calls = mock.calls.GetFeeds
 	mock.lockGetFeeds.RUnlock()
+	return calls
+}
+
+// UpdateFeed calls UpdateFeedFunc.
+func (mock *FeedRepoMock) UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+	if mock.UpdateFeedFunc == nil {
+		panic("FeedRepoMock.UpdateFeedFunc: method is nil but FeedRepo.UpdateFeed was just called")
+	}
+	callInfo := struct {
+		Ctx           context.Context
+		FeedID        int64
+		Title         string
+		FetchInterval int
+	}{
+		Ctx:           ctx,
+		FeedID:        feedID,
+		Title:         title,
+		FetchInterval: fetchInterval,
+	}
+	mock.lockUpdateFeed.Lock()
+	mock.calls.UpdateFeed = append(mock.calls.UpdateFeed, callInfo)
+	mock.lockUpdateFeed.Unlock()
+	return mock.UpdateFeedFunc(ctx, feedID, title, fetchInterval)
+}
+
+// UpdateFeedCalls gets all the calls that were made to UpdateFeed.
+// Check the length with:
+//
+//	len(mockedFeedRepo.UpdateFeedCalls())
+func (mock *FeedRepoMock) UpdateFeedCalls() []struct {
+	Ctx           context.Context
+	FeedID        int64
+	Title         string
+	FetchInterval int
+} {
+	var calls []struct {
+		Ctx           context.Context
+		FeedID        int64
+		Title         string
+		FetchInterval int
+	}
+	mock.lockUpdateFeed.RLock()
+	calls = mock.calls.UpdateFeed
+	mock.lockUpdateFeed.RUnlock()
 	return calls
 }
 

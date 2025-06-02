@@ -36,7 +36,34 @@
         {{end}}
     </div>
     
+    <!-- Edit Form (hidden by default) -->
+    <div id="edit-form-{{.ID}}" class="feed-edit-form" style="display: none;">
+        <form hx-put="/api/v1/feeds/{{.ID}}" 
+              hx-target="#feed-{{.ID}}" 
+              hx-swap="outerHTML">
+            <div class="form-group">
+                <label for="edit-title-{{.ID}}">Title:</label>
+                <input type="text" id="edit-title-{{.ID}}" name="title" value="{{.Title}}" placeholder="Feed title">
+            </div>
+            <div class="form-group">
+                <label for="edit-interval-{{.ID}}">Update Interval (minutes):</label>
+                <input type="number" id="edit-interval-{{.ID}}" name="fetch_interval" value="{{printf "%d" (div .FetchInterval 60)}}" min="5" max="1440">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn-primary">Save</button>
+                <button type="button" class="btn-secondary" onclick="document.getElementById('edit-form-{{.ID}}').style.display='none'">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+    
     <div class="feed-actions">
+        <button class="btn-secondary"
+                onclick="document.getElementById('edit-form-{{.ID}}').style.display='block'">
+            Edit
+        </button>
+        
         {{if .Enabled}}
         <button class="btn-secondary"
                 hx-post="/api/v1/feeds/{{.ID}}/disable"

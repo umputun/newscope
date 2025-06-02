@@ -173,6 +173,16 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedID int64, ena
 	return nil
 }
 
+// UpdateFeed updates feed title and interval
+func (r *FeedRepository) UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+	query := "UPDATE feeds SET title = ?, fetch_interval = ? WHERE id = ?"
+	_, err := r.db.ExecContext(ctx, query, title, fetchInterval, feedID)
+	if err != nil {
+		return fmt.Errorf("update feed: %w", err)
+	}
+	return nil
+}
+
 // DeleteFeed removes a feed and all its items
 func (r *FeedRepository) DeleteFeed(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM feeds WHERE id = ?", id)

@@ -96,6 +96,7 @@ type Database interface {
 	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
 	GetAllFeeds(ctx context.Context) ([]domain.Feed, error)
 	CreateFeed(ctx context.Context, feed *domain.Feed) error
+	UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval int) error
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
 	DeleteFeed(ctx context.Context, feedID int64) error
 }
@@ -162,6 +163,12 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		},
 		"sub": func(a, b int) int {
 			return a - b
+		},
+		"div": func(a, b int) int {
+			if b == 0 {
+				return 0
+			}
+			return a / b
 		},
 		"printf": fmt.Sprintf,
 		"safeHTML": func(s string) template.HTML {
@@ -291,6 +298,7 @@ func (s *Server) setupRoutes() {
 
 		// feed management
 		r.HandleFunc("POST /feeds", s.createFeedHandler)
+		r.HandleFunc("PUT /feeds/{id}", s.updateFeedHandler)
 		r.HandleFunc("POST /feeds/{id}/enable", s.enableFeedHandler)
 		r.HandleFunc("POST /feeds/{id}/disable", s.disableFeedHandler)
 		r.HandleFunc("POST /feeds/{id}/fetch", s.fetchFeedHandler)
@@ -597,6 +605,59 @@ func (s *Server) fetchFeedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// updateFeedHandler updates feed title and interval
+func (s *Server) updateFeedHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		renderError(w, r, fmt.Errorf("invalid feed ID"), http.StatusBadRequest)
+		return
+	}
+
+	// parse form data
+	err = r.ParseForm()
+	if err != nil {
+		renderError(w, r, fmt.Errorf("invalid form data"), http.StatusBadRequest)
+		return
+	}
+
+	title := r.FormValue("title")
+
+	// parse fetch interval
+	fetchInterval := defaultFetchInterval // default 30 minutes
+	if intervalStr := r.FormValue("fetch_interval"); intervalStr != "" {
+		if minutes, err := strconv.Atoi(intervalStr); err == nil {
+			fetchInterval = minutes * minutesToSeconds // convert to seconds
+		}
+	}
+
+	// update feed
+	if err := s.db.UpdateFeed(ctx, id, title, fetchInterval); err != nil {
+		log.Printf("[ERROR] failed to update feed: %v", err)
+		renderError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	// get updated feed
+	feeds, err := s.db.GetAllFeeds(ctx)
+	if err != nil {
+		http.Error(w, "Failed to reload feed", http.StatusInternalServerError)
+		return
+	}
+
+	// find the updated feed
+	for _, feed := range feeds {
+		if feed.ID == id {
+			s.renderFeedCard(w, &feed)
+			return
+		}
+	}
+
+	http.Error(w, "Feed not found", http.StatusNotFound)
 }
 
 // deleteFeedHandler deletes a feed

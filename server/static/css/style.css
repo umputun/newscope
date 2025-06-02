@@ -1138,6 +1138,23 @@ footer p {
     align-items: center;
 }
 
+.feed-edit-form {
+    margin: 1rem 0;
+    padding: 1rem;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-secondary);
+    border-radius: 0.25rem;
+    transition: background-color 0.3s ease;
+}
+
+.feed-edit-form .form-group {
+    margin-bottom: 0.75rem;
+}
+
+.feed-edit-form .form-actions {
+    margin-top: 1rem;
+}
+
 .no-feeds {
     text-align: center;
     color: var(--text-tertiary);

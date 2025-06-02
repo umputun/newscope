@@ -573,6 +573,19 @@ func TestRepositoryAdapter_FeedOperations(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	t.Run("UpdateFeed", func(t *testing.T) {
+		feedRepo.UpdateFeedFunc = func(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+			assert.Equal(t, int64(123), feedID)
+			assert.Equal(t, "New Title", title)
+			assert.Equal(t, 3600, fetchInterval)
+			return nil
+		}
+
+		err := adapter.UpdateFeed(context.Background(), 123, "New Title", 3600)
+		require.NoError(t, err)
+		assert.Len(t, feedRepo.UpdateFeedCalls(), 1)
+	})
+
 	t.Run("UpdateFeedStatus", func(t *testing.T) {
 		feedRepo.UpdateFeedStatusFunc = func(ctx context.Context, feedID int64, enabled bool) error {
 			return nil

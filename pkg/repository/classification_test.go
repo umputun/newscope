@@ -972,7 +972,7 @@ func TestClassificationRepository_GetTopTopicsByScore(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	// Use the same test data pattern as the working TestClassificationRepository_GetTopics test
+	// use the same test data pattern as the working TestClassificationRepository_GetTopics test
 	// to avoid the json_each issue that's specific to this test setup
 	testFeed := createTestFeed(t, repos, "Test Feed")
 
@@ -1063,8 +1063,8 @@ func TestClassificationRepository_GetTopTopicsByScore(t *testing.T) {
 		topics, err := repos.Classification.GetTopTopicsByScore(context.Background(), 8.5, 10)
 		require.NoError(t, err)
 
-		// With threshold 8.5, only items with score >= 8.5 are included (item-3 with score 9.0)
-		// So technology and science both get score 9.0 with 1 item each
+		// with threshold 8.5, only items with score >= 8.5 are included (item-3 with score 9.0)
+		// so technology and science both get score 9.0 with 1 item each
 		assert.GreaterOrEqual(t, len(topics), 2)
 
 		found := false

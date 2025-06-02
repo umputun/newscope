@@ -55,6 +55,9 @@ import (
 //			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetTopicsFiltered method")
 //			},
+//			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+//				panic("mock out the UpdateFeed method")
+//			},
 //			UpdateFeedStatusFunc: func(ctx context.Context, feedID int64, enabled bool) error {
 //				panic("mock out the UpdateFeedStatus method")
 //			},
@@ -106,6 +109,9 @@ type DatabaseMock struct {
 
 	// GetTopicsFilteredFunc mocks the GetTopicsFiltered method.
 	GetTopicsFilteredFunc func(ctx context.Context, minScore float64) ([]string, error)
+
+	// UpdateFeedFunc mocks the UpdateFeed method.
+	UpdateFeedFunc func(ctx context.Context, feedID int64, title string, fetchInterval int) error
 
 	// UpdateFeedStatusFunc mocks the UpdateFeedStatus method.
 	UpdateFeedStatusFunc func(ctx context.Context, feedID int64, enabled bool) error
@@ -208,6 +214,17 @@ type DatabaseMock struct {
 			// MinScore is the minScore argument value.
 			MinScore float64
 		}
+		// UpdateFeed holds details about calls to the UpdateFeed method.
+		UpdateFeed []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// FeedID is the feedID argument value.
+			FeedID int64
+			// Title is the title argument value.
+			Title string
+			// FetchInterval is the fetchInterval argument value.
+			FetchInterval int
+		}
 		// UpdateFeedStatus holds details about calls to the UpdateFeedStatus method.
 		UpdateFeedStatus []struct {
 			// Ctx is the ctx argument value.
@@ -240,6 +257,7 @@ type DatabaseMock struct {
 	lockGetTopTopicsByScore           sync.RWMutex
 	lockGetTopics                     sync.RWMutex
 	lockGetTopicsFiltered             sync.RWMutex
+	lockUpdateFeed                    sync.RWMutex
 	lockUpdateFeedStatus              sync.RWMutex
 	lockUpdateItemFeedback            sync.RWMutex
 }
@@ -713,6 +731,50 @@ func (mock *DatabaseMock) GetTopicsFilteredCalls() []struct {
 	mock.lockGetTopicsFiltered.RLock()
 	calls = mock.calls.GetTopicsFiltered
 	mock.lockGetTopicsFiltered.RUnlock()
+	return calls
+}
+
+// UpdateFeed calls UpdateFeedFunc.
+func (mock *DatabaseMock) UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+	if mock.UpdateFeedFunc == nil {
+		panic("DatabaseMock.UpdateFeedFunc: method is nil but Database.UpdateFeed was just called")
+	}
+	callInfo := struct {
+		Ctx           context.Context
+		FeedID        int64
+		Title         string
+		FetchInterval int
+	}{
+		Ctx:           ctx,
+		FeedID:        feedID,
+		Title:         title,
+		FetchInterval: fetchInterval,
+	}
+	mock.lockUpdateFeed.Lock()
+	mock.calls.UpdateFeed = append(mock.calls.UpdateFeed, callInfo)
+	mock.lockUpdateFeed.Unlock()
+	return mock.UpdateFeedFunc(ctx, feedID, title, fetchInterval)
+}
+
+// UpdateFeedCalls gets all the calls that were made to UpdateFeed.
+// Check the length with:
+//
+//	len(mockedDatabase.UpdateFeedCalls())
+func (mock *DatabaseMock) UpdateFeedCalls() []struct {
+	Ctx           context.Context
+	FeedID        int64
+	Title         string
+	FetchInterval int
+} {
+	var calls []struct {
+		Ctx           context.Context
+		FeedID        int64
+		Title         string
+		FetchInterval int
+	}
+	mock.lockUpdateFeed.RLock()
+	calls = mock.calls.UpdateFeed
+	mock.lockUpdateFeed.RUnlock()
 	return calls
 }
 

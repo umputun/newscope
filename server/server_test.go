@@ -959,6 +959,152 @@ func TestServer_FetchFeedHandler_SchedulerError(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "scheduler error")
 }
 
+func TestServer_UpdateFeedHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	testFeed := domain.Feed{
+		ID:            123,
+		URL:           "https://example.com/feed.xml",
+		Title:         "Updated Test Feed",
+		FetchInterval: 2400, // 40 minutes in seconds
+		Enabled:       true,
+	}
+
+	database := &mocks.DatabaseMock{
+		UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+			assert.Equal(t, int64(123), feedID)
+			assert.Equal(t, "New Title", title)
+			assert.Equal(t, 2400, fetchInterval) // 40 minutes in seconds
+			return nil
+		},
+		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+			return []domain.Feed{testFeed}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	// create form data
+	form := "title=New+Title&fetch_interval=40"
+	req := httptest.NewRequest("PUT", "/api/v1/feeds/123", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.updateFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Updated Test Feed") // feed card should be rendered
+}
+
+func TestServer_UpdateFeedHandler_InvalidID(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	req := httptest.NewRequest("PUT", "/api/v1/feeds/invalid", strings.NewReader(""))
+	req.SetPathValue("id", "invalid")
+	w := httptest.NewRecorder()
+
+	srv.updateFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid feed ID")
+}
+
+func TestServer_UpdateFeedHandler_InvalidForm(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	// malformed form data
+	req := httptest.NewRequest("PUT", "/api/v1/feeds/123", strings.NewReader("%invalid"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.updateFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid form data")
+}
+
+func TestServer_UpdateFeedHandler_DatabaseError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+			return fmt.Errorf("database error")
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	form := "title=New+Title&fetch_interval=40"
+	req := httptest.NewRequest("PUT", "/api/v1/feeds/123", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.updateFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "database error")
+}
+
+func TestServer_UpdateFeedHandler_FeedNotFound(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+			return nil
+		},
+		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+			return []domain.Feed{}, nil // no feeds
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	form := "title=New+Title&fetch_interval=40"
+	req := httptest.NewRequest("PUT", "/api/v1/feeds/123", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.updateFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, "Feed not found\n", w.Body.String())
+}
+
 func TestServer_SettingsHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) {

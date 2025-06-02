@@ -178,6 +178,47 @@ func TestFeedRepository_UpdateFeedError(t *testing.T) {
 	})
 }
 
+func TestFeedRepository_UpdateFeed(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// create a test feed
+	testFeed := &domain.Feed{
+		URL:           "https://example.com/test-feed.xml",
+		Title:         "Original Title",
+		Description:   "Feed for testing UpdateFeed",
+		FetchInterval: 1800, // 30 minutes
+		Enabled:       true,
+	}
+
+	err := repos.Feed.CreateFeed(context.Background(), testFeed)
+	require.NoError(t, err)
+
+	t.Run("update feed title and interval", func(t *testing.T) {
+		newTitle := "Updated Title"
+		newInterval := 3600 // 60 minutes
+
+		err := repos.Feed.UpdateFeed(context.Background(), testFeed.ID, newTitle, newInterval)
+		require.NoError(t, err)
+
+		// verify the update
+		updatedFeed, err := repos.Feed.GetFeed(context.Background(), testFeed.ID)
+		require.NoError(t, err)
+		assert.Equal(t, newTitle, updatedFeed.Title)
+		assert.Equal(t, newInterval, updatedFeed.FetchInterval)
+		
+		// verify other fields unchanged
+		assert.Equal(t, testFeed.URL, updatedFeed.URL)
+		assert.Equal(t, testFeed.Description, updatedFeed.Description)
+		assert.Equal(t, testFeed.Enabled, updatedFeed.Enabled)
+	})
+
+	t.Run("update non-existent feed", func(t *testing.T) {
+		err := repos.Feed.UpdateFeed(context.Background(), 99999, "New Title", 7200)
+		assert.NoError(t, err) // SQLite doesn't return error for no rows affected
+	})
+}
+
 func TestFeedRepository_GetActiveFeedNames(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
