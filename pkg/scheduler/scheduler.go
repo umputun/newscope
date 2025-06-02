@@ -22,6 +22,11 @@ import (
 	"github.com/umputun/newscope/pkg/llm"
 )
 
+const (
+	defaultChannelBufferSize = 100
+	defaultUpdateFeedBuffer  = 10
+)
+
 // FeedManager handles feed operations for scheduler
 type FeedManager interface {
 	GetFeed(ctx context.Context, id int64) (*domain.Feed, error)
@@ -130,7 +135,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 	ctx, s.cancel = context.WithCancel(ctx)
 
 	// channel for items to process
-	processCh := make(chan domain.Item, 100)
+	processCh := make(chan domain.Item, defaultChannelBufferSize)
 
 	// start processing worker
 	s.wg.Add(1)
@@ -382,7 +387,7 @@ func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
 		return fmt.Errorf("get feed: %w", err)
 	}
 
-	processCh := make(chan domain.Item, 10)
+	processCh := make(chan domain.Item, defaultUpdateFeedBuffer)
 	defer close(processCh)
 
 	go func() {

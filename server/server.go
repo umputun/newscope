@@ -23,6 +23,24 @@ import (
 	"github.com/umputun/newscope/pkg/domain"
 )
 
+const (
+	// Server configuration
+	defaultThrottleLimit = 100
+	defaultSizeLimit     = 1024 * 1024 // 1MB
+	
+	// RSS feed defaults
+	defaultMinScore   = 5.0
+	defaultRSSLimit   = 100
+	defaultBaseURL    = "http://localhost:8080"
+	
+	// Feed defaults
+	defaultFetchInterval = 1800 // 30 minutes in seconds
+	minutesToSeconds     = 60
+	
+	// Article pagination
+	defaultArticleLimit = 100
+)
+
 //go:generate moq -out mocks/config.go -pkg mocks -skip-ensure -fmt goimports . ConfigProvider
 //go:generate moq -out mocks/database.go -pkg mocks -skip-ensure -fmt goimports . Database
 //go:generate moq -out mocks/scheduler.go -pkg mocks -skip-ensure -fmt goimports . Scheduler
@@ -184,8 +202,8 @@ func (s *Server) setupMiddleware() {
 	}
 
 	s.router.Use(rest.Recoverer(lgr.Default()))
-	s.router.Use(rest.Throttle(100))
-	s.router.Use(rest.SizeLimit(1024 * 1024)) // 1MB
+	s.router.Use(rest.Throttle(defaultThrottleLimit))
+	s.router.Use(rest.SizeLimit(defaultSizeLimit))
 }
 
 // setupRoutes configures application routes
@@ -249,7 +267,7 @@ func (s *Server) rssHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get min score from query params, default to 5.0
-	minScore := 5.0
+	minScore := defaultMinScore
 	if scoreStr := r.URL.Query().Get("min_score"); scoreStr != "" {
 		if score, err := strconv.ParseFloat(scoreStr, 64); err == nil {
 			minScore = score
@@ -257,7 +275,7 @@ func (s *Server) rssHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get classified items
-	items, err := s.db.GetClassifiedItems(ctx, minScore, topic, 100)
+	items, err := s.db.GetClassifiedItems(ctx, minScore, topic, defaultRSSLimit)
 	if err != nil {
 		log.Printf("[ERROR] failed to get items for RSS: %v", err)
 		http.Error(w, "Failed to generate RSS feed", http.StatusInternalServerError)
@@ -319,9 +337,9 @@ func (s *Server) buildRSSFeed(topic string, minScore float64, items []domain.Ite
 	}
 
 	// build self link
-	selfLink := "http://localhost:8080/rss"
+	selfLink := defaultBaseURL + "/rss"
 	if topic != "" {
-		selfLink = fmt.Sprintf("http://localhost:8080/rss/%s", topic)
+		selfLink = fmt.Sprintf("%s/rss/%s", defaultBaseURL, topic)
 	}
 
 	// convert items to RSS items
@@ -353,7 +371,7 @@ func (s *Server) buildRSSFeed(topic string, minScore float64, items []domain.Ite
 		Atom:    "http://www.w3.org/2005/Atom",
 		Channel: rssChannel{
 			Title:         title,
-			Link:          "http://localhost:8080/",
+			Link:          defaultBaseURL + "/",
 			Description:   fmt.Sprintf("AI-curated articles with relevance score ≥ %.1f", minScore),
 			AtomLink:      atomLink{Href: selfLink, Rel: "self", Type: "application/rss+xml"},
 			LastBuildDate: time.Now().Format(time.RFC1123Z),
@@ -401,10 +419,10 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// parse fetch interval
-	fetchInterval := 1800 // default 30 minutes
+	fetchInterval := defaultFetchInterval // default 30 minutes
 	if intervalStr := r.FormValue("fetch_interval"); intervalStr != "" {
 		if minutes, err := strconv.Atoi(intervalStr); err == nil {
-			fetchInterval = minutes * 60 // convert to seconds
+			fetchInterval = minutes * minutesToSeconds // convert to seconds
 		}
 	}
 
@@ -599,7 +617,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		Topic:    topic,
 		FeedName: feedName,
 		SortBy:   sortBy,
-		Limit:    100,
+		Limit:    defaultArticleLimit,
 	}
 	articles, err := s.db.GetClassifiedItemsWithFilters(ctx, req)
 	if err != nil {
