@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"net"
 	"net/http"
@@ -13,11 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-pkgz/routegroup"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
+	"github.com/umputun/newscope/pkg/repository"
 	"github.com/umputun/newscope/server/mocks"
 )
 
@@ -765,3 +768,999 @@ func TestServer_deleteFeedHandler(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.True(t, feedDeleted)
 }
+
+func TestNewRepositoryAdapter(t *testing.T) {
+	t.Run("creates adapter with real repos", func(t *testing.T) {
+		// create in-memory database repositories
+		ctx := context.Background()
+		cfg := repository.Config{
+			DSN:             ":memory:",
+			MaxOpenConns:    1,
+			MaxIdleConns:    1,
+			ConnMaxLifetime: 30 * time.Second,
+		}
+
+		repos, err := repository.NewRepositories(ctx, cfg)
+		require.NoError(t, err)
+		defer repos.Close()
+
+		adapter := NewRepositoryAdapter(repos)
+		assert.NotNil(t, adapter)
+
+		// verify we can call methods on the adapter
+		feeds, err := adapter.GetFeeds(ctx)
+		require.NoError(t, err)
+		assert.NotNil(t, feeds)
+		assert.Empty(t, feeds) // should be empty in new database
+	})
+}
+
+func TestRepositoryAdapter_GetClassifiedItems(t *testing.T) {
+	// create in-memory database repositories
+	ctx := context.Background()
+	cfg := repository.Config{
+		DSN:             ":memory:",
+		MaxOpenConns:    1,
+		MaxIdleConns:    1,
+		ConnMaxLifetime: 30 * time.Second,
+	}
+
+	repos, err := repository.NewRepositories(ctx, cfg)
+	require.NoError(t, err)
+	defer repos.Close()
+
+	adapter := NewRepositoryAdapter(repos)
+
+	t.Run("get classified items from empty database", func(t *testing.T) {
+		items, err := adapter.GetClassifiedItems(ctx, 0.0, "", 10)
+		require.NoError(t, err)
+		assert.NotNil(t, items)
+		assert.Empty(t, items)
+	})
+
+	t.Run("get classified items with filters", func(t *testing.T) {
+		items, err := adapter.GetClassifiedItems(ctx, 5.0, "tech", 5)
+		require.NoError(t, err)
+		assert.NotNil(t, items)
+		assert.Empty(t, items) // should be empty in empty database
+	})
+}
+
+func TestServer_DisableFeedHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	feedDisabled := false
+	testFeed := domain.Feed{
+		ID:      456,
+		Title:   "Test Feed",
+		Enabled: false, // disabled after update
+	}
+
+	database := &mocks.DatabaseMock{
+		UpdateFeedStatusFunc: func(ctx context.Context, feedID int64, enabled bool) error {
+			feedDisabled = true
+			assert.Equal(t, int64(456), feedID)
+			assert.False(t, enabled) // should be disabled
+			return nil
+		},
+		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+			return []domain.Feed{testFeed}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("POST", "/feeds/456/disable", http.NoBody)
+	req.SetPathValue("id", "456")
+	w := httptest.NewRecorder()
+
+	srv.disableFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, feedDisabled)
+}
+
+func TestServer_FetchFeedHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	fetchTriggered := false
+	now := time.Now()
+	testFeed := domain.Feed{
+		ID:          123,
+		Title:       "Test Feed",
+		URL:         "https://example.com/feed.xml",
+		Enabled:     true,
+		LastFetched: &now,
+	}
+
+	database := &mocks.DatabaseMock{
+		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+			return []domain.Feed{testFeed}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{
+		UpdateFeedNowFunc: func(ctx context.Context, feedID int64) error {
+			fetchTriggered = true
+			assert.Equal(t, int64(123), feedID)
+			return nil
+		},
+	}
+
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	req := httptest.NewRequest("POST", "/api/v1/feeds/123/fetch", http.NoBody)
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.fetchFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, fetchTriggered)
+	assert.Contains(t, w.Body.String(), "Test Feed")
+}
+
+func TestServer_FetchFeedHandler_InvalidID(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	req := httptest.NewRequest("POST", "/api/v1/feeds/invalid/fetch", http.NoBody)
+	req.SetPathValue("id", "invalid")
+	w := httptest.NewRecorder()
+
+	srv.fetchFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid feed ID")
+}
+
+func TestServer_FetchFeedHandler_SchedulerError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{
+		UpdateFeedNowFunc: func(ctx context.Context, feedID int64) error {
+			return fmt.Errorf("scheduler error")
+		},
+	}
+
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	req := httptest.NewRequest("POST", "/api/v1/feeds/456/fetch", http.NoBody)
+	req.SetPathValue("id", "456")
+	w := httptest.NewRecorder()
+
+	srv.fetchFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "scheduler error")
+}
+
+func TestServer_SettingsHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				LLM: config.LLMConfig{
+					APIKey:   "test-key",
+					Model:    "gpt-4",
+					Endpoint: "https://api.openai.com/v1",
+				},
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				}{
+					Listen:   ":8080",
+					Timeout:  30 * time.Second,
+					PageSize: 50,
+				},
+			}
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("GET", "/settings", http.NoBody)
+	w := httptest.NewRecorder()
+
+	srv.settingsHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Settings")
+	assert.Contains(t, w.Body.String(), "gpt-4")
+	assert.Contains(t, w.Body.String(), ":8080")
+}
+
+func TestServer_HideContentHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("GET", "/api/v1/articles/123/hide", http.NoBody)
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.hideContentHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	// should contain empty response body and out-of-band button update
+	responseBody := w.Body.String()
+	assert.Contains(t, responseBody, "content-toggle-123")
+	assert.Contains(t, responseBody, "hx-swap-oob=\"true\"")
+	assert.Contains(t, responseBody, "Show Content")
+}
+
+func TestServer_HideContentHandler_InvalidID(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("GET", "/api/v1/articles/invalid/hide", http.NoBody)
+	req.SetPathValue("id", "invalid")
+	w := httptest.NewRecorder()
+
+	srv.hideContentHandler(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Invalid article ID")
+}
+
+// error scenario tests for server handlers
+
+func TestServer_ArticlesHandler_DatabaseError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				}{PageSize: 50},
+			}
+		},
+	}
+
+	t.Run("database error on get classified items", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+				return nil, errors.New("database connection failed")
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("GET", "/articles", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.articlesHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to load articles")
+	})
+
+	t.Run("database error on get count", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+				return []domain.ItemWithClassification{}, nil
+			},
+			GetClassifiedItemsCountFunc: func(ctx context.Context, req domain.ArticlesRequest) (int, error) {
+				return 0, errors.New("count query failed")
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("GET", "/articles", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.articlesHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to load articles count")
+	})
+}
+
+func TestServer_RenderFeedCard_TemplateError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+
+	// create server with invalid templates to trigger template error
+	srv := &Server{
+		config:    cfg,
+		db:        database,
+		scheduler: scheduler,
+		version:   "test",
+		debug:     false,
+		router:    routegroup.New(http.NewServeMux()),
+		templates: template.New("broken"), // empty template without feed-card.html
+	}
+
+	feed := &domain.Feed{
+		ID:    1,
+		Title: "Test Feed",
+		URL:   "https://example.com/feed",
+	}
+
+	w := httptest.NewRecorder()
+	srv.renderFeedCard(w, feed)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to render feed")
+}
+
+func TestServer_RenderArticleCard_TemplateError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+
+	// create server with invalid templates to trigger template error
+	srv := &Server{
+		config:    cfg,
+		db:        database,
+		scheduler: scheduler,
+		version:   "test",
+		debug:     false,
+		router:    routegroup.New(http.NewServeMux()),
+		templates: template.New("broken"), // empty template without article-card.html
+	}
+
+	article := &domain.ItemWithClassification{
+		ID:             1,
+		Title:          "Test Article",
+		RelevanceScore: 8.5,
+	}
+
+	w := httptest.NewRecorder()
+	srv.renderArticleCard(w, article)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to render article")
+}
+
+func TestServer_ArticlesHandler_TemplateError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				}{PageSize: 50},
+			}
+		},
+	}
+
+	now := time.Now()
+	database := &mocks.DatabaseMock{
+		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+			return []domain.ItemWithClassification{
+				{
+					ID:             1,
+					Title:          "Test Article",
+					Published:      now,
+					RelevanceScore: 8.5,
+				},
+			}, nil
+		},
+		GetClassifiedItemsCountFunc: func(ctx context.Context, req domain.ArticlesRequest) (int, error) {
+			return 1, nil
+		},
+		GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			return []string{"tech"}, nil
+		},
+		GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			return []string{"Test Feed"}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+
+	// create server with broken page templates
+	srv := &Server{
+		config:        cfg,
+		db:            database,
+		scheduler:     scheduler,
+		version:       "test",
+		debug:         false,
+		router:        routegroup.New(http.NewServeMux()),
+		templates:     template.New("test"),
+		pageTemplates: map[string]*template.Template{}, // empty page templates
+	}
+
+	req := httptest.NewRequest("GET", "/articles", http.NoBody)
+	w := httptest.NewRecorder()
+
+	srv.articlesHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to render page")
+}
+
+func TestServer_FeedsHandler_DatabaseError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+			return nil, errors.New("database connection failed")
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("GET", "/feeds", http.NoBody)
+	w := httptest.NewRecorder()
+
+	srv.feedsHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to load feeds")
+}
+
+func TestServer_FeedsHandler_TemplateError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+			return []domain.Feed{
+				{
+					ID:    1,
+					Title: "Test Feed",
+					URL:   "https://example.com/feed",
+				},
+			}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+
+	// create server with broken page templates
+	srv := &Server{
+		config:        cfg,
+		db:            database,
+		scheduler:     scheduler,
+		version:       "test",
+		debug:         false,
+		router:        routegroup.New(http.NewServeMux()),
+		templates:     template.New("test"),
+		pageTemplates: map[string]*template.Template{}, // empty page templates
+	}
+
+	req := httptest.NewRequest("GET", "/feeds", http.NoBody)
+	w := httptest.NewRecorder()
+
+	srv.feedsHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to render page")
+}
+
+func TestServer_SettingsHandler_TemplateError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				LLM: config.LLMConfig{
+					Model: "gpt-4",
+				},
+			}
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+
+	// create server with broken page templates
+	srv := &Server{
+		config:        cfg,
+		db:            database,
+		scheduler:     scheduler,
+		version:       "test",
+		debug:         false,
+		router:        routegroup.New(http.NewServeMux()),
+		templates:     template.New("test"),
+		pageTemplates: map[string]*template.Template{}, // empty page templates
+	}
+
+	req := httptest.NewRequest("GET", "/settings", http.NoBody)
+	w := httptest.NewRecorder()
+
+	srv.settingsHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to render page")
+}
+
+func TestServer_CreateFeedHandler_DatabaseError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		CreateFeedFunc: func(ctx context.Context, feed *domain.Feed) error {
+			return errors.New("database write failed")
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	form := "url=https://example.com/feed&title=Test+Feed"
+	req := httptest.NewRequest("POST", "/api/v1/feeds", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	srv.createFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "database write failed")
+}
+
+func TestServer_CreateFeedHandler_InvalidForm(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	t.Run("missing URL", func(t *testing.T) {
+		form := "title=Test+Feed"
+		req := httptest.NewRequest("POST", "/api/v1/feeds", strings.NewReader(form))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.createFeedHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "feed URL is required")
+	})
+
+	t.Run("invalid form data", func(t *testing.T) {
+		// create request with malformed form data to trigger form parsing error
+		req := httptest.NewRequest("POST", "/api/v1/feeds", strings.NewReader("invalid%ZZ%form"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.createFeedHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "invalid form data")
+	})
+}
+
+func TestServer_UpdateFeedStatus_DatabaseError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		UpdateFeedStatusFunc: func(ctx context.Context, feedID int64, enabled bool) error {
+			return errors.New("update failed")
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("POST", "/api/v1/feeds/123/enable", http.NoBody)
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.enableFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "update failed")
+}
+
+func TestServer_UpdateFeedStatus_GetFeedsError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		UpdateFeedStatusFunc: func(ctx context.Context, feedID int64, enabled bool) error {
+			return nil // update succeeds
+		},
+		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+			return nil, errors.New("failed to get feeds")
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("POST", "/api/v1/feeds/123/enable", http.NoBody)
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.enableFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to reload feed")
+}
+
+func TestServer_UpdateFeedStatus_FeedNotFound(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		UpdateFeedStatusFunc: func(ctx context.Context, feedID int64, enabled bool) error {
+			return nil // update succeeds
+		},
+		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+			return []domain.Feed{
+				{ID: 999, Title: "Other Feed"}, // different ID
+			}, nil
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("POST", "/api/v1/feeds/123/enable", http.NoBody)
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.enableFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "Feed not found")
+}
+
+func TestServer_DeleteFeedHandler_DatabaseError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		DeleteFeedFunc: func(ctx context.Context, feedID int64) error {
+			return errors.New("delete failed")
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("DELETE", "/api/v1/feeds/123", http.NoBody)
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.deleteFeedHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "delete failed")
+}
+
+func TestServer_FeedbackHandler_DatabaseErrors(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	t.Run("feedback update error", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			UpdateItemFeedbackFunc: func(ctx context.Context, itemID int64, feedback string) error {
+				return errors.New("feedback update failed")
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/feedback/123/like", http.NoBody)
+		req.SetPathValue("id", "123")
+		req.SetPathValue("action", "like")
+		w := httptest.NewRecorder()
+
+		srv.feedbackHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "feedback update failed")
+	})
+
+	t.Run("get item error after feedback", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			UpdateItemFeedbackFunc: func(ctx context.Context, itemID int64, feedback string) error {
+				return nil // update succeeds
+			},
+			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+				return nil, errors.New("item not found")
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/feedback/123/like", http.NoBody)
+		req.SetPathValue("id", "123")
+		req.SetPathValue("action", "like")
+		w := httptest.NewRecorder()
+
+		srv.feedbackHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to reload article")
+	})
+
+	t.Run("invalid action", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/feedback/123/invalid", http.NoBody)
+		req.SetPathValue("id", "123")
+		req.SetPathValue("action", "invalid")
+		w := httptest.NewRecorder()
+
+		srv.feedbackHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "invalid action")
+	})
+
+	t.Run("invalid item ID", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/feedback/invalid/like", http.NoBody)
+		req.SetPathValue("id", "invalid")
+		req.SetPathValue("action", "like")
+		w := httptest.NewRecorder()
+
+		srv.feedbackHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "invalid item ID")
+	})
+}
+
+func TestServer_ExtractHandler_Errors(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	t.Run("invalid item ID", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/extract/invalid", http.NoBody)
+		req.SetPathValue("id", "invalid")
+		w := httptest.NewRecorder()
+
+		srv.extractHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "invalid item ID")
+	})
+
+	t.Run("extraction failed", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		scheduler := &mocks.SchedulerMock{
+			ExtractContentNowFunc: func(ctx context.Context, itemID int64) error {
+				return errors.New("extraction service unavailable")
+			},
+		}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/extract/123", http.NoBody)
+		req.SetPathValue("id", "123")
+		w := httptest.NewRecorder()
+
+		srv.extractHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "extraction service unavailable")
+	})
+
+	t.Run("get item error after extraction", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+				return nil, errors.New("item not found")
+			},
+		}
+		scheduler := &mocks.SchedulerMock{
+			ExtractContentNowFunc: func(ctx context.Context, itemID int64) error {
+				return nil // extraction succeeds
+			},
+		}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/extract/123", http.NoBody)
+		req.SetPathValue("id", "123")
+		w := httptest.NewRecorder()
+
+		srv.extractHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to reload article")
+	})
+}
+
+func TestServer_ArticleContentHandler_Errors(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	t.Run("invalid article ID", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("GET", "/api/v1/articles/invalid/content", http.NoBody)
+		req.SetPathValue("id", "invalid")
+		w := httptest.NewRecorder()
+
+		srv.articleContentHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Invalid article ID")
+	})
+
+	t.Run("article not found", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+				return nil, errors.New("article not found")
+			},
+		}
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("GET", "/api/v1/articles/123/content", http.NoBody)
+		req.SetPathValue("id", "123")
+		w := httptest.NewRecorder()
+
+		srv.articleContentHandler(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Contains(t, w.Body.String(), "Article not found")
+	})
+
+	t.Run("template execution error", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+				return &domain.ItemWithClassification{
+					ID:               123,
+					Title:            "Test Article",
+					ExtractedContent: "Test content",
+				}, nil
+			},
+		}
+		scheduler := &mocks.SchedulerMock{}
+
+		// create server with broken templates
+		srv := &Server{
+			config:    cfg,
+			db:        database,
+			scheduler: scheduler,
+			version:   "test",
+			debug:     false,
+			router:    routegroup.New(http.NewServeMux()),
+			templates: template.New("broken"), // empty template
+		}
+
+		req := httptest.NewRequest("GET", "/api/v1/articles/123/content", http.NoBody)
+		req.SetPathValue("id", "123")
+		w := httptest.NewRecorder()
+
+		srv.articleContentHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to render content")
+	})
+}
+
+func TestServer_RSSHandler_DatabaseError(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
+			return nil, errors.New("database query failed")
+		},
+	}
+
+	scheduler := &mocks.SchedulerMock{}
+	srv := testServer(t, cfg, database, scheduler)
+
+	req := httptest.NewRequest("GET", "/rss/technology", http.NoBody)
+	req.SetPathValue("topic", "technology")
+	w := httptest.NewRecorder()
+
+	srv.rssHandler(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to generate RSS feed")
+}
+

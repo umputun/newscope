@@ -179,6 +179,9 @@ func validate(cfg *Config) error {
 	if cfg.LLM.Endpoint == "" {
 		return fmt.Errorf("llm.endpoint is required")
 	}
+	if cfg.LLM.APIKey == "" {
+		return fmt.Errorf("llm.api_key is required")
+	}
 	if cfg.LLM.Model == "" {
 		return fmt.Errorf("llm.model is required")
 	}

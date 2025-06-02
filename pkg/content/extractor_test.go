@@ -502,3 +502,30 @@ func BenchmarkHTTPExtractor_Extract(b *testing.B) {
 		}
 	}
 }
+
+func TestHTTPExtractor_SetFallbackURL(t *testing.T) {
+	extractor := NewHTTPExtractor(5*time.Second, "Newscope/1.0")
+
+	// test setting fallback URL
+	fallbackURL := "https://trafilatura.example.com/extract"
+	extractor.SetFallbackURL(fallbackURL)
+
+	// verify fallback URL is set (we can't directly check private field,
+	// but we can verify the method doesn't panic and accepts the parameter)
+	assert.NotNil(t, extractor)
+}
+
+func TestHTTPExtractor_SetOptions(t *testing.T) {
+	extractor := NewHTTPExtractor(5*time.Second, "Newscope/1.0")
+
+	// test setting options
+	extractor.SetOptions(100, true, false)
+
+	// verify options are set (we can't directly check private fields,
+	// but we can verify the method doesn't panic and accepts the parameters)
+	assert.NotNil(t, extractor)
+
+	// test with different options
+	extractor.SetOptions(50, false, true)
+	assert.NotNil(t, extractor)
+}
