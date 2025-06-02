@@ -246,10 +246,12 @@ func TestServer_articlesHandler(t *testing.T) {
 					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 				}{
 					Listen:   ":8080",
 					Timeout:  30 * time.Second,
 					PageSize: 50,
+					BaseURL:  "http://localhost:8080",
 				},
 			}
 		},
@@ -973,10 +975,12 @@ func TestServer_SettingsHandler(t *testing.T) {
 					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 				}{
 					Listen:   ":8080",
 					Timeout:  30 * time.Second,
 					PageSize: 50,
+					BaseURL:  "http://localhost:8080",
 				},
 			}
 		},
@@ -1056,7 +1060,11 @@ func TestServer_ArticlesHandler_DatabaseError(t *testing.T) {
 					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
-				}{PageSize: 50},
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{
+					PageSize: 50,
+					BaseURL:  "http://localhost:8080",
+				},
 			}
 		},
 	}
@@ -1182,7 +1190,11 @@ func TestServer_ArticlesHandler_TemplateError(t *testing.T) {
 					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
-				}{PageSize: 50},
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{
+					PageSize: 50,
+					BaseURL:  "http://localhost:8080",
+				},
 			}
 		},
 	}

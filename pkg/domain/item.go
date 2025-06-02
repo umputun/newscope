@@ -2,6 +2,13 @@ package domain
 
 import "time"
 
+// TopicWithScore represents a topic with its statistics
+type TopicWithScore struct {
+	Topic     string
+	AvgScore  float64
+	ItemCount int
+}
+
 // Item represents a core news article/item
 type Item struct {
 	ID          int64

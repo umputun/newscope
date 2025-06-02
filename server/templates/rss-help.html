@@ -1,0 +1,230 @@
+{{template "base.html" .}}
+
+{{define "title"}}RSS Feeds - Newscope{{end}}
+
+{{define "content"}}
+<div class="rss-help-header">
+    <h2>RSS Feeds</h2>
+    <p>Get AI-curated articles delivered to your RSS reader with relevance scores and smart filtering.</p>
+</div>
+
+<div class="rss-help-content">
+    <!-- Basic RSS Feeds -->
+    <section class="rss-section">
+        <h3>📡 Basic RSS Feeds</h3>
+        <div class="rss-feed-list">
+            <div class="rss-feed-item">
+                <div class="rss-feed-info">
+                    <h4>All Articles (Score ≥ 5.0)</h4>
+                    <p>Latest AI-curated articles from all topics with relevance score 5.0 or higher</p>
+                    <code class="rss-url">/rss</code>
+                </div>
+                <button class="btn-copy" data-copy="/rss" title="Copy RSS URL">📋</button>
+            </div>
+            
+            <div class="rss-feed-item">
+                <div class="rss-feed-info">
+                    <h4>High Quality Articles (Score ≥ 7.0)</h4>
+                    <p>Only the highest scoring articles across all topics</p>
+                    <code class="rss-url">/rss?min_score=7.0</code>
+                </div>
+                <button class="btn-copy" data-copy="/rss?min_score=7.0" title="Copy RSS URL">📋</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Topic-Specific Feeds -->
+    <section class="rss-section">
+        <h3>🏷️ Top Topic Feeds (by Quality)</h3>
+        {{if .TopTopics}}
+        <div class="rss-feed-list">
+            {{range .TopTopics}}
+            <div class="rss-feed-item">
+                <div class="rss-feed-info">
+                    <h4>{{.Topic}} Articles <span class="topic-stats">(Avg: {{printf "%.1f" .AvgScore}}/10, {{.ItemCount}} articles)</span></h4>
+                    <p>AI-curated articles about {{.Topic}} - highest quality topic with average score {{printf "%.1f" .AvgScore}}/10</p>
+                    <code class="rss-url">/rss/{{.Topic}}</code>
+                </div>
+                <button class="btn-copy" data-copy="/rss/{{.Topic}}" title="Copy RSS URL">📋</button>
+            </div>
+            {{end}}
+        </div>
+        
+        <div class="topic-explanation">
+            <h4>📝 Other Topics Available</h4>
+            <p>The feeds above show our <strong>top 10 highest-quality topics</strong> sorted by average AI relevance score. Many more topics are available! To access any topic:</p>
+            <ul>
+                <li><strong>Use the Custom RSS Builder</strong> below to find and select any topic</li>
+                <li><strong>Manual URL pattern:</strong> <code>/rss/{topic-name}</code> - replace <code>{topic-name}</code> with any topic from your articles</li>
+                <li><strong>Examples:</strong> <code>/rss/technology</code>, <code>/rss/science</code>, <code>/rss/business</code></li>
+            </ul>
+            <p class="topic-tip">💡 <strong>Tip:</strong> Topics shown above have the highest average quality scores ({{printf "%.1f" (index .TopTopics 0).AvgScore}}+ avg), making them great starting points!</p>
+        </div>
+        {{else}}
+        <p class="no-topics">No topics available yet. Topics will appear as articles are classified.</p>
+        {{end}}
+    </section>
+
+    <!-- Custom RSS Builder -->
+    <section class="rss-section">
+        <h3>🔧 Custom RSS Feed Builder</h3>
+        <div class="rss-builder">
+            <div class="builder-controls">
+                <div class="form-group">
+                    <label for="rss-topic">Topic (optional):</label>
+                    <select id="rss-topic" name="topic">
+                        <option value="">All Topics</option>
+                        {{range .AllTopics}}
+                        <option value="{{.}}">{{.}}</option>
+                        {{end}}
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="rss-score">Minimum Score:</label>
+                    <input type="range" id="rss-score" name="score" min="0" max="10" value="5.0" step="0.5">
+                    <span id="rss-score-value">5.0</span>
+                </div>
+            </div>
+            
+            <div class="builder-output">
+                <label>Generated RSS URL:</label>
+                <div class="rss-url-output">
+                    <code id="generated-rss-url">/rss?min_score=5.0</code>
+                    <button class="btn-copy" id="copy-generated-url" title="Copy Generated RSS URL">📋</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- RSS Feed Information -->
+    <section class="rss-section">
+        <h3>ℹ️ RSS Feed Details</h3>
+        <div class="rss-info-grid">
+            <div class="rss-info-item">
+                <h4>Content</h4>
+                <ul>
+                    <li>Up to 100 most recent articles</li>
+                    <li>AI relevance scores (0-10)</li>
+                    <li>AI-generated explanations</li>
+                    <li>Topic categorization</li>
+                    <li>Original article metadata</li>
+                </ul>
+            </div>
+            
+            <div class="rss-info-item">
+                <h4>Article Titles</h4>
+                <p>Titles include relevance scores:</p>
+                <code>[8.5] AI Breakthrough in Medical Research</code>
+            </div>
+            
+            <div class="rss-info-item">
+                <h4>URL Parameters</h4>
+                <ul>
+                    <li><code>min_score</code> - Filter by minimum score (0-10)</li>
+                    <li><code>topic</code> - Filter by specific topic</li>
+                </ul>
+            </div>
+            
+            <div class="rss-info-item">
+                <h4>Update Frequency</h4>
+                <p>RSS feeds update as new articles are classified by AI, typically every few minutes.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- RSS Reader Setup -->
+    <section class="rss-section">
+        <h3>📱 How to Use RSS Feeds</h3>
+        <div class="rss-instructions">
+            <ol>
+                <li><strong>Choose an RSS Reader:</strong> Feedly, Inoreader, NetNewsWire, or any RSS client</li>
+                <li><strong>Copy the RSS URL:</strong> Click the 📋 button next to any feed above</li>
+                <li><strong>Add to RSS Reader:</strong> Paste the full URL (including domain) into your RSS reader</li>
+                <li><strong>Example full URL:</strong> <code>{{.BaseURL}}/rss?min_score=7.0</code></li>
+            </ol>
+            
+            <div class="rss-tip">
+                <strong>💡 Tip:</strong> Start with a higher minimum score (7.0+) to get only the most relevant articles, then adjust based on your preferences.
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+// RSS Builder functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const topicSelect = document.getElementById('rss-topic');
+    const scoreRange = document.getElementById('rss-score');
+    const scoreValue = document.getElementById('rss-score-value');
+    const generatedUrl = document.getElementById('generated-rss-url');
+    
+    function updateGeneratedUrl() {
+        const topic = topicSelect.value;
+        const score = scoreRange.value;
+        
+        let url = '/rss';
+        if (topic) {
+            url = `/rss/${topic}`;
+        }
+        
+        const params = new URLSearchParams();
+        if (score !== '5.0') {
+            params.append('min_score', score);
+        }
+        
+        if (params.toString()) {
+            url += '?' + params.toString();
+        }
+        
+        generatedUrl.textContent = url;
+        
+        // Update copy button
+        const copyBtn = document.getElementById('copy-generated-url');
+        copyBtn.setAttribute('data-copy', url);
+    }
+    
+    // Update score display
+    scoreRange.addEventListener('input', function() {
+        scoreValue.textContent = this.value;
+        updateGeneratedUrl();
+    });
+    
+    topicSelect.addEventListener('change', updateGeneratedUrl);
+    
+    // Copy to clipboard functionality
+    document.addEventListener('click', function(e) {
+        if (e.target.matches('.btn-copy') || e.target.closest('.btn-copy')) {
+            const btn = e.target.matches('.btn-copy') ? e.target : e.target.closest('.btn-copy');
+            const url = btn.getAttribute('data-copy');
+            const fullUrl = '{{.BaseURL}}' + url;
+            
+            navigator.clipboard.writeText(fullUrl).then(function() {
+                const originalText = btn.textContent;
+                btn.textContent = '✅';
+                btn.style.background = '#28a745';
+                
+                setTimeout(function() {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                }, 2000);
+            }).catch(function() {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = fullUrl;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                const originalText = btn.textContent;
+                btn.textContent = '✅';
+                setTimeout(function() {
+                    btn.textContent = originalText;
+                }, 2000);
+            });
+        }
+    });
+});
+</script>
+{{end}}

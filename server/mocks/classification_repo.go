@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/umputun/newscope/pkg/domain"
+	"github.com/umputun/newscope/pkg/repository"
 )
 
 // ClassificationRepoMock is a mock implementation of server.ClassificationRepo.
@@ -24,6 +25,9 @@ import (
 //			},
 //			GetClassifiedItemsCountFunc: func(ctx context.Context, filter *domain.ItemFilter) (int, error) {
 //				panic("mock out the GetClassifiedItemsCount method")
+//			},
+//			GetTopTopicsByScoreFunc: func(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error) {
+//				panic("mock out the GetTopTopicsByScore method")
 //			},
 //			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 //				panic("mock out the GetTopics method")
@@ -49,6 +53,9 @@ type ClassificationRepoMock struct {
 
 	// GetClassifiedItemsCountFunc mocks the GetClassifiedItemsCount method.
 	GetClassifiedItemsCountFunc func(ctx context.Context, filter *domain.ItemFilter) (int, error)
+
+	// GetTopTopicsByScoreFunc mocks the GetTopTopicsByScore method.
+	GetTopTopicsByScoreFunc func(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error)
 
 	// GetTopicsFunc mocks the GetTopics method.
 	GetTopicsFunc func(ctx context.Context) ([]string, error)
@@ -82,6 +89,15 @@ type ClassificationRepoMock struct {
 			// Filter is the filter argument value.
 			Filter *domain.ItemFilter
 		}
+		// GetTopTopicsByScore holds details about calls to the GetTopTopicsByScore method.
+		GetTopTopicsByScore []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// MinScore is the minScore argument value.
+			MinScore float64
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// GetTopics holds details about calls to the GetTopics method.
 		GetTopics []struct {
 			// Ctx is the ctx argument value.
@@ -107,6 +123,7 @@ type ClassificationRepoMock struct {
 	lockGetClassifiedItem       sync.RWMutex
 	lockGetClassifiedItems      sync.RWMutex
 	lockGetClassifiedItemsCount sync.RWMutex
+	lockGetTopTopicsByScore     sync.RWMutex
 	lockGetTopics               sync.RWMutex
 	lockGetTopicsFiltered       sync.RWMutex
 	lockUpdateItemFeedback      sync.RWMutex
@@ -217,6 +234,46 @@ func (mock *ClassificationRepoMock) GetClassifiedItemsCountCalls() []struct {
 	mock.lockGetClassifiedItemsCount.RLock()
 	calls = mock.calls.GetClassifiedItemsCount
 	mock.lockGetClassifiedItemsCount.RUnlock()
+	return calls
+}
+
+// GetTopTopicsByScore calls GetTopTopicsByScoreFunc.
+func (mock *ClassificationRepoMock) GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error) {
+	if mock.GetTopTopicsByScoreFunc == nil {
+		panic("ClassificationRepoMock.GetTopTopicsByScoreFunc: method is nil but ClassificationRepo.GetTopTopicsByScore was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		MinScore float64
+		Limit    int
+	}{
+		Ctx:      ctx,
+		MinScore: minScore,
+		Limit:    limit,
+	}
+	mock.lockGetTopTopicsByScore.Lock()
+	mock.calls.GetTopTopicsByScore = append(mock.calls.GetTopTopicsByScore, callInfo)
+	mock.lockGetTopTopicsByScore.Unlock()
+	return mock.GetTopTopicsByScoreFunc(ctx, minScore, limit)
+}
+
+// GetTopTopicsByScoreCalls gets all the calls that were made to GetTopTopicsByScore.
+// Check the length with:
+//
+//	len(mockedClassificationRepo.GetTopTopicsByScoreCalls())
+func (mock *ClassificationRepoMock) GetTopTopicsByScoreCalls() []struct {
+	Ctx      context.Context
+	MinScore float64
+	Limit    int
+} {
+	var calls []struct {
+		Ctx      context.Context
+		MinScore float64
+		Limit    int
+	}
+	mock.lockGetTopTopicsByScore.RLock()
+	calls = mock.calls.GetTopTopicsByScore
+	mock.lockGetTopTopicsByScore.RUnlock()
 	return calls
 }
 

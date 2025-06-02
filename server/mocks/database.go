@@ -46,6 +46,9 @@ import (
 //			GetItemsFunc: func(ctx context.Context, limit int, offset int) ([]domain.Item, error) {
 //				panic("mock out the GetItems method")
 //			},
+//			GetTopTopicsByScoreFunc: func(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error) {
+//				panic("mock out the GetTopTopicsByScore method")
+//			},
 //			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 //				panic("mock out the GetTopics method")
 //			},
@@ -94,6 +97,9 @@ type DatabaseMock struct {
 
 	// GetItemsFunc mocks the GetItems method.
 	GetItemsFunc func(ctx context.Context, limit int, offset int) ([]domain.Item, error)
+
+	// GetTopTopicsByScoreFunc mocks the GetTopTopicsByScore method.
+	GetTopTopicsByScoreFunc func(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error)
 
 	// GetTopicsFunc mocks the GetTopics method.
 	GetTopicsFunc func(ctx context.Context) ([]string, error)
@@ -181,6 +187,15 @@ type DatabaseMock struct {
 			// Offset is the offset argument value.
 			Offset int
 		}
+		// GetTopTopicsByScore holds details about calls to the GetTopTopicsByScore method.
+		GetTopTopicsByScore []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// MinScore is the minScore argument value.
+			MinScore float64
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// GetTopics holds details about calls to the GetTopics method.
 		GetTopics []struct {
 			// Ctx is the ctx argument value.
@@ -222,6 +237,7 @@ type DatabaseMock struct {
 	lockGetClassifiedItemsWithFilters sync.RWMutex
 	lockGetFeeds                      sync.RWMutex
 	lockGetItems                      sync.RWMutex
+	lockGetTopTopicsByScore           sync.RWMutex
 	lockGetTopics                     sync.RWMutex
 	lockGetTopicsFiltered             sync.RWMutex
 	lockUpdateFeedStatus              sync.RWMutex
@@ -589,6 +605,46 @@ func (mock *DatabaseMock) GetItemsCalls() []struct {
 	mock.lockGetItems.RLock()
 	calls = mock.calls.GetItems
 	mock.lockGetItems.RUnlock()
+	return calls
+}
+
+// GetTopTopicsByScore calls GetTopTopicsByScoreFunc.
+func (mock *DatabaseMock) GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error) {
+	if mock.GetTopTopicsByScoreFunc == nil {
+		panic("DatabaseMock.GetTopTopicsByScoreFunc: method is nil but Database.GetTopTopicsByScore was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		MinScore float64
+		Limit    int
+	}{
+		Ctx:      ctx,
+		MinScore: minScore,
+		Limit:    limit,
+	}
+	mock.lockGetTopTopicsByScore.Lock()
+	mock.calls.GetTopTopicsByScore = append(mock.calls.GetTopTopicsByScore, callInfo)
+	mock.lockGetTopTopicsByScore.Unlock()
+	return mock.GetTopTopicsByScoreFunc(ctx, minScore, limit)
+}
+
+// GetTopTopicsByScoreCalls gets all the calls that were made to GetTopTopicsByScore.
+// Check the length with:
+//
+//	len(mockedDatabase.GetTopTopicsByScoreCalls())
+func (mock *DatabaseMock) GetTopTopicsByScoreCalls() []struct {
+	Ctx      context.Context
+	MinScore float64
+	Limit    int
+} {
+	var calls []struct {
+		Ctx      context.Context
+		MinScore float64
+		Limit    int
+	}
+	mock.lockGetTopTopicsByScore.RLock()
+	calls = mock.calls.GetTopTopicsByScore
+	mock.lockGetTopTopicsByScore.RUnlock()
 	return calls
 }
 

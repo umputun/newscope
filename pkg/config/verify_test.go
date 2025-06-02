@@ -22,10 +22,12 @@ func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
 					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 				}{
 					Listen:   ":8080",
 					Timeout:  30 * time.Second,
 					PageSize: 50,
+					BaseURL:  "http://localhost:8080",
 				},
 				Database: struct {
 					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
@@ -63,10 +65,12 @@ func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
 					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 				}{
 					Listen:   "",
 					Timeout:  30 * time.Second,
 					PageSize: 50,
+					BaseURL:  "http://localhost:8080",
 				},
 				Database: struct {
 					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
@@ -92,10 +96,12 @@ func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
 					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 				}{
 					Listen:   ":8080",
 					Timeout:  30 * time.Second,
 					PageSize: 50,
+					BaseURL:  "http://localhost:8080",
 				},
 				Database: struct {
 					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
@@ -158,10 +164,12 @@ func TestValidateRequiredFields(t *testing.T) {
 					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 				}{
 					Listen:   ":8080",
 					Timeout:  30 * time.Second,
 					PageSize: 50,
+					BaseURL:  "http://localhost:8080",
 				},
 				Database: struct {
 					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`
@@ -193,10 +201,12 @@ func TestValidateRequiredFields(t *testing.T) {
 					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 				}{
 					Listen:   ":8080",
 					Timeout:  30 * time.Second,
 					PageSize: 50,
+					BaseURL:  "http://localhost:8080",
 				},
 				Database: struct {
 					DSN             string `yaml:"dsn" json:"dsn" jsonschema:"default=file:newscope.db?cache=shared&mode=rwc,description=Database connection string"`

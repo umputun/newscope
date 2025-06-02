@@ -42,6 +42,7 @@ type ClassificationRepo interface {
 	UpdateItemFeedback(ctx context.Context, itemID int64, feedback *domain.Feedback) error
 	GetTopics(ctx context.Context) ([]string, error)
 	GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error)
+	GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error)
 }
 
 // NewRepositoryAdapter creates a new repository adapter from concrete repositories
@@ -236,6 +237,25 @@ func (r *RepositoryAdapter) GetTopics(ctx context.Context) ([]string, error) {
 // GetTopicsFiltered returns unique topics from items with score >= minScore
 func (r *RepositoryAdapter) GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error) {
 	return r.classificationRepo.GetTopicsFiltered(ctx, minScore)
+}
+
+// GetTopTopicsByScore returns topics ordered by average relevance score
+func (r *RepositoryAdapter) GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error) {
+	repoTopics, err := r.classificationRepo.GetTopTopicsByScore(ctx, minScore, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	// convert repository type to domain type
+	result := make([]domain.TopicWithScore, len(repoTopics))
+	for i, topic := range repoTopics {
+		result[i] = domain.TopicWithScore{
+			Topic:     topic.Topic,
+			AvgScore:  topic.AvgScore,
+			ItemCount: topic.ItemCount,
+		}
+	}
+	return result, nil
 }
 
 // GetAllFeeds returns all feeds with full details

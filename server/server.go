@@ -92,6 +92,7 @@ type Database interface {
 	UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error
 	GetTopics(ctx context.Context) ([]string, error)
 	GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error)
+	GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error)
 	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
 	GetAllFeeds(ctx context.Context) ([]domain.Feed, error)
 	CreateFeed(ctx context.Context, feed *domain.Feed) error
@@ -183,7 +184,7 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 
 	// parse page templates
 	pageTemplates := make(map[string]*template.Template)
-	pageNames := []string{"articles.html", "feeds.html", "settings.html"}
+	pageNames := []string{"articles.html", "feeds.html", "settings.html", "rss-help.html"}
 
 	for _, pageName := range pageNames {
 		tmpl := template.New("").Funcs(funcMap)
@@ -278,6 +279,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /articles", s.articlesHandler)
 	s.router.HandleFunc("GET /feeds", s.feedsHandler)
 	s.router.HandleFunc("GET /settings", s.settingsHandler)
+	s.router.HandleFunc("GET /rss-help", s.rssHelpHandler)
 
 	// API routes
 	s.router.Mount("/api/v1").Route(func(r *routegroup.Bundle) {
@@ -953,6 +955,53 @@ func (s *Server) settingsHandler(w http.ResponseWriter, _ *http.Request) {
 	// render settings page
 	if err := s.renderPage(w, "settings.html", data); err != nil {
 		log.Printf("[ERROR] failed to render settings page: %v", err)
+		http.Error(w, "Failed to render page", http.StatusInternalServerError)
+	}
+}
+
+// rssHelpHandler displays the RSS help/documentation page
+func (s *Server) rssHelpHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// get top 10 topics sorted by average score for display
+	topTopics, err := s.db.GetTopTopicsByScore(ctx, 5.0, 10) // min score 5.0, top 10
+	if err != nil {
+		log.Printf("[ERROR] failed to get top topics for RSS help: %v", err)
+		topTopics = []domain.TopicWithScore{} // continue with empty topics
+	}
+
+	// get all topics for the RSS builder dropdown
+	allTopics, err := s.db.GetTopics(ctx)
+	if err != nil {
+		log.Printf("[ERROR] failed to get all topics for RSS help: %v", err)
+		allTopics = []string{} // continue with empty topics
+	}
+
+	// get base URL from config or use default
+	baseURL := defaultBaseURL
+	cfg := s.config.GetFullConfig()
+	if cfg.Server.BaseURL != "" {
+		baseURL = cfg.Server.BaseURL
+	}
+
+	// prepare template data
+	data := struct {
+		ActivePage string
+		TopTopics  []domain.TopicWithScore
+		AllTopics  []string
+		BaseURL    string
+		Version    string
+	}{
+		ActivePage: "rss-help",
+		TopTopics:  topTopics,
+		AllTopics:  allTopics,
+		BaseURL:    baseURL,
+		Version:    s.version,
+	}
+
+	// render RSS help page
+	if err := s.renderPage(w, "rss-help.html", data); err != nil {
+		log.Printf("[ERROR] failed to render RSS help page: %v", err)
 		http.Error(w, "Failed to render page", http.StatusInternalServerError)
 	}
 }

@@ -104,10 +104,12 @@ func TestConfig_GetServerConfig(t *testing.T) {
 			Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 			Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 			PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+			BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 		}{
 			Listen:   ":9090",
 			Timeout:  45 * time.Second,
 			PageSize: 50,
+			BaseURL:  "http://localhost:8080",
 		},
 	}
 
@@ -122,10 +124,12 @@ func TestConfig_GetFullConfig(t *testing.T) {
 			Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 			Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 			PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+			BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 		}{
 			Listen:   ":9090",
 			Timeout:  45 * time.Second,
 			PageSize: 50,
+			BaseURL:  "http://localhost:8080",
 		},
 	}
 
@@ -185,9 +189,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  time.Second,
 				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)
@@ -207,9 +213,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  time.Second,
 				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)
@@ -229,9 +237,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  time.Second,
 				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)
@@ -256,9 +266,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  time.Second,
 				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)
@@ -280,9 +292,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  time.Second,
 				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)
@@ -304,9 +318,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  time.Second,
 				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)
@@ -332,9 +348,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  time.Second,
 				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)
@@ -358,9 +376,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  time.Second,
 				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)
@@ -384,9 +404,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  time.Second,
 				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)
@@ -404,9 +426,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  999 * time.Millisecond, // less than 1 second
 				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)
@@ -425,9 +449,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  time.Second,
 				PageSize: 0, // less than 1
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)
@@ -446,9 +472,11 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
 				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
 				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
 			}{
 				Timeout:  time.Second, // minimum valid value
 				PageSize: 1,           // minimum valid value
+				BaseURL:  "http://localhost:8080",
 			},
 		}
 		err := validate(cfg)

@@ -967,3 +967,122 @@ func TestClassificationRepository_GetFeedbackSince(t *testing.T) {
 		assert.Len(t, examples, 8)
 	})
 }
+
+func TestClassificationRepository_GetTopTopicsByScore(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Use the same test data pattern as the working TestClassificationRepository_GetTopics test
+	// to avoid the json_each issue that's specific to this test setup
+	testFeed := createTestFeed(t, repos, "Test Feed")
+
+	// create test items with different topics and scores
+	testItems := []domain.Item{
+		{
+			FeedID:      testFeed.ID,
+			GUID:        "item-1",
+			Title:       "Tech Article",
+			Link:        "https://example.com/tech",
+			Description: "Tech description",
+			Published:   time.Now(),
+		},
+		{
+			FeedID:      testFeed.ID,
+			GUID:        "item-2",
+			Title:       "Science Article",
+			Link:        "https://example.com/science",
+			Description: "Science description",
+			Published:   time.Now(),
+		},
+		{
+			FeedID:      testFeed.ID,
+			GUID:        "item-3",
+			Title:       "Mixed Article",
+			Link:        "https://example.com/mixed",
+			Description: "Mixed description",
+			Published:   time.Now(),
+		},
+	}
+
+	classifications := []*domain.Classification{
+		{
+			GUID:        "item-1",
+			Score:       8.0,
+			Explanation: "Tech explanation",
+			Topics:      []string{"technology", "programming"},
+		},
+		{
+			GUID:        "item-2",
+			Score:       7.5,
+			Explanation: "Science explanation",
+			Topics:      []string{"science", "research"},
+		},
+		{
+			GUID:        "item-3",
+			Score:       9.0,
+			Explanation: "Mixed explanation",
+			Topics:      []string{"technology", "science"},
+		},
+	}
+
+	// create items and add classifications
+	for i := range testItems {
+		err := repos.Item.CreateItem(context.Background(), &testItems[i])
+		require.NoError(t, err)
+		err = repos.Item.UpdateItemClassification(context.Background(), testItems[i].ID, classifications[i])
+		require.NoError(t, err)
+	}
+
+	t.Run("get top topics by score", func(t *testing.T) {
+		topics, err := repos.Classification.GetTopTopicsByScore(context.Background(), 7.0, 10)
+		require.NoError(t, err)
+
+		// should return topics ordered by average score
+		// technology: (8.0 + 9.0) / 2 = 8.5
+		// science: (7.5 + 9.0) / 2 = 8.25
+		// programming: 8.0 / 1 = 8.0
+		// research: 7.5 / 1 = 7.5
+		require.GreaterOrEqual(t, len(topics), 3)
+
+		// topics should be ordered by average score descending
+		assert.GreaterOrEqual(t, topics[0].AvgScore, topics[1].AvgScore)
+		if len(topics) > 2 {
+			assert.GreaterOrEqual(t, topics[1].AvgScore, topics[2].AvgScore)
+		}
+
+		// verify we have expected topics
+		topicNames := make([]string, len(topics))
+		for i, topic := range topics {
+			topicNames[i] = topic.Topic
+		}
+		assert.Contains(t, topicNames, "technology")
+		assert.Contains(t, topicNames, "science")
+	})
+
+	t.Run("get top topics with high threshold", func(t *testing.T) {
+		topics, err := repos.Classification.GetTopTopicsByScore(context.Background(), 8.5, 10)
+		require.NoError(t, err)
+
+		// With threshold 8.5, only items with score >= 8.5 are included (item-3 with score 9.0)
+		// So technology and science both get score 9.0 with 1 item each
+		assert.GreaterOrEqual(t, len(topics), 2)
+
+		found := false
+		for _, topic := range topics {
+			if topic.Topic == "technology" {
+				found = true
+				assert.InDelta(t, 9.0, topic.AvgScore, 0.01) // only from item-3 with score 9.0
+				assert.Equal(t, 1, topic.ItemCount)          // only item-3
+			}
+		}
+		assert.True(t, found, "technology topic should be found")
+	})
+
+	t.Run("get top topics with limit", func(t *testing.T) {
+		topics, err := repos.Classification.GetTopTopicsByScore(context.Background(), 0.0, 2)
+		require.NoError(t, err)
+
+		// should respect limit
+		assert.LessOrEqual(t, len(topics), 2)
+	})
+}

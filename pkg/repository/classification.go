@@ -198,6 +198,40 @@ func (r *ClassificationRepository) GetTopicsFiltered(ctx context.Context, minSco
 	return topics, nil
 }
 
+// TopicWithScore represents a topic with its average relevance score
+type TopicWithScore struct {
+	Topic     string  `db:"topic"`
+	AvgScore  float64 `db:"avg_score"`
+	ItemCount int     `db:"item_count"`
+}
+
+// GetTopTopicsByScore returns topics ordered by average relevance score (highest first)
+func (r *ClassificationRepository) GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]TopicWithScore, error) {
+	query := `
+		SELECT 
+			topic,
+			AVG(relevance_score) as avg_score,
+			COUNT(*) as item_count
+		FROM (
+			SELECT 
+				json_each.value as topic,
+				items.relevance_score
+			FROM items, json_each(items.topics)
+			WHERE items.classified_at IS NOT NULL
+			AND items.relevance_score >= ?
+		)
+		GROUP BY topic
+		ORDER BY avg_score DESC, item_count DESC
+		LIMIT ?
+	`
+
+	var topics []TopicWithScore
+	if err := r.db.SelectContext(ctx, &topics, query, minScore, limit); err != nil {
+		return nil, fmt.Errorf("get top topics by score: %w", err)
+	}
+	return topics, nil
+}
+
 // UpdateItemFeedback updates user feedback on an item and adjusts its score
 func (r *ClassificationRepository) UpdateItemFeedback(ctx context.Context, itemID int64, feedback *domain.Feedback) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
