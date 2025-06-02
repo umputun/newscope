@@ -24,20 +24,20 @@ import (
 )
 
 const (
-	// Server configuration
+	// server configuration
 	defaultThrottleLimit = 100
 	defaultSizeLimit     = 1024 * 1024 // 1MB
-	
+
 	// RSS feed defaults
-	defaultMinScore   = 5.0
-	defaultRSSLimit   = 100
-	defaultBaseURL    = "http://localhost:8080"
-	
-	// Feed defaults
+	defaultMinScore = 5.0
+	defaultRSSLimit = 100
+	defaultBaseURL  = "http://localhost:8080"
+
+	// feed defaults
 	defaultFetchInterval = 1800 // 30 minutes in seconds
 	minutesToSeconds     = 60
-	
-	// Article pagination
+
+	// article pagination
 	defaultArticleLimit = 100
 )
 

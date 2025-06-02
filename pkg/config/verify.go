@@ -28,7 +28,6 @@ func VerifyAgainstEmbeddedSchema(cfg *Config) error {
 	return nil
 }
 
-
 // validateRequiredFields performs basic validation of required fields
 func validateRequiredFields(cfg *Config) error {
 	// server validation

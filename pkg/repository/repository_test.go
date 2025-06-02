@@ -150,3 +150,200 @@ func TestRepositories_Close(t *testing.T) {
 	// second close should not error
 	assert.NoError(t, repos.Close())
 }
+
+func TestClassificationRepository_GetClassifiedItems_Sorting(t *testing.T) {
+	// setup test database
+	cfg := Config{
+		DSN:             ":memory:",
+		MaxOpenConns:    1,
+		MaxIdleConns:    1,
+		ConnMaxLifetime: 30 * time.Second,
+	}
+
+	repos, err := NewRepositories(context.Background(), cfg)
+	require.NoError(t, err)
+	defer func() {
+		assert.NoError(t, repos.Close())
+	}()
+
+	// create test feed
+	testFeed := &domain.Feed{
+		URL:           "https://example.com/feed.xml",
+		Title:         "Test Feed",
+		Description:   "A test feed",
+		FetchInterval: 3600,
+		Enabled:       true,
+	}
+	err = repos.Feed.CreateFeed(context.Background(), testFeed)
+	require.NoError(t, err)
+
+	// create test items with different scores and published dates
+	baseTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	testItems := []*domain.Item{
+		{
+			FeedID:      testFeed.ID,
+			GUID:        "item-1",
+			Title:       "High Score Old Item",
+			Link:        "https://example.com/item1",
+			Description: "Item with high score but older date",
+			Published:   baseTime, // oldest
+		},
+		{
+			FeedID:      testFeed.ID,
+			GUID:        "item-2",
+			Title:       "Low Score New Item",
+			Link:        "https://example.com/item2",
+			Description: "Item with low score but newer date",
+			Published:   baseTime.Add(2 * time.Hour), // newest
+		},
+		{
+			FeedID:      testFeed.ID,
+			GUID:        "item-3",
+			Title:       "Medium Score Medium Item",
+			Link:        "https://example.com/item3",
+			Description: "Item with medium score and medium date",
+			Published:   baseTime.Add(1 * time.Hour), // middle
+		},
+	}
+
+	// create items
+	for _, item := range testItems {
+		err = repos.Item.CreateItem(context.Background(), item)
+		require.NoError(t, err)
+	}
+
+	// add classifications with different scores
+	classifications := []*domain.Classification{
+		{
+			GUID:        "item-1",
+			Score:       9.0, // highest score
+			Explanation: "High relevance",
+			Topics:      []string{"important"},
+		},
+		{
+			GUID:        "item-2",
+			Score:       5.0, // lowest score
+			Explanation: "Low relevance",
+			Topics:      []string{"general"},
+		},
+		{
+			GUID:        "item-3",
+			Score:       7.0, // medium score
+			Explanation: "Medium relevance",
+			Topics:      []string{"moderate"},
+		},
+	}
+
+	for i, classification := range classifications {
+		err = repos.Item.UpdateItemClassification(context.Background(), testItems[i].ID, classification)
+		require.NoError(t, err)
+	}
+
+	t.Run("sort by score descending", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 0.0,
+			SortBy:   "score",
+			Limit:    10,
+		}
+
+		items, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		require.Len(t, items, 3)
+
+		// should be ordered by score descending: 9.0, 7.0, 5.0
+		assert.Equal(t, "item-1", items[0].GUID) // score 9.0
+		assert.Equal(t, "item-3", items[1].GUID) // score 7.0
+		assert.Equal(t, "item-2", items[2].GUID) // score 5.0
+
+		assert.InDelta(t, 9.0, items[0].Classification.Score, 0.001)
+		assert.InDelta(t, 7.0, items[1].Classification.Score, 0.001)
+		assert.InDelta(t, 5.0, items[2].Classification.Score, 0.001)
+	})
+
+	t.Run("sort by published date descending", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 0.0,
+			SortBy:   "published",
+			Limit:    10,
+		}
+
+		items, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		require.Len(t, items, 3)
+
+		// should be ordered by published date descending: newest first
+		assert.Equal(t, "item-2", items[0].GUID) // newest (baseTime + 2h)
+		assert.Equal(t, "item-3", items[1].GUID) // middle (baseTime + 1h)
+		assert.Equal(t, "item-1", items[2].GUID) // oldest (baseTime)
+
+		// verify the dates are actually in descending order
+		assert.True(t, items[0].Published.After(items[1].Published))
+		assert.True(t, items[1].Published.After(items[2].Published))
+	})
+
+	t.Run("default sort behavior", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 0.0,
+			SortBy:   "", // empty should default to published
+			Limit:    10,
+		}
+
+		items, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		require.Len(t, items, 3)
+
+		// should default to published date descending
+		assert.Equal(t, "item-2", items[0].GUID) // newest
+		assert.Equal(t, "item-3", items[1].GUID) // middle
+		assert.Equal(t, "item-1", items[2].GUID) // oldest
+	})
+
+	t.Run("score sort with secondary published sort", func(t *testing.T) {
+		// create additional item with same score as item-3 but different published date
+		additionalItem := &domain.Item{
+			FeedID:      testFeed.ID,
+			GUID:        "item-4",
+			Title:       "Same Score Newer Item",
+			Link:        "https://example.com/item4",
+			Description: "Same score as item-3 but newer",
+			Published:   baseTime.Add(90 * time.Minute), // newer than item-3
+		}
+		err = repos.Item.CreateItem(context.Background(), additionalItem)
+		require.NoError(t, err)
+
+		// give it the same score as item-3
+		classification := &domain.Classification{
+			GUID:        "item-4",
+			Score:       7.0, // same as item-3
+			Explanation: "Same score as item-3",
+			Topics:      []string{"moderate"},
+		}
+		err = repos.Item.UpdateItemClassification(context.Background(), additionalItem.ID, classification)
+		require.NoError(t, err)
+
+		filter := &domain.ItemFilter{
+			MinScore: 0.0,
+			SortBy:   "score",
+			Limit:    10,
+		}
+
+		items, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		require.Len(t, items, 4)
+
+		// first should be highest score
+		assert.Equal(t, "item-1", items[0].GUID) // score 9.0
+		assert.InDelta(t, 9.0, items[0].Classification.Score, 0.001)
+
+		// next two should be score 7.0, but ordered by published date desc (item-4 then item-3)
+		assert.InDelta(t, 7.0, items[1].Classification.Score, 0.001)
+		assert.InDelta(t, 7.0, items[2].Classification.Score, 0.001)
+		// item-4 should come before item-3 because it's newer
+		assert.Equal(t, "item-4", items[1].GUID) // newer item with score 7.0
+		assert.Equal(t, "item-3", items[2].GUID) // older item with score 7.0
+
+		// last should be lowest score
+		assert.Equal(t, "item-2", items[3].GUID) // score 5.0
+		assert.InDelta(t, 5.0, items[3].Classification.Score, 0.001)
+	})
+}

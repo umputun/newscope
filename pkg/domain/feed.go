@@ -16,4 +16,3 @@ type Feed struct {
 	Enabled       bool
 	CreatedAt     time.Time
 }
-

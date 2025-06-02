@@ -235,7 +235,6 @@ func TestValidateRequiredFields(t *testing.T) {
 	}
 }
 
-
 func TestGenerateSchema(t *testing.T) {
 	schema, err := GenerateSchema()
 	require.NoError(t, err)

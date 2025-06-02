@@ -118,7 +118,15 @@ func (r *ClassificationRepository) GetClassifiedItems(ctx context.Context, filte
 		args = append(args, filter.FeedName, filter.FeedName)
 	}
 
-	query += ` ORDER BY i.published DESC LIMIT ?`
+	// add sorting
+	switch filter.SortBy {
+	case "score":
+		query += ` ORDER BY i.relevance_score DESC, i.published DESC`
+	default:
+		query += ` ORDER BY i.published DESC`
+	}
+
+	query += ` LIMIT ?`
 	args = append(args, filter.Limit)
 
 	var sqlItems []itemWithFeedSQL
