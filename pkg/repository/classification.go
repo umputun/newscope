@@ -122,6 +122,10 @@ func (r *ClassificationRepository) GetClassifiedItems(ctx context.Context, filte
 	switch filter.SortBy {
 	case "score":
 		query += ` ORDER BY i.relevance_score DESC, i.published DESC`
+	case "source+date":
+		query += ` ORDER BY f.title ASC, i.published DESC`
+	case "source+score":
+		query += ` ORDER BY f.title ASC, i.relevance_score DESC, i.published DESC`
 	default:
 		query += ` ORDER BY i.published DESC`
 	}

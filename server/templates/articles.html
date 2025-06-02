@@ -51,6 +51,8 @@
                 hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
             <option value="published" {{if eq .SelectedSort "published"}}selected{{end}}>Date</option>
             <option value="score" {{if eq .SelectedSort "score"}}selected{{end}}>Score</option>
+            <option value="source+date" {{if eq .SelectedSort "source+date"}}selected{{end}}>Source + Date</option>
+            <option value="source+score" {{if eq .SelectedSort "source+score"}}selected{{end}}>Source + Score</option>
         </select>
         
         <!-- View mode toggle -->

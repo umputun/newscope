@@ -346,4 +346,117 @@ func TestClassificationRepository_GetClassifiedItems_Sorting(t *testing.T) {
 		assert.Equal(t, "item-2", items[3].GUID) // score 5.0
 		assert.InDelta(t, 5.0, items[3].Classification.Score, 0.001)
 	})
+
+	t.Run("sort by source+date", func(t *testing.T) {
+		// create second feed for testing source-based sorting
+		secondFeed := &domain.Feed{
+			URL:           "https://feed2.example.com/feed.xml",
+			Title:         "Alpha Feed", // alphabetically before "Test Feed"
+			Description:   "Another test feed",
+			FetchInterval: 3600,
+			Enabled:       true,
+		}
+		err = repos.Feed.CreateFeed(context.Background(), secondFeed)
+		require.NoError(t, err)
+
+		// create items in second feed
+		secondFeedItems := []*domain.Item{
+			{
+				FeedID:      secondFeed.ID,
+				GUID:        "alpha-item-1",
+				Title:       "Alpha Feed Old Item",
+				Link:        "https://feed2.example.com/item1",
+				Description: "Old item from alpha feed",
+				Published:   baseTime.Add(30 * time.Minute), // older than item-2, newer than item-1
+			},
+			{
+				FeedID:      secondFeed.ID,
+				GUID:        "alpha-item-2",
+				Title:       "Alpha Feed New Item",
+				Link:        "https://feed2.example.com/item2",
+				Description: "New item from alpha feed",
+				Published:   baseTime.Add(3 * time.Hour), // newest overall
+			},
+		}
+
+		// create items in second feed
+		for _, item := range secondFeedItems {
+			err = repos.Item.CreateItem(context.Background(), item)
+			require.NoError(t, err)
+		}
+
+		// add classifications
+		secondFeedClassifications := []*domain.Classification{
+			{
+				GUID:        "alpha-item-1",
+				Score:       6.0,
+				Explanation: "Alpha feed old item",
+				Topics:      []string{"alpha"},
+			},
+			{
+				GUID:        "alpha-item-2",
+				Score:       8.0,
+				Explanation: "Alpha feed new item",
+				Topics:      []string{"alpha"},
+			},
+		}
+
+		for i, classification := range secondFeedClassifications {
+			err = repos.Item.UpdateItemClassification(context.Background(), secondFeedItems[i].ID, classification)
+			require.NoError(t, err)
+		}
+
+		filter := &domain.ItemFilter{
+			MinScore: 0.0,
+			SortBy:   "source+date",
+			Limit:    10,
+		}
+
+		items, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		require.Len(t, items, 6) // 4 from testFeed + 2 from secondFeed
+
+		// should be grouped by feed title (Alpha Feed comes before Test Feed alphabetically)
+		// within each feed, sorted by published date descending
+		assert.Equal(t, "Alpha Feed", items[0].FeedName) // alpha-item-2 (newest in Alpha Feed)
+		assert.Equal(t, "alpha-item-2", items[0].GUID)
+		assert.Equal(t, "Alpha Feed", items[1].FeedName) // alpha-item-1 (older in Alpha Feed)
+		assert.Equal(t, "alpha-item-1", items[1].GUID)
+		assert.Equal(t, "Test Feed", items[2].FeedName) // item-2 (newest in Test Feed)
+		assert.Equal(t, "item-2", items[2].GUID)
+
+		// verify dates are descending within each feed group
+		assert.True(t, items[0].Published.After(items[1].Published)) // within Alpha Feed
+		assert.True(t, items[2].Published.After(items[3].Published)) // within Test Feed
+	})
+
+	t.Run("sort by source+score", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 0.0,
+			SortBy:   "source+score",
+			Limit:    10,
+		}
+
+		items, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		require.Len(t, items, 6) // 4 from testFeed + 2 from secondFeed
+
+		// should be grouped by feed title (Alpha Feed comes before Test Feed alphabetically)
+		// within each feed, sorted by score descending, then by published date descending
+		assert.Equal(t, "Alpha Feed", items[0].FeedName) // alpha-item-2 (score 8.0)
+		assert.Equal(t, "alpha-item-2", items[0].GUID)
+		assert.InDelta(t, 8.0, items[0].Classification.Score, 0.001)
+
+		assert.Equal(t, "Alpha Feed", items[1].FeedName) // alpha-item-1 (score 6.0)
+		assert.Equal(t, "alpha-item-1", items[1].GUID)
+		assert.InDelta(t, 6.0, items[1].Classification.Score, 0.001)
+
+		assert.Equal(t, "Test Feed", items[2].FeedName) // item-1 (score 9.0, highest in Test Feed)
+		assert.Equal(t, "item-1", items[2].GUID)
+		assert.InDelta(t, 9.0, items[2].Classification.Score, 0.001)
+
+		// verify scores are descending within each feed group
+		assert.GreaterOrEqual(t, items[0].Classification.Score, items[1].Classification.Score) // within Alpha Feed
+		assert.GreaterOrEqual(t, items[2].Classification.Score, items[3].Classification.Score) // within Test Feed
+	})
 }
