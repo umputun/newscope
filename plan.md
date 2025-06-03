@@ -124,7 +124,6 @@ llm:
   
   # Classification settings
   classification:
-    score_threshold: 5.0       # Minimum score to include
     feedback_examples: 10      # Recent examples to include
     batch_size: 5             # Articles to classify at once
 

@@ -41,12 +41,12 @@ import (
 //
 // For the basic Schema.org Thing type, the basic properties are: name, url, description, image.
 // In addition, for each type that we support, we also parse more specific properties:
-// - Article: headline (i.e. title), publisher, copyright year, copyright holder, date published,
-//            date modified, author, article section
-// - ImageObject: headline (i.e. title), publisher, copyright year, copyright holder, content url,
-//                encoding format, caption, representative of page, width, height
-// - Person: family name, given name
-// - Organization: legal name.
+//   - Article: headline (i.e. title), publisher, copyright year, copyright holder, date published,
+//     date modified, author, article section
+//   - ImageObject: headline (i.e. title), publisher, copyright year, copyright holder, content url,
+//     encoding format, caption, representative of page, width, height
+//   - Person: family name, given name
+//   - Organization: legal name.
 //
 // The value of a Schema.Org property can be a Schema.Org type, i.e. embedded. E.g., the author or
 // publisher of article or publisher of image could be a Schema.Org Person or Organization type;

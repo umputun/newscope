@@ -23,7 +23,7 @@ llm:
   endpoint: "https://api.openai.com/v1" # OpenAI example
   
   api_key: "${OPENAI_API_KEY}"  # From environment
-  model: "gpt-4o-mini"                # or "gpt-4o-mini"
+  model: "gpt-4.1-nano"                # or "gpt-4o-mini"
   temperature: 0.3               # Lower = more consistent
   max_tokens: 2000               # Increased for summaries
   timeout: "30s"
@@ -44,8 +44,7 @@ llm:
   #   }
   
   classification:
-    score_threshold: 5.0       # Minimum score to include
-    feedback_examples: 10      # Recent examples to include
+    feedback_examples: 50      # Recent examples to include
     use_json_mode: true        # Use JSON mode for classification
     preferred_topics:          # Topics that increase article scores based on Radio-T content
       - "golang"
@@ -57,13 +56,11 @@ llm:
       - "open source"
       - "github"
       - "docker"
-      - "typescript"
       - "coding"
       - "tech industry"
       - "claude"
       - "openai"
       - "anthropic"
-      - "llm"
       - "coding assistants"
       - "development tools"
       - "software engineering"

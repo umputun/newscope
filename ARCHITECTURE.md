@@ -419,7 +419,6 @@ llm:
   temperature: 0.3
   max_tokens: 500
   classification:
-    score_threshold: 5.0
     feedback_examples: 10
     batch_size: 5
     use_json_mode: true

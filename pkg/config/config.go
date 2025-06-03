@@ -38,7 +38,6 @@ type Config struct {
 
 // ClassificationConfig holds classification-specific settings
 type ClassificationConfig struct {
-	ScoreThreshold   float64               `yaml:"score_threshold" json:"score_threshold" jsonschema:"default=5.0,minimum=0,maximum=10,description=Minimum relevance score to include articles"`
 	FeedbackExamples int                   `yaml:"feedback_examples" json:"feedback_examples" jsonschema:"default=10,description=Number of recent feedback examples to include in prompt"`
 	UseJSONMode      bool                  `yaml:"use_json_mode" json:"use_json_mode" jsonschema:"default=false,description=Use JSON response format (not all models support this)"`
 	PreferredTopics  []string              `yaml:"preferred_topics" json:"preferred_topics" jsonschema:"description=Topics to prefer (increases score by 1-2 points)"`
@@ -135,9 +134,6 @@ func Load(path string) (*Config, error) {
 	if cfg.LLM.Timeout == 0 {
 		cfg.LLM.Timeout = 30 * time.Second
 	}
-	if cfg.LLM.Classification.ScoreThreshold == 0 {
-		cfg.LLM.Classification.ScoreThreshold = 5.0
-	}
 	if cfg.LLM.Classification.FeedbackExamples == 0 {
 		cfg.LLM.Classification.FeedbackExamples = 10
 	}
@@ -188,9 +184,6 @@ func validate(cfg *Config) error {
 	}
 	if cfg.LLM.Temperature < 0 || cfg.LLM.Temperature > 2 {
 		return fmt.Errorf("llm.temperature must be between 0 and 2")
-	}
-	if cfg.LLM.Classification.ScoreThreshold < 0 || cfg.LLM.Classification.ScoreThreshold > 10 {
-		return fmt.Errorf("llm.classification.score_threshold must be between 0 and 10")
 	}
 
 	// validate extraction config

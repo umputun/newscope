@@ -11,8 +11,7 @@ import (
 // If the element type implements fmt.Stringer it will be used. Otherwise it
 // will fallback to the result of:
 //
-//   fmt.Sprintf("%v")
-//
+//	fmt.Sprintf("%v")
 func String[T constraints.Ordered](s T) string {
 	return fmt.Sprintf("%v", s)
 }
