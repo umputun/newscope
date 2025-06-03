@@ -72,7 +72,12 @@
             <div class="builder-controls">
                 <div class="form-group">
                     <label for="rss-topic">Topic (optional):</label>
-                    <select id="rss-topic" name="topic">
+                    <select id="rss-topic" name="topic"
+                            hx-get="/api/v1/rss-builder" 
+                            hx-trigger="change"
+                            hx-include="#rss-score"
+                            hx-target="#generated-rss-url"
+                            hx-swap="innerHTML">
                         <option value="">All Topics</option>
                         {{range .AllTopics}}
                         <option value="{{.}}">{{.}}</option>
@@ -82,7 +87,12 @@
                 
                 <div class="form-group">
                     <label for="rss-score">Minimum Score:</label>
-                    <input type="range" id="rss-score" name="score" min="0" max="10" value="5.0" step="0.5">
+                    <input type="range" id="rss-score" name="score" min="0" max="10" value="5.0" step="0.5"
+                           hx-get="/api/v1/rss-builder" 
+                           hx-trigger="input changed delay:500ms"
+                           hx-include="#rss-topic"
+                           hx-target="#generated-rss-url"
+                           hx-swap="innerHTML">
                     <span id="rss-score-value">5.0</span>
                 </div>
             </div>
@@ -152,51 +162,21 @@
 </div>
 
 <script>
-// RSS Builder functionality
 document.addEventListener('DOMContentLoaded', function() {
-    const topicSelect = document.getElementById('rss-topic');
+    // Update score display value
     const scoreRange = document.getElementById('rss-score');
     const scoreValue = document.getElementById('rss-score-value');
-    const generatedUrl = document.getElementById('generated-rss-url');
     
-    function updateGeneratedUrl() {
-        const topic = topicSelect.value;
-        const score = scoreRange.value;
-        
-        let url = '/rss';
-        if (topic) {
-            url = `/rss/${topic}`;
-        }
-        
-        const params = new URLSearchParams();
-        if (score !== '5.0') {
-            params.append('min_score', score);
-        }
-        
-        if (params.toString()) {
-            url += '?' + params.toString();
-        }
-        
-        generatedUrl.textContent = url;
-        
-        // Update copy button
-        const copyBtn = document.getElementById('copy-generated-url');
-        copyBtn.setAttribute('data-copy', url);
-    }
-    
-    // Update score display
     scoreRange.addEventListener('input', function() {
         scoreValue.textContent = this.value;
-        updateGeneratedUrl();
     });
     
-    topicSelect.addEventListener('change', updateGeneratedUrl);
-    
-    // Copy to clipboard functionality
+    // Copy to clipboard functionality (required for clipboard API)
     document.addEventListener('click', function(e) {
         if (e.target.matches('.btn-copy') || e.target.closest('.btn-copy')) {
             const btn = e.target.matches('.btn-copy') ? e.target : e.target.closest('.btn-copy');
-            const url = btn.getAttribute('data-copy');
+            const urlElement = btn.getAttribute('data-copy') ? btn : btn.previousElementSibling;
+            const url = btn.getAttribute('data-copy') || urlElement.textContent;
             const fullUrl = '{{.BaseURL}}' + url;
             
             navigator.clipboard.writeText(fullUrl).then(function() {
@@ -212,6 +192,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Fallback for older browsers
                 const textArea = document.createElement('textarea');
                 textArea.value = fullUrl;
+                textArea.style.position = 'fixed';
+                textArea.style.opacity = '0';
                 document.body.appendChild(textArea);
                 textArea.select();
                 document.execCommand('copy');
@@ -219,10 +201,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 const originalText = btn.textContent;
                 btn.textContent = '✅';
+                btn.style.background = '#28a745';
                 setTimeout(function() {
                     btn.textContent = originalText;
+                    btn.style.background = '';
                 }, 2000);
             });
+        }
+    });
+    
+    // Update copy button for generated URL when HTMX updates it
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+        if (evt.detail.target.id === 'generated-rss-url') {
+            const copyBtn = document.getElementById('copy-generated-url');
+            if (copyBtn) {
+                copyBtn.setAttribute('data-copy', evt.detail.target.textContent);
+            }
         }
     });
 });

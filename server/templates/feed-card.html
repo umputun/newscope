@@ -51,7 +51,8 @@
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn-primary">Save</button>
-                <button type="button" class="btn-secondary" onclick="document.getElementById('edit-form-{{.ID}}').style.display='none'">
+                <button type="button" class="btn-secondary" 
+                        hx-on:click="document.getElementById('edit-form-{{.ID}}').style.display='none'">
                     Cancel
                 </button>
             </div>
@@ -60,7 +61,7 @@
     
     <div class="feed-actions">
         <button class="btn-secondary"
-                onclick="document.getElementById('edit-form-{{.ID}}').style.display='block'">
+                hx-on:click="document.getElementById('edit-form-{{.ID}}').style.display='block'">
             Edit
         </button>
         

@@ -287,6 +287,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /feeds", s.feedsHandler)
 	s.router.HandleFunc("GET /settings", s.settingsHandler)
 	s.router.HandleFunc("GET /rss-help", s.rssHelpHandler)
+	s.router.HandleFunc("GET /api/v1/rss-builder", s.rssBuilderHandler)
 
 	// API routes
 	s.router.Mount("/api/v1").Route(func(r *routegroup.Bundle) {
@@ -1065,6 +1066,34 @@ func (s *Server) rssHelpHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[ERROR] failed to render RSS help page: %v", err)
 		http.Error(w, "Failed to render page", http.StatusInternalServerError)
 	}
+}
+
+// rssBuilderHandler handles HTMX requests for RSS URL building
+func (s *Server) rssBuilderHandler(w http.ResponseWriter, r *http.Request) {
+	topic := r.URL.Query().Get("topic")
+	score := r.URL.Query().Get("score")
+	if score == "" {
+		score = "5.0"
+	}
+
+	// build RSS URL
+	url := "/rss"
+	if topic != "" {
+		url = fmt.Sprintf("/rss/%s", topic)
+	}
+
+	// add score parameter if not default
+	if score != "5.0" {
+		if strings.Contains(url, "?") {
+			url += fmt.Sprintf("&min_score=%s", score)
+		} else {
+			url += fmt.Sprintf("?min_score=%s", score)
+		}
+	}
+
+	// return just the URL text for HTMX to update
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprint(w, url)
 }
 
 // feedbackHandler handles user feedback (like/dislike)

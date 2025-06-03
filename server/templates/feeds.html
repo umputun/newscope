@@ -5,7 +5,8 @@
 {{define "content"}}
 <div class="feeds-header">
     <h2>Feed Management</h2>
-    <button class="btn-primary" onclick="document.getElementById('add-feed-form').style.display='block'">
+    <button class="btn-primary" 
+            hx-on:click="document.getElementById('add-feed-form').style.display='block'">
         Add New Feed
     </button>
 </div>
@@ -31,7 +32,8 @@
         </div>
         <div class="form-actions">
             <button type="submit" class="btn-primary">Add Feed</button>
-            <button type="button" class="btn-secondary" onclick="this.form.reset(); document.getElementById('add-feed-form').style.display='none'">
+            <button type="button" class="btn-secondary" 
+                    hx-on:click="this.form.reset(); document.getElementById('add-feed-form').style.display='none'">
                 Cancel
             </button>
         </div>
