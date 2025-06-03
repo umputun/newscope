@@ -34,8 +34,7 @@ func DetectFeedType(feed io.Reader) FeedType {
 	buffer.ReadFrom(feed)
 
 	var firstChar byte
-loop:
-	for {
+	loop: for {
 		ch, err := buffer.ReadByte()
 		if err != nil {
 			return FeedTypeUnknown
@@ -43,7 +42,7 @@ loop:
 		// ignore leading whitespace & byte order marks
 		switch ch {
 		case ' ', '\r', '\n', '\t':
-		case 0xFE, 0xFF, 0x00, 0xEF, 0xBB, 0xBF: // utf 8-16-32 bom
+		case 0xFE, 0xFF, 0x00, 0xEF, 0xBB, 0xBF:  // utf 8-16-32 bom
 		default:
 			firstChar = ch
 			buffer.UnreadByte()

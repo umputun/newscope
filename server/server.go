@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/go-pkgz/rest"
 	"github.com/go-pkgz/rest/logger"
 	"github.com/go-pkgz/routegroup"
+	"github.com/microcosm-cc/bluemonday"
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
@@ -131,6 +133,16 @@ func generatePageNumbers(currentPage, totalPages int) []int {
 
 // New initializes a new server instance
 func New(cfg ConfigProvider, database Database, scheduler Scheduler, version string, debug bool) *Server {
+	// create bluemonday policy for HTML sanitization
+	htmlPolicy := bluemonday.UGCPolicy()
+	// allow additional safe elements that might be in article content
+	htmlPolicy.AllowAttrs("class").OnElements("div", "span", "p", "code", "pre")
+	htmlPolicy.AllowElements("figure", "figcaption", "blockquote", "cite")
+
+	// preserve whitespace in pre and code blocks for proper formatting
+	htmlPolicy.AllowAttrs("style").OnElements("pre", "code")
+	htmlPolicy.RequireParseableURLs(false) // allow data: URLs for syntax highlighting
+
 	// template functions
 	funcMap := template.FuncMap{
 		"mul": func(a, b float64) float64 {
@@ -150,7 +162,34 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		},
 		"printf": fmt.Sprintf,
 		"safeHTML": func(s string) template.HTML {
-			return template.HTML(s) //nolint:gosec // we trust extracted content
+			// fix common content extraction issues before sanitization
+
+			// 1. handle double code tags - these should be pre+code blocks
+			codeBlockRe := regexp.MustCompile(`<code><code>([\s\S]*?)</code></code>`)
+			s = codeBlockRe.ReplaceAllString(s, "<pre><code>$1</code></pre>")
+
+			// 2. fix standalone multi-line code blocks that should be in pre tags
+			// look for code blocks that contain newlines or look like code (has braces, semicolons, etc)
+			standaloneCodeRe := regexp.MustCompile(`<code>((?:[^<]*(?:[\n\r]|[{};])[^<]*)+)</code>`)
+			s = standaloneCodeRe.ReplaceAllStringFunc(s, func(match string) string {
+				// extract the content
+				content := match[6 : len(match)-7] // remove <code> and </code>
+				// check if it looks like a code block (has newlines or typical code syntax)
+				if strings.Contains(content, "\n") ||
+					(strings.Contains(content, "{") && strings.Contains(content, "}")) ||
+					strings.Contains(content, ");") {
+					return "<pre><code>" + content + "</code></pre>"
+				}
+				return match // leave inline code as is
+			})
+
+			// 3. ensure proper nesting - no code directly inside code
+			s = strings.ReplaceAll(s, "<code><code>", "<code>")
+			s = strings.ReplaceAll(s, "</code></code>", "</code>")
+
+			// sanitize HTML content before rendering
+			sanitized := htmlPolicy.Sanitize(s)
+			return template.HTML(sanitized) //nolint:gosec // content is sanitized by bluemonday
 		},
 	}
 

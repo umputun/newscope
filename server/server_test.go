@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -183,4 +184,85 @@ func TestServer_GetPageSize(t *testing.T) {
 
 	pageSize := srv.GetPageSize()
 	assert.Equal(t, 25, pageSize)
+}
+
+func TestServer_SafeHTML(t *testing.T) {
+	// test bluemonday sanitization through template rendering
+	tests := []struct {
+		name        string
+		input       string
+		contains    []string // what should be in the output
+		notContains []string // what should NOT be in the output
+	}{
+		{
+			name:     "safe HTML preserved",
+			input:    `<p>Hello <strong>world</strong></p>`,
+			contains: []string{`<p>Hello <strong>world</strong></p>`},
+		},
+		{
+			name:        "script tag removed",
+			input:       `<p>Hello</p><script>alert('xss')</script>`,
+			contains:    []string{`<p>Hello</p>`},
+			notContains: []string{`<script>`, `alert`},
+		},
+		{
+			name:        "onclick attribute removed",
+			input:       `<p onclick="alert('xss')">Click me</p>`,
+			contains:    []string{`<p>Click me</p>`},
+			notContains: []string{`onclick`, `alert`},
+		},
+		{
+			name:     "safe attributes preserved",
+			input:    `<a href="https://example.com" title="Example">Link</a>`,
+			contains: []string{`href="https://example.com"`, `title="Example"`, `Link</a>`},
+		},
+		{
+			name:        "javascript URL sanitized",
+			input:       `<a href="javascript:alert('xss')">Bad Link</a>`,
+			contains:    []string{`Bad Link</a>`},
+			notContains: []string{`alert('xss')`}, // the dangerous part should be escaped
+		},
+		{
+			name:     "class attributes on allowed elements",
+			input:    `<div class="content"><p class="highlight">Text</p></div>`,
+			contains: []string{`<div class="content">`, `<p class="highlight">`, `Text</p></div>`},
+		},
+		{
+			name:     "blockquote and cite preserved",
+			input:    `<blockquote><p>Quote</p><cite>Author</cite></blockquote>`,
+			contains: []string{`<blockquote>`, `<p>Quote</p>`, `<cite>Author</cite>`, `</blockquote>`},
+		},
+	}
+
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{}
+
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	// create a simple template to test the safeHTML function
+	tmpl, err := srv.templates.New("test").Parse(`{{.Content | safeHTML}}`)
+	require.NoError(t, err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf strings.Builder
+			err := tmpl.Execute(&buf, map[string]string{"Content": tt.input})
+			require.NoError(t, err)
+
+			result := buf.String()
+
+			for _, expected := range tt.contains {
+				assert.Contains(t, result, expected)
+			}
+
+			for _, notExpected := range tt.notContains {
+				assert.NotContains(t, result, notExpected)
+			}
+		})
+	}
 }

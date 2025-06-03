@@ -5,9 +5,9 @@ import "math"
 // SequenceUsing generates slice in range using creator function
 //
 // There are 3 variations to generate:
-//  1. [0, n).
-//  2. [min, max).
-//  3. [min, max) with step.
+// 		1. [0, n).
+//		2. [min, max).
+//		3. [min, max) with step.
 //
 // if len(params) == 1 considered that will be returned slice between 0 and n,
 // where n is the first param, [0, n).

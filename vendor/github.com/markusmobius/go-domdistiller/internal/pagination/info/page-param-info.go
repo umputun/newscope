@@ -30,13 +30,13 @@ import "fmt"
 
 // PageParamInfo stores information about the page parameter detected from potential pagination
 // URLs with numeric anchor text:
-//   - type of page parameter detected
-//   - URL pattern which contains a PageParameterDetector.PageParamPlaceholder to replace the page
-//     parameter
-//   - list of pagination URLs with their page numbers
-//   - coefficient and delta values of the linear formula formed by the pagination URLs:
-//     pageParamValue = coefficient * pageNum + delta
-//   - next paging URL.
+// - type of page parameter detected
+// - URL pattern which contains a PageParameterDetector.PageParamPlaceholder to replace the page
+//   parameter
+// - list of pagination URLs with their page numbers
+// - coefficient and delta values of the linear formula formed by the pagination URLs:
+//      pageParamValue = coefficient * pageNum + delta
+// - next paging URL.
 type PageParamInfo struct {
 	Type          ParamType
 	PagePattern   string

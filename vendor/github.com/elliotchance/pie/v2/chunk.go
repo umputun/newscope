@@ -5,12 +5,12 @@ package pie
 //
 // Examples:
 //
-//	Chunk([1, 2, 3], 4) => [ [1, 2, 3] ]
-//	Chunk([1, 2, 3], 3) => [ [1, 2, 3] ]
-//	Chunk([1, 2, 3], 2) => [ [1, 2], [3] ]
-//	Chunk([1, 2, 3], 1) => [ [1], [2], [3] ]
-//	Chunk([], 1)        => [ [] ]
-//	Chunk([1, 2, 3], 0) => panic: chunkLength should be greater than 0
+//   Chunk([1, 2, 3], 4) => [ [1, 2, 3] ]
+//   Chunk([1, 2, 3], 3) => [ [1, 2, 3] ]
+//   Chunk([1, 2, 3], 2) => [ [1, 2], [3] ]
+//   Chunk([1, 2, 3], 1) => [ [1], [2], [3] ]
+//   Chunk([], 1)        => [ [] ]
+//   Chunk([1, 2, 3], 0) => panic: chunkLength should be greater than 0
 func Chunk[T any](ss []T, chunkLength int) [][]T {
 	if chunkLength <= 0 {
 		panic("chunkLength should be greater than 0")

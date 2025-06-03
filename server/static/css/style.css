@@ -918,6 +918,8 @@ main {
     border-radius: 3px;
     font-family: 'Courier New', monospace;
     font-size: 0.9em;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .content-text pre {
@@ -926,12 +928,16 @@ main {
     border-radius: 5px;
     overflow-x: auto;
     margin: 1em 0;
+    white-space: pre;
+    line-height: 1.5;
 }
 
 .content-text pre code {
     background: none;
     padding: 0;
     color: var(--code-text);
+    white-space: pre;
+    display: block;
 }
 
 .close-btn {
