@@ -3,7 +3,13 @@
     <div class="article-header expanded-only">
         <h3><a href="{{.Link}}" target="_blank" rel="noopener">{{.Title}}</a></h3>
         <div class="article-meta">
-            <span class="feed-name">{{.FeedName}}</span>
+            <a href="#" class="feed-name clickable-feed"
+               data-feed="{{.FeedName}}"
+               hx-get="/articles"
+               hx-vals='{"feed":"{{.FeedName}}"}'
+               hx-trigger="click"
+               hx-target="#articles-with-pagination"
+               hx-include="#score-filter, #topic-filter, #sort-filter">{{.FeedName}}</a>
             <time datetime="{{.Published.Format "2006-01-02T15:04:05Z07:00"}}">
                 {{.Published.Local.Format "Jan 2, 2006 15:04 MST"}}
             </time>
@@ -15,7 +21,13 @@
         <div class="condensed-main">
             <h3><a href="{{.Link}}" target="_blank" rel="noopener">{{.Title}}</a></h3>
             <div class="condensed-meta">
-                <span class="feed-name">{{.FeedName}}</span>
+                <a href="#" class="feed-name clickable-feed"
+                   data-feed="{{.FeedName}}"
+                   hx-get="/articles"
+                   hx-vals='{"feed":"{{.FeedName}}"}'
+                   hx-trigger="click"
+                   hx-target="#articles-with-pagination"
+                   hx-include="#score-filter, #topic-filter, #sort-filter">{{.FeedName}}</a>
                 <time datetime="{{.Published.Format "2006-01-02T15:04:05Z07:00"}}">
                     {{.Published.Local.Format "Jan 2, 15:04"}}
                 </time>

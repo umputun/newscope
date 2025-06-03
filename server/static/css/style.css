@@ -346,6 +346,7 @@ main {
 .condensed-meta .feed-name {
     font-weight: 500;
     color: var(--text-secondary);
+    text-decoration: none;
 }
 
 .score-badge {
@@ -418,6 +419,14 @@ main {
 
 .feed-name {
     font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.feed-name.clickable-feed:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
 }
 
 .article-description {

@@ -170,11 +170,21 @@ document.addEventListener('htmx:beforeRequest', function(event) {
             topicFilter.value = topic;
         }
     }
+    
+    // Check if the request is from a clickable feed name
+    if (event.detail.elt && event.detail.elt.classList.contains('clickable-feed')) {
+        const feed = event.detail.elt.getAttribute('data-feed');
+        const feedFilter = document.getElementById('feed-filter');
+        if (feedFilter && feed) {
+            feedFilter.value = feed;
+        }
+    }
 });
 
-// Prevent default link behavior for topic tags
+// Prevent default link behavior for topic tags and feed names
 document.addEventListener('click', function(event) {
-    if (event.target && event.target.classList.contains('clickable-topic')) {
+    if (event.target && (event.target.classList.contains('clickable-topic') || 
+                        event.target.classList.contains('clickable-feed'))) {
         event.preventDefault();
     }
 });
