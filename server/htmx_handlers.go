@@ -278,12 +278,9 @@ func (s *Server) rssHelpHandler(w http.ResponseWriter, r *http.Request) {
 		allTopics = []string{} // continue with empty topics
 	}
 
-	// get base URL from config or use default
-	baseURL := defaultBaseURL
+	// get base URL from config
 	cfg := s.config.GetFullConfig()
-	if cfg.Server.BaseURL != "" {
-		baseURL = cfg.Server.BaseURL
-	}
+	baseURL := cfg.Server.BaseURL
 
 	// prepare template data
 	data := struct {

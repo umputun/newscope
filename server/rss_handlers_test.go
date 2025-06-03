@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/server/mocks"
 )
@@ -18,6 +19,18 @@ func TestServer_rssFeedHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
+		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{
+					BaseURL: "http://localhost:8080",
+				},
+			}
 		},
 	}
 
@@ -64,6 +77,18 @@ func TestServer_rssHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
+		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{
+					BaseURL: "http://localhost:8080",
+				},
+			}
 		},
 	}
 
@@ -155,6 +180,18 @@ func TestServer_generateRSSFeed(t *testing.T) {
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{
+					BaseURL: "http://localhost:8080",
+				},
+			}
+		},
 	}
 	database := &mocks.DatabaseMock{}
 	scheduler := &mocks.SchedulerMock{}
@@ -195,6 +232,18 @@ func TestServer_RSSHandler_DatabaseError(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
+		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{
+					BaseURL: "http://localhost:8080",
+				},
+			}
 		},
 	}
 

@@ -48,6 +48,14 @@
                     <label>Request Timeout</label>
                     <span class="setting-value">{{.Config.Server.Timeout}}</span>
                 </div>
+                <div class="setting-item">
+                    <label>Page Size</label>
+                    <span class="setting-value">{{.Config.Server.PageSize}} articles per page</span>
+                </div>
+                <div class="setting-item">
+                    <label>Base URL</label>
+                    <span class="setting-value text-mono">{{.Config.Server.BaseURL}}</span>
+                </div>
             </div>
         </div>
 
@@ -125,6 +133,14 @@
                         {{if .Config.LLM.APIKey}}<i class="fas fa-key"></i> Configured{{else}}<i class="fas fa-exclamation-triangle"></i> Not configured{{end}}
                     </span>
                 </div>
+                {{if .Config.LLM.SystemPrompt}}
+                <div class="setting-item">
+                    <label>System Prompt</label>
+                    <span class="setting-value {{if .Config.LLM.SystemPrompt}}text-success{{else}}text-muted{{end}}">
+                        {{if .Config.LLM.SystemPrompt}}<i class="fas fa-check"></i> Custom prompt configured{{else}}<i class="fas fa-times"></i> Using default{{end}}
+                    </span>
+                </div>
+                {{end}}
             </div>
             
             <h4 class="subsection-header">Classification Settings</h4>

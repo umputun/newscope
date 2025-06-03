@@ -6,6 +6,7 @@ server:
   listen: ":8080"
   timeout: "30s"
   page_size: 50              # Articles per page for pagination
+  base_url: "http://localhost:8080"  # Base URL for RSS feeds and external links
 
 database:
   dsn: "./var/newscope.db"

@@ -85,6 +85,10 @@ func (s *Server) rssHandler(w http.ResponseWriter, r *http.Request) {
 
 // buildRSSFeed creates an RSS 2.0 feed from classified items
 func (s *Server) buildRSSFeed(topic string, minScore float64, items []domain.ItemWithClassification) string {
+	// get base URL from config
+	cfg := s.config.GetFullConfig()
+	baseURL := cfg.Server.BaseURL
+
 	// determine title
 	var title string
 	if topic != "" {
@@ -94,9 +98,9 @@ func (s *Server) buildRSSFeed(topic string, minScore float64, items []domain.Ite
 	}
 
 	// build self link
-	selfLink := defaultBaseURL + "/rss"
+	selfLink := baseURL + "/rss"
 	if topic != "" {
-		selfLink = fmt.Sprintf("%s/rss/%s", defaultBaseURL, topic)
+		selfLink = fmt.Sprintf("%s/rss/%s", baseURL, topic)
 	}
 
 	// convert items to RSS items
@@ -128,7 +132,7 @@ func (s *Server) buildRSSFeed(topic string, minScore float64, items []domain.Ite
 		Atom:    "http://www.w3.org/2005/Atom",
 		Channel: rssChannel{
 			Title:         title,
-			Link:          defaultBaseURL + "/",
+			Link:          baseURL + "/",
 			Description:   fmt.Sprintf("AI-curated articles with relevance score ≥ %.1f", minScore),
 			AtomLink:      atomLink{Href: selfLink, Rel: "self", Type: "application/rss+xml"},
 			LastBuildDate: time.Now().Format(time.RFC1123Z),

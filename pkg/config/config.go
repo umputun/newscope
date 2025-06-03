@@ -101,6 +101,9 @@ func Load(path string) (*Config, error) {
 	if cfg.Server.PageSize == 0 {
 		cfg.Server.PageSize = 50
 	}
+	if cfg.Server.BaseURL == "" {
+		cfg.Server.BaseURL = "http://localhost:8080"
+	}
 
 	// set defaults for database
 	if cfg.Database.DSN == "" {
