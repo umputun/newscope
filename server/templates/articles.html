@@ -159,5 +159,24 @@ document.getElementById('view-condensed').addEventListener('click', function() {
 document.getElementById('sort-filter').addEventListener('change', function(e) {
     localStorage.setItem('newscopeSortBy', e.target.value);
 });
+
+// Handle topic tag clicks to update the dropdown
+document.addEventListener('htmx:beforeRequest', function(event) {
+    // Check if the request is from a clickable topic tag
+    if (event.detail.elt && event.detail.elt.classList.contains('clickable-topic')) {
+        const topic = event.detail.elt.getAttribute('data-topic');
+        const topicFilter = document.getElementById('topic-filter');
+        if (topicFilter && topic) {
+            topicFilter.value = topic;
+        }
+    }
+});
+
+// Prevent default link behavior for topic tags
+document.addEventListener('click', function(event) {
+    if (event.target && event.target.classList.contains('clickable-topic')) {
+        event.preventDefault();
+    }
+});
 </script>
 {{end}}

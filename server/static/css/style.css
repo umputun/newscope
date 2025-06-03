@@ -480,6 +480,14 @@ main {
     color: white;
     font-size: 0.75rem;
     border-radius: 9999px;
+    text-decoration: none;
+    transition: background-color 0.2s, transform 0.2s;
+}
+
+.topic-tag.clickable-topic:hover {
+    background-color: var(--primary-hover);
+    transform: scale(1.05);
+    cursor: pointer;
 }
 
 /* Topic preferences in settings */
