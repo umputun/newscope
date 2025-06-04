@@ -17,8 +17,14 @@ import (
 //			ExtractContentNowFunc: func(ctx context.Context, itemID int64) error {
 //				panic("mock out the ExtractContentNow method")
 //			},
+//			TriggerPreferenceUpdateFunc: func()  {
+//				panic("mock out the TriggerPreferenceUpdate method")
+//			},
 //			UpdateFeedNowFunc: func(ctx context.Context, feedID int64) error {
 //				panic("mock out the UpdateFeedNow method")
+//			},
+//			UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+//				panic("mock out the UpdatePreferenceSummary method")
 //			},
 //		}
 //
@@ -30,8 +36,14 @@ type SchedulerMock struct {
 	// ExtractContentNowFunc mocks the ExtractContentNow method.
 	ExtractContentNowFunc func(ctx context.Context, itemID int64) error
 
+	// TriggerPreferenceUpdateFunc mocks the TriggerPreferenceUpdate method.
+	TriggerPreferenceUpdateFunc func()
+
 	// UpdateFeedNowFunc mocks the UpdateFeedNow method.
 	UpdateFeedNowFunc func(ctx context.Context, feedID int64) error
+
+	// UpdatePreferenceSummaryFunc mocks the UpdatePreferenceSummary method.
+	UpdatePreferenceSummaryFunc func(ctx context.Context) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -42,6 +54,9 @@ type SchedulerMock struct {
 			// ItemID is the itemID argument value.
 			ItemID int64
 		}
+		// TriggerPreferenceUpdate holds details about calls to the TriggerPreferenceUpdate method.
+		TriggerPreferenceUpdate []struct {
+		}
 		// UpdateFeedNow holds details about calls to the UpdateFeedNow method.
 		UpdateFeedNow []struct {
 			// Ctx is the ctx argument value.
@@ -49,9 +64,16 @@ type SchedulerMock struct {
 			// FeedID is the feedID argument value.
 			FeedID int64
 		}
+		// UpdatePreferenceSummary holds details about calls to the UpdatePreferenceSummary method.
+		UpdatePreferenceSummary []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 	}
-	lockExtractContentNow sync.RWMutex
-	lockUpdateFeedNow     sync.RWMutex
+	lockExtractContentNow       sync.RWMutex
+	lockTriggerPreferenceUpdate sync.RWMutex
+	lockUpdateFeedNow           sync.RWMutex
+	lockUpdatePreferenceSummary sync.RWMutex
 }
 
 // ExtractContentNow calls ExtractContentNowFunc.
@@ -90,6 +112,33 @@ func (mock *SchedulerMock) ExtractContentNowCalls() []struct {
 	return calls
 }
 
+// TriggerPreferenceUpdate calls TriggerPreferenceUpdateFunc.
+func (mock *SchedulerMock) TriggerPreferenceUpdate() {
+	if mock.TriggerPreferenceUpdateFunc == nil {
+		panic("SchedulerMock.TriggerPreferenceUpdateFunc: method is nil but Scheduler.TriggerPreferenceUpdate was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockTriggerPreferenceUpdate.Lock()
+	mock.calls.TriggerPreferenceUpdate = append(mock.calls.TriggerPreferenceUpdate, callInfo)
+	mock.lockTriggerPreferenceUpdate.Unlock()
+	mock.TriggerPreferenceUpdateFunc()
+}
+
+// TriggerPreferenceUpdateCalls gets all the calls that were made to TriggerPreferenceUpdate.
+// Check the length with:
+//
+//	len(mockedScheduler.TriggerPreferenceUpdateCalls())
+func (mock *SchedulerMock) TriggerPreferenceUpdateCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockTriggerPreferenceUpdate.RLock()
+	calls = mock.calls.TriggerPreferenceUpdate
+	mock.lockTriggerPreferenceUpdate.RUnlock()
+	return calls
+}
+
 // UpdateFeedNow calls UpdateFeedNowFunc.
 func (mock *SchedulerMock) UpdateFeedNow(ctx context.Context, feedID int64) error {
 	if mock.UpdateFeedNowFunc == nil {
@@ -123,5 +172,37 @@ func (mock *SchedulerMock) UpdateFeedNowCalls() []struct {
 	mock.lockUpdateFeedNow.RLock()
 	calls = mock.calls.UpdateFeedNow
 	mock.lockUpdateFeedNow.RUnlock()
+	return calls
+}
+
+// UpdatePreferenceSummary calls UpdatePreferenceSummaryFunc.
+func (mock *SchedulerMock) UpdatePreferenceSummary(ctx context.Context) error {
+	if mock.UpdatePreferenceSummaryFunc == nil {
+		panic("SchedulerMock.UpdatePreferenceSummaryFunc: method is nil but Scheduler.UpdatePreferenceSummary was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockUpdatePreferenceSummary.Lock()
+	mock.calls.UpdatePreferenceSummary = append(mock.calls.UpdatePreferenceSummary, callInfo)
+	mock.lockUpdatePreferenceSummary.Unlock()
+	return mock.UpdatePreferenceSummaryFunc(ctx)
+}
+
+// UpdatePreferenceSummaryCalls gets all the calls that were made to UpdatePreferenceSummary.
+// Check the length with:
+//
+//	len(mockedScheduler.UpdatePreferenceSummaryCalls())
+func (mock *SchedulerMock) UpdatePreferenceSummaryCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockUpdatePreferenceSummary.RLock()
+	calls = mock.calls.UpdatePreferenceSummary
+	mock.lockUpdatePreferenceSummary.RUnlock()
 	return calls
 }

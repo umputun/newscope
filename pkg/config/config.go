@@ -38,11 +38,12 @@ type Config struct {
 
 // ClassificationConfig holds classification-specific settings
 type ClassificationConfig struct {
-	FeedbackExamples int                   `yaml:"feedback_examples" json:"feedback_examples" jsonschema:"default=10,description=Number of recent feedback examples to include in prompt"`
-	UseJSONMode      bool                  `yaml:"use_json_mode" json:"use_json_mode" jsonschema:"default=false,description=Use JSON response format (not all models support this)"`
-	PreferredTopics  []string              `yaml:"preferred_topics" json:"preferred_topics" jsonschema:"description=Topics to prefer (increases score by 1-2 points)"`
-	AvoidedTopics    []string              `yaml:"avoided_topics" json:"avoided_topics" jsonschema:"description=Topics to avoid (decreases score by 1-2 points)"`
-	Prompts          ClassificationPrompts `yaml:"prompts" json:"prompts" jsonschema:"description=Custom prompts for classification and preference summaries"`
+	FeedbackExamples           int                   `yaml:"feedback_examples" json:"feedback_examples" jsonschema:"default=10,description=Number of recent feedback examples to include in prompt"`
+	UseJSONMode                bool                  `yaml:"use_json_mode" json:"use_json_mode" jsonschema:"default=false,description=Use JSON response format (not all models support this)"`
+	PreferredTopics            []string              `yaml:"preferred_topics" json:"preferred_topics" jsonschema:"description=Topics to prefer (increases score by 1-2 points)"`
+	AvoidedTopics              []string              `yaml:"avoided_topics" json:"avoided_topics" jsonschema:"description=Topics to avoid (decreases score by 1-2 points)"`
+	PreferenceSummaryThreshold int                   `yaml:"preference_summary_threshold" json:"preference_summary_threshold" jsonschema:"default=25,minimum=5,description=Number of new feedbacks required before updating preference summary"`
+	Prompts                    ClassificationPrompts `yaml:"prompts" json:"prompts" jsonschema:"description=Custom prompts for classification and preference summaries"`
 }
 
 // ClassificationPrompts holds customizable prompts for the LLM classifier

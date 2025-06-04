@@ -26,6 +26,9 @@ import (
 //			GetClassifiedItemsCountFunc: func(ctx context.Context, filter *domain.ItemFilter) (int, error) {
 //				panic("mock out the GetClassifiedItemsCount method")
 //			},
+//			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
+//				panic("mock out the GetFeedbackCount method")
+//			},
 //			GetTopTopicsByScoreFunc: func(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error) {
 //				panic("mock out the GetTopTopicsByScore method")
 //			},
@@ -53,6 +56,9 @@ type ClassificationRepoMock struct {
 
 	// GetClassifiedItemsCountFunc mocks the GetClassifiedItemsCount method.
 	GetClassifiedItemsCountFunc func(ctx context.Context, filter *domain.ItemFilter) (int, error)
+
+	// GetFeedbackCountFunc mocks the GetFeedbackCount method.
+	GetFeedbackCountFunc func(ctx context.Context) (int64, error)
 
 	// GetTopTopicsByScoreFunc mocks the GetTopTopicsByScore method.
 	GetTopTopicsByScoreFunc func(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error)
@@ -89,6 +95,11 @@ type ClassificationRepoMock struct {
 			// Filter is the filter argument value.
 			Filter *domain.ItemFilter
 		}
+		// GetFeedbackCount holds details about calls to the GetFeedbackCount method.
+		GetFeedbackCount []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 		// GetTopTopicsByScore holds details about calls to the GetTopTopicsByScore method.
 		GetTopTopicsByScore []struct {
 			// Ctx is the ctx argument value.
@@ -123,6 +134,7 @@ type ClassificationRepoMock struct {
 	lockGetClassifiedItem       sync.RWMutex
 	lockGetClassifiedItems      sync.RWMutex
 	lockGetClassifiedItemsCount sync.RWMutex
+	lockGetFeedbackCount        sync.RWMutex
 	lockGetTopTopicsByScore     sync.RWMutex
 	lockGetTopics               sync.RWMutex
 	lockGetTopicsFiltered       sync.RWMutex
@@ -234,6 +246,38 @@ func (mock *ClassificationRepoMock) GetClassifiedItemsCountCalls() []struct {
 	mock.lockGetClassifiedItemsCount.RLock()
 	calls = mock.calls.GetClassifiedItemsCount
 	mock.lockGetClassifiedItemsCount.RUnlock()
+	return calls
+}
+
+// GetFeedbackCount calls GetFeedbackCountFunc.
+func (mock *ClassificationRepoMock) GetFeedbackCount(ctx context.Context) (int64, error) {
+	if mock.GetFeedbackCountFunc == nil {
+		panic("ClassificationRepoMock.GetFeedbackCountFunc: method is nil but ClassificationRepo.GetFeedbackCount was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockGetFeedbackCount.Lock()
+	mock.calls.GetFeedbackCount = append(mock.calls.GetFeedbackCount, callInfo)
+	mock.lockGetFeedbackCount.Unlock()
+	return mock.GetFeedbackCountFunc(ctx)
+}
+
+// GetFeedbackCountCalls gets all the calls that were made to GetFeedbackCount.
+// Check the length with:
+//
+//	len(mockedClassificationRepo.GetFeedbackCountCalls())
+func (mock *ClassificationRepoMock) GetFeedbackCountCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockGetFeedbackCount.RLock()
+	calls = mock.calls.GetFeedbackCount
+	mock.lockGetFeedbackCount.RUnlock()
 	return calls
 }
 

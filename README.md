@@ -31,7 +31,7 @@ In addition to intelligent feed curation, newscope provides:
 
 - AI-powered article scoring (0-10) with explanations
 - Automatic topic extraction and tagging
-- Learning from your feedback (likes/dislikes)
+- Learning from your feedback (likes/dislikes) with adaptive preference summaries
 - Full content extraction from article pages
 - Custom RSS feed generation with filters
 - Modern web UI with multiple view modes
@@ -125,6 +125,7 @@ llm:
   
   classification:
     feedback_examples: 50
+    preference_summary_threshold: 25  # Number of new feedbacks before updating preference summary
     preferred_topics:
       - "programming"
       - "golang"
@@ -212,7 +213,9 @@ llm:
 - Articles are scored 0-10 based on relevance to your interests
 - Preferred topics boost scores by 1-2 points
 - Avoided topics reduce scores by 1-2 points
-- Feedback is used to generate preference summaries
+- Feedback is used to generate preference summaries that adapt to your reading habits
+- Preference summaries update after configurable number of new feedbacks (default: 25)
+- Updates are debounced to prevent excessive API calls
 - Content extraction respects rate limits and robots.txt
 - Database is SQLite, stored in `var/` directory
 

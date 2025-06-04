@@ -14,7 +14,7 @@ Manages all application configuration through YAML files with schema validation.
 - **Feed**: Individual feed configuration (URL, name, update interval)
 - **ExtractionConfig**: Content extraction settings (timeout, concurrency, options)
 - **LLMConfig**: LLM API configuration for classification
-- **ClassificationConfig**: Classification-specific settings (score threshold, batch size, JSON mode)
+- **ClassificationConfig**: Classification-specific settings (score threshold, batch size, JSON mode, preference summary threshold)
 - **ServerConfig**: HTTP server settings (address, timeouts)
 - **Verify()**: Validates configuration against JSON schema
 
@@ -168,8 +168,10 @@ Uses OpenAI-compatible APIs to classify and score articles based on relevance wi
   
 - **Preference Summary System**: Learns from all historical feedback
   - Generates initial summary after 50 feedback items
-  - Updates summary every 20 new feedback items
+  - Updates summary after configurable threshold of new feedback items (default: 25)
+  - Uses debounced updates with 5-minute delay to prevent excessive API calls
   - Maintains compressed knowledge of user preferences
+  - Tracks feedback count between updates to determine when to refresh
   - Included in classification prompts for better accuracy
 
 **Methods:**
@@ -205,8 +207,10 @@ Manages periodic feed updates and content processing with a channel-based archit
 
 **Preference Summary Lifecycle:**
 - Generates initial summary after 50 feedback items
-- Updates summary every 20 new feedback items
-- Stores summary and count in settings table
+- Updates summary after configurable threshold of new feedbacks (PreferenceSummaryThreshold)
+- Uses dedicated worker with debouncing (5-minute delay) to batch updates
+- Stores summary and last feedback count in settings table
+- Tracks count between updates to determine when threshold is reached
 - Includes summary in all classification requests
 
 **Interfaces** (defined by scheduler):
@@ -422,6 +426,7 @@ llm:
     feedback_examples: 10
     batch_size: 5
     use_json_mode: true
+    preference_summary_threshold: 25  # Number of new feedbacks before updating summary
 
 scheduler:
   update_interval: 30    # minutes

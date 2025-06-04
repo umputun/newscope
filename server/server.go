@@ -85,6 +85,8 @@ type Database interface {
 type Scheduler interface {
 	UpdateFeedNow(ctx context.Context, feedID int64) error
 	ExtractContentNow(ctx context.Context, itemID int64) error
+	UpdatePreferenceSummary(ctx context.Context) error
+	TriggerPreferenceUpdate()
 }
 
 // ConfigProvider provides server configuration

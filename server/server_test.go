@@ -31,7 +31,11 @@ func TestServer_New(t *testing.T) {
 		},
 	}
 	database := &mocks.DatabaseMock{}
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		TriggerPreferenceUpdateFunc: func() {
+			// do nothing in tests
+		},
+	}
 
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 	assert.NotNil(t, srv)

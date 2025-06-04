@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -259,7 +260,7 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 
 	classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
 		assert.Empty(t, feedbackType)
-		assert.Equal(t, 10, limit)
+		assert.Equal(t, 50, limit)
 		return []domain.FeedbackExample{}, nil
 	}
 
@@ -986,6 +987,223 @@ func TestScheduler_UpdateFeed_ItemCreationError(t *testing.T) {
 	assert.Len(t, feedManager.UpdateFeedFetchedCalls(), 1) // should still update feed timestamp
 }
 
+func TestScheduler_UpdatePreferenceSummary(t *testing.T) {
+	t.Run("generate initial summary", func(t *testing.T) {
+		// setup mocks
+		classificationManager := &mocks.ClassificationManagerMock{
+			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+				assert.Equal(t, 50, limit)
+				return []domain.FeedbackExample{
+					{Title: "AI article", Feedback: domain.FeedbackLike, Topics: []string{"ai"}},
+					{Title: "Politics", Feedback: domain.FeedbackDislike, Topics: []string{"politics"}},
+				}, nil
+			},
+			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
+				return 2, nil
+			},
+		}
+
+		settingManager := &mocks.SettingManagerMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				if key == "preference_summary" {
+					return "", nil // no existing summary
+				}
+				return "0", nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				return nil
+			},
+		}
+
+		classifier := &mocks.ClassifierMock{
+			GeneratePreferenceSummaryFunc: func(ctx context.Context, feedback []domain.FeedbackExample) (string, error) {
+				assert.Len(t, feedback, 2)
+				return "User likes AI, dislikes politics", nil
+			},
+		}
+
+		scheduler := &Scheduler{
+			classificationManager: classificationManager,
+			settingManager:        settingManager,
+			classifier:            classifier,
+		}
+
+		// execute
+		err := scheduler.UpdatePreferenceSummary(context.Background())
+
+		// verify
+		require.NoError(t, err)
+		assert.Len(t, classifier.GeneratePreferenceSummaryCalls(), 1)
+		assert.Len(t, settingManager.SetSettingCalls(), 2) // summary and count
+
+		// check both settings were updated
+		var summarySet, countSet bool
+		for _, call := range settingManager.SetSettingCalls() {
+			if call.Key == "preference_summary" && call.Value == "User likes AI, dislikes politics" {
+				summarySet = true
+			}
+			if call.Key == "last_summary_feedback_count" && call.Value == "2" {
+				countSet = true
+			}
+		}
+		assert.True(t, summarySet)
+		assert.True(t, countSet)
+	})
+
+	t.Run("update existing summary with threshold", func(t *testing.T) {
+		// setup mocks
+		classificationManager := &mocks.ClassificationManagerMock{
+			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+				return []domain.FeedbackExample{
+					{Title: "Go article", Feedback: domain.FeedbackLike, Topics: []string{"golang"}},
+				}, nil
+			},
+			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
+				return 30, nil // 30 total feedbacks
+			},
+		}
+
+		settingManager := &mocks.SettingManagerMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				switch key {
+				case "preference_summary":
+					return "Existing summary", nil
+				case "last_summary_feedback_count":
+					return "5", nil // 5 feedbacks last time
+				}
+				return "", nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				return nil
+			},
+		}
+
+		classifier := &mocks.ClassifierMock{
+			UpdatePreferenceSummaryFunc: func(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error) {
+				assert.Equal(t, "Existing summary", currentSummary)
+				return "Updated summary with Go preference", nil
+			},
+		}
+
+		scheduler := &Scheduler{
+			classificationManager: classificationManager,
+			settingManager:        settingManager,
+			classifier:            classifier,
+		}
+
+		// execute
+		err := scheduler.UpdatePreferenceSummary(context.Background())
+
+		// verify - 30-5=25 new feedbacks, exactly at threshold
+		require.NoError(t, err)
+		assert.Len(t, classifier.UpdatePreferenceSummaryCalls(), 1)
+		assert.Len(t, settingManager.SetSettingCalls(), 2) // summary and count
+
+		// check both settings were updated
+		var summarySet, countSet bool
+		for _, call := range settingManager.SetSettingCalls() {
+			if call.Key == "preference_summary" && call.Value == "Updated summary with Go preference" {
+				summarySet = true
+			}
+			if call.Key == "last_summary_feedback_count" && call.Value == "30" {
+				countSet = true
+			}
+		}
+		assert.True(t, summarySet)
+		assert.True(t, countSet)
+	})
+
+	t.Run("skip update when below threshold", func(t *testing.T) {
+		// setup mocks
+		classificationManager := &mocks.ClassificationManagerMock{
+			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+				return []domain.FeedbackExample{}, nil
+			},
+			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
+				return 15, nil // only 15 total
+			},
+		}
+
+		settingManager := &mocks.SettingManagerMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				switch key {
+				case "preference_summary":
+					return "Existing", nil
+				case "last_summary_feedback_count":
+					return "10", nil // 10 last time, so only 5 new
+				}
+				return "", nil
+			},
+		}
+
+		classifier := &mocks.ClassifierMock{}
+
+		scheduler := &Scheduler{
+			classificationManager: classificationManager,
+			settingManager:        settingManager,
+			classifier:            classifier,
+		}
+
+		// execute
+		err := scheduler.UpdatePreferenceSummary(context.Background())
+
+		// verify - should skip update
+		require.NoError(t, err)
+		assert.Empty(t, classifier.UpdatePreferenceSummaryCalls())
+		assert.Empty(t, settingManager.SetSettingCalls())
+	})
+
+	t.Run("context cancellation", func(t *testing.T) {
+		// setup mocks with delay
+		classificationManager := &mocks.ClassificationManagerMock{
+			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+				return []domain.FeedbackExample{{Title: "test"}}, nil
+			},
+			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
+				return 50, nil
+			},
+		}
+
+		settingManager := &mocks.SettingManagerMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				if key == "preference_summary" {
+					return "existing", nil
+				}
+				return "0", nil
+			},
+		}
+
+		classifier := &mocks.ClassifierMock{
+			UpdatePreferenceSummaryFunc: func(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error) {
+				// check if context is done
+				select {
+				case <-ctx.Done():
+					return "", ctx.Err()
+				default:
+				}
+				return "updated", nil
+			},
+		}
+
+		scheduler := &Scheduler{
+			classificationManager: classificationManager,
+			settingManager:        settingManager,
+			classifier:            classifier,
+		}
+
+		// create canceled context
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		// execute
+		err := scheduler.UpdatePreferenceSummary(ctx)
+
+		// verify - should return context error
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "context canceled")
+	})
+}
+
 func TestScheduler_UpdateFeed_EmptyTitle(t *testing.T) {
 	feedManager := &mocks.FeedManagerMock{}
 	itemManager := &mocks.ItemManagerMock{}
@@ -1038,4 +1256,178 @@ func TestScheduler_UpdateFeed_EmptyTitle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, parser.ParseCalls(), 1)
 	assert.Len(t, feedManager.UpdateFeedFetchedCalls(), 1)
+}
+
+func TestScheduler_TriggerPreferenceUpdate(t *testing.T) {
+	// setup mocks
+	classificationManager := &mocks.ClassificationManagerMock{
+		GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+			return []domain.FeedbackExample{
+				{Title: "Test", Feedback: domain.FeedbackLike},
+			}, nil
+		},
+		GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
+			return 30, nil
+		},
+	}
+
+	settingManager := &mocks.SettingManagerMock{
+		GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+			if key == "last_summary_feedback_count" {
+				return "0", nil
+			}
+			return "", nil
+		},
+		SetSettingFunc: func(ctx context.Context, key, value string) error {
+			return nil
+		},
+	}
+
+	classifier := &mocks.ClassifierMock{
+		GeneratePreferenceSummaryFunc: func(ctx context.Context, feedback []domain.FeedbackExample) (string, error) {
+			return "test summary", nil
+		},
+	}
+
+	scheduler := &Scheduler{
+		classificationManager:      classificationManager,
+		settingManager:             settingManager,
+		classifier:                 classifier,
+		preferenceSummaryThreshold: 25,
+		preferenceUpdateCh:         make(chan struct{}, 1),
+	}
+
+	// trigger multiple updates - only one should be queued
+	scheduler.TriggerPreferenceUpdate()
+	scheduler.TriggerPreferenceUpdate()
+	scheduler.TriggerPreferenceUpdate()
+
+	// verify channel has only one item
+	assert.Len(t, scheduler.preferenceUpdateCh, 1)
+}
+
+func TestScheduler_PreferenceUpdateWorker_Debounce(t *testing.T) {
+	// setup mocks
+	updateCount := 0
+	classificationManager := &mocks.ClassificationManagerMock{
+		GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+			return []domain.FeedbackExample{{Title: "Test"}}, nil
+		},
+		GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
+			return 30, nil
+		},
+	}
+
+	settingManager := &mocks.SettingManagerMock{
+		GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+			if key == "last_summary_feedback_count" {
+				return "0", nil
+			}
+			return "", nil
+		},
+		SetSettingFunc: func(ctx context.Context, key, value string) error {
+			if key == "preference_summary" {
+				updateCount++
+			}
+			return nil
+		},
+	}
+
+	classifier := &mocks.ClassifierMock{
+		GeneratePreferenceSummaryFunc: func(ctx context.Context, feedback []domain.FeedbackExample) (string, error) {
+			return "test summary", nil
+		},
+	}
+
+	scheduler := &Scheduler{
+		classificationManager:      classificationManager,
+		settingManager:             settingManager,
+		classifier:                 classifier,
+		preferenceSummaryThreshold: 25,
+		preferenceUpdateCh:         make(chan struct{}, 1),
+		wg:                         sync.WaitGroup{},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	scheduler.wg.Add(1)
+
+	// start worker with shorter debounce for testing
+	go func() {
+		defer scheduler.wg.Done()
+		const debounceDelay = 100 * time.Millisecond // short delay for testing
+		debounceTimer := time.NewTimer(0)
+		if !debounceTimer.Stop() {
+			<-debounceTimer.C
+		}
+
+		for {
+			select {
+			case <-ctx.Done():
+				debounceTimer.Stop()
+				return
+			case <-scheduler.preferenceUpdateCh:
+				debounceTimer.Stop()
+				debounceTimer.Reset(debounceDelay)
+			case <-debounceTimer.C:
+				if err := scheduler.UpdatePreferenceSummary(ctx); err != nil {
+					t.Logf("update error: %v", err)
+				}
+			}
+		}
+	}()
+
+	// send multiple triggers rapidly
+	scheduler.TriggerPreferenceUpdate()
+	time.Sleep(50 * time.Millisecond)
+	scheduler.TriggerPreferenceUpdate()
+	time.Sleep(50 * time.Millisecond)
+	scheduler.TriggerPreferenceUpdate()
+
+	// wait for debounce to expire
+	time.Sleep(150 * time.Millisecond)
+
+	// stop worker
+	cancel()
+	scheduler.wg.Wait()
+
+	// should have only one update despite multiple triggers
+	assert.Equal(t, 1, updateCount, "should have exactly one preference update")
+}
+
+func TestScheduler_ConfigurableThreshold(t *testing.T) {
+	cfg := Config{
+		UpdateInterval:             time.Hour,
+		MaxWorkers:                 1,
+		PreferenceSummaryThreshold: 10, // custom threshold
+	}
+
+	deps := Dependencies{
+		FeedManager:           &mocks.FeedManagerMock{},
+		ItemManager:           &mocks.ItemManagerMock{},
+		ClassificationManager: &mocks.ClassificationManagerMock{},
+		SettingManager:        &mocks.SettingManagerMock{},
+		Parser:                &mocks.ParserMock{},
+		Extractor:             &mocks.ExtractorMock{},
+		Classifier:            &mocks.ClassifierMock{},
+	}
+
+	scheduler := NewScheduler(deps, cfg)
+	assert.Equal(t, 10, scheduler.preferenceSummaryThreshold)
+}
+
+func TestScheduler_DefaultThreshold(t *testing.T) {
+	cfg := Config{} // no threshold specified
+
+	deps := Dependencies{
+		FeedManager:           &mocks.FeedManagerMock{},
+		ItemManager:           &mocks.ItemManagerMock{},
+		ClassificationManager: &mocks.ClassificationManagerMock{},
+		SettingManager:        &mocks.SettingManagerMock{},
+		Parser:                &mocks.ParserMock{},
+		Extractor:             &mocks.ExtractorMock{},
+		Classifier:            &mocks.ClassifierMock{},
+	}
+
+	scheduler := NewScheduler(deps, cfg)
+	assert.Equal(t, 25, scheduler.preferenceSummaryThreshold) // default value
 }

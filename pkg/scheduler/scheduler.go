@@ -11,6 +11,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -49,6 +50,7 @@ type ItemManager interface {
 type ClassificationManager interface {
 	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error)
 	GetTopics(ctx context.Context) ([]string, error)
+	GetFeedbackCount(ctx context.Context) (int64, error)
 }
 
 // SettingManager handles settings for scheduler
@@ -67,8 +69,10 @@ type Scheduler struct {
 	extractor             Extractor
 	classifier            Classifier
 
-	updateInterval time.Duration
-	maxWorkers     int
+	updateInterval             time.Duration
+	maxWorkers                 int
+	preferenceSummaryThreshold int
+	preferenceUpdateCh         chan struct{}
 
 	wg     sync.WaitGroup
 	cancel context.CancelFunc
@@ -93,8 +97,9 @@ type Classifier interface {
 
 // Config holds scheduler configuration
 type Config struct {
-	UpdateInterval time.Duration
-	MaxWorkers     int
+	UpdateInterval             time.Duration
+	MaxWorkers                 int
+	PreferenceSummaryThreshold int
 }
 
 // Dependencies groups all dependencies needed by the scheduler
@@ -116,17 +121,22 @@ func NewScheduler(deps Dependencies, cfg Config) *Scheduler {
 	if cfg.MaxWorkers == 0 {
 		cfg.MaxWorkers = 5
 	}
+	if cfg.PreferenceSummaryThreshold == 0 {
+		cfg.PreferenceSummaryThreshold = 25
+	}
 
 	return &Scheduler{
-		feedManager:           deps.FeedManager,
-		itemManager:           deps.ItemManager,
-		classificationManager: deps.ClassificationManager,
-		settingManager:        deps.SettingManager,
-		parser:                deps.Parser,
-		extractor:             deps.Extractor,
-		classifier:            deps.Classifier,
-		updateInterval:        cfg.UpdateInterval,
-		maxWorkers:            cfg.MaxWorkers,
+		feedManager:                deps.FeedManager,
+		itemManager:                deps.ItemManager,
+		classificationManager:      deps.ClassificationManager,
+		settingManager:             deps.SettingManager,
+		parser:                     deps.Parser,
+		extractor:                  deps.Extractor,
+		classifier:                 deps.Classifier,
+		updateInterval:             cfg.UpdateInterval,
+		maxWorkers:                 cfg.MaxWorkers,
+		preferenceSummaryThreshold: cfg.PreferenceSummaryThreshold,
+		preferenceUpdateCh:         make(chan struct{}, 1), // buffered channel to coalesce updates
 	}
 }
 
@@ -145,8 +155,12 @@ func (s *Scheduler) Start(ctx context.Context) {
 	s.wg.Add(1)
 	go s.feedUpdateWorker(ctx, processCh)
 
-	lgr.Printf("[INFO] scheduler started with update interval %v, max workers %d",
-		s.updateInterval, s.maxWorkers)
+	// start preference update worker
+	s.wg.Add(1)
+	go s.preferenceUpdateWorker(ctx)
+
+	lgr.Printf("[INFO] scheduler started with update interval %v, max workers %d, preference threshold %d",
+		s.updateInterval, s.maxWorkers, s.preferenceSummaryThreshold)
 }
 
 // Stop gracefully stops the scheduler
@@ -197,7 +211,7 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 	}
 
 	// 2. Get context for classification
-	feedbacks, err := s.classificationManager.GetRecentFeedback(ctx, "", 10)
+	feedbacks, err := s.classificationManager.GetRecentFeedback(ctx, "", 50)
 	if err != nil {
 		lgr.Printf("[WARN] failed to get feedback examples: %v", err)
 		feedbacks = []domain.FeedbackExample{}
@@ -409,4 +423,140 @@ func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
 
 	s.processItem(ctx, item)
 	return nil
+}
+
+// TriggerPreferenceUpdate triggers a preference summary update via the worker
+func (s *Scheduler) TriggerPreferenceUpdate() {
+	// non-blocking send to buffered channel
+	select {
+	case s.preferenceUpdateCh <- struct{}{}:
+		lgr.Printf("[DEBUG] preference update triggered")
+	default:
+		// channel is full, update already pending
+		lgr.Printf("[DEBUG] preference update already pending")
+	}
+}
+
+// UpdatePreferenceSummary updates the user preference summary based on recent feedback
+func (s *Scheduler) UpdatePreferenceSummary(ctx context.Context) error {
+	// get more feedback examples for better learning (50 instead of 10)
+	const feedbackExamples = 50
+
+	feedbacks, err := s.classificationManager.GetRecentFeedback(ctx, "", feedbackExamples)
+	if err != nil {
+		return fmt.Errorf("get recent feedback: %w", err)
+	}
+
+	if len(feedbacks) == 0 {
+		lgr.Printf("[INFO] no feedback to process for preference summary")
+		return nil
+	}
+
+	// get current preference summary
+	currentSummary, err := s.settingManager.GetSetting(ctx, "preference_summary")
+	if err != nil || currentSummary == "" {
+		// if no summary exists yet, generate initial one
+		lgr.Printf("[INFO] generating initial preference summary from %d feedback examples", len(feedbacks))
+		newSummary, err := s.classifier.GeneratePreferenceSummary(ctx, feedbacks)
+		if err != nil {
+			return fmt.Errorf("generate initial preference summary: %w", err)
+		}
+
+		if err := s.settingManager.SetSetting(ctx, "preference_summary", newSummary); err != nil {
+			return fmt.Errorf("save initial preference summary: %w", err)
+		}
+
+		// get current feedback count
+		currentCount, err := s.classificationManager.GetFeedbackCount(ctx)
+		if err != nil {
+			return fmt.Errorf("get feedback count: %w", err)
+		}
+
+		// save initial feedback count
+		if err := s.settingManager.SetSetting(ctx, "last_summary_feedback_count", strconv.FormatInt(currentCount, 10)); err != nil {
+			return fmt.Errorf("save initial feedback count: %w", err)
+		}
+
+		lgr.Printf("[INFO] initial preference summary generated successfully")
+		return nil
+	}
+
+	// get last feedback count from settings
+	lastCountStr, _ := s.settingManager.GetSetting(ctx, "last_summary_feedback_count")
+	lastCount := int64(0)
+	if lastCountStr != "" {
+		if parsed, err := strconv.ParseInt(lastCountStr, 10, 64); err == nil {
+			lastCount = parsed
+		}
+	}
+
+	// get current feedback count
+	currentCount, err := s.classificationManager.GetFeedbackCount(ctx)
+	if err != nil {
+		return fmt.Errorf("get feedback count: %w", err)
+	}
+
+	// calculate new feedback since last update
+	newFeedbackCount := currentCount - lastCount
+	if newFeedbackCount < int64(s.preferenceSummaryThreshold) {
+		lgr.Printf("[DEBUG] only %d new feedbacks since last update, skipping (threshold: %d)", newFeedbackCount, s.preferenceSummaryThreshold)
+		return nil
+	}
+
+	// check context before proceeding with expensive operation
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	lgr.Printf("[INFO] updating preference summary with %d new feedbacks (total: %d)", newFeedbackCount, currentCount)
+
+	// update the preference summary
+	newSummary, err := s.classifier.UpdatePreferenceSummary(ctx, currentSummary, feedbacks)
+	if err != nil {
+		return fmt.Errorf("update preference summary: %w", err)
+	}
+
+	// save updated summary and count
+	if err := s.settingManager.SetSetting(ctx, "preference_summary", newSummary); err != nil {
+		return fmt.Errorf("save preference summary: %w", err)
+	}
+
+	if err := s.settingManager.SetSetting(ctx, "last_summary_feedback_count", strconv.FormatInt(currentCount, 10)); err != nil {
+		return fmt.Errorf("save feedback count: %w", err)
+	}
+
+	lgr.Printf("[INFO] preference summary updated successfully")
+	return nil
+}
+
+// preferenceUpdateWorker processes preference update requests
+func (s *Scheduler) preferenceUpdateWorker(ctx context.Context) {
+	defer s.wg.Done()
+
+	// debounce timer to avoid too frequent updates
+	const debounceDelay = 5 * time.Minute
+	debounceTimer := time.NewTimer(0)
+	if !debounceTimer.Stop() {
+		<-debounceTimer.C
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			debounceTimer.Stop()
+			return
+		case <-s.preferenceUpdateCh:
+			// reset debounce timer
+			debounceTimer.Stop()
+			debounceTimer.Reset(debounceDelay)
+		case <-debounceTimer.C:
+			// debounce period expired, perform update
+			lgr.Printf("[DEBUG] processing preference update")
+			if err := s.UpdatePreferenceSummary(ctx); err != nil {
+				lgr.Printf("[WARN] failed to update preference summary: %v", err)
+			}
+		}
+	}
 }

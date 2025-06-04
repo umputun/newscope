@@ -54,7 +54,11 @@ func TestServer_rssFeedHandler(t *testing.T) {
 			}, nil
 		},
 	}
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		TriggerPreferenceUpdateFunc: func() {
+			// do nothing in tests
+		},
+	}
 
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 

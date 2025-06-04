@@ -16,6 +16,9 @@ import (
 //
 //		// make and configure a mocked scheduler.ClassificationManager
 //		mockedClassificationManager := &ClassificationManagerMock{
+//			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
+//				panic("mock out the GetFeedbackCount method")
+//			},
 //			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
 //				panic("mock out the GetRecentFeedback method")
 //			},
@@ -29,6 +32,9 @@ import (
 //
 //	}
 type ClassificationManagerMock struct {
+	// GetFeedbackCountFunc mocks the GetFeedbackCount method.
+	GetFeedbackCountFunc func(ctx context.Context) (int64, error)
+
 	// GetRecentFeedbackFunc mocks the GetRecentFeedback method.
 	GetRecentFeedbackFunc func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error)
 
@@ -37,6 +43,11 @@ type ClassificationManagerMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// GetFeedbackCount holds details about calls to the GetFeedbackCount method.
+		GetFeedbackCount []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 		// GetRecentFeedback holds details about calls to the GetRecentFeedback method.
 		GetRecentFeedback []struct {
 			// Ctx is the ctx argument value.
@@ -52,8 +63,41 @@ type ClassificationManagerMock struct {
 			Ctx context.Context
 		}
 	}
+	lockGetFeedbackCount  sync.RWMutex
 	lockGetRecentFeedback sync.RWMutex
 	lockGetTopics         sync.RWMutex
+}
+
+// GetFeedbackCount calls GetFeedbackCountFunc.
+func (mock *ClassificationManagerMock) GetFeedbackCount(ctx context.Context) (int64, error) {
+	if mock.GetFeedbackCountFunc == nil {
+		panic("ClassificationManagerMock.GetFeedbackCountFunc: method is nil but ClassificationManager.GetFeedbackCount was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockGetFeedbackCount.Lock()
+	mock.calls.GetFeedbackCount = append(mock.calls.GetFeedbackCount, callInfo)
+	mock.lockGetFeedbackCount.Unlock()
+	return mock.GetFeedbackCountFunc(ctx)
+}
+
+// GetFeedbackCountCalls gets all the calls that were made to GetFeedbackCount.
+// Check the length with:
+//
+//	len(mockedClassificationManager.GetFeedbackCountCalls())
+func (mock *ClassificationManagerMock) GetFeedbackCountCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockGetFeedbackCount.RLock()
+	calls = mock.calls.GetFeedbackCount
+	mock.lockGetFeedbackCount.RUnlock()
+	return calls
 }
 
 // GetRecentFeedback calls GetRecentFeedbackFunc.

@@ -25,7 +25,11 @@ func TestServer_statusHandler(t *testing.T) {
 		},
 	}
 	database := &mocks.DatabaseMock{}
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		TriggerPreferenceUpdateFunc: func() {
+			// do nothing in tests
+		},
+	}
 
 	srv := New(cfg, database, scheduler, "1.2.3", false)
 
@@ -78,7 +82,14 @@ func TestServer_feedbackHandler(t *testing.T) {
 		},
 	}
 
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+			return nil
+		},
+		TriggerPreferenceUpdateFunc: func() {
+			// do nothing in tests
+		},
+	}
 	srv := testServer(t, cfg, database, scheduler)
 
 	// test like action
@@ -108,6 +119,9 @@ func TestServer_extractHandler(t *testing.T) {
 			extractCalled = true
 			assert.Equal(t, int64(456), itemID)
 			return nil
+		},
+		TriggerPreferenceUpdateFunc: func() {
+			// do nothing in tests
 		},
 	}
 
@@ -165,6 +179,9 @@ func TestServer_createFeedHandler(t *testing.T) {
 			assert.Equal(t, int64(99), feedID)
 			return nil
 		},
+		TriggerPreferenceUpdateFunc: func() {
+			// do nothing in tests
+		},
 	}
 
 	srv := New(cfg, database, scheduler, "1.0.0", false)
@@ -215,7 +232,11 @@ func TestServer_updateFeedHandler(t *testing.T) {
 		},
 	}
 
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		TriggerPreferenceUpdateFunc: func() {
+			// do nothing in tests
+		},
+	}
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	// create form data
@@ -262,7 +283,11 @@ func TestServer_updateFeedStatus(t *testing.T) {
 		},
 	}
 
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		TriggerPreferenceUpdateFunc: func() {
+			// do nothing in tests
+		},
+	}
 	srv := testServer(t, cfg, database, scheduler)
 
 	req := httptest.NewRequest("POST", "/api/v1/feeds/42/enable", http.NoBody)
@@ -343,6 +368,9 @@ func TestServer_FetchFeedHandler(t *testing.T) {
 			fetchTriggered = true
 			assert.Equal(t, int64(123), feedID)
 			return nil
+		},
+		TriggerPreferenceUpdateFunc: func() {
+			// do nothing in tests
 		},
 	}
 
@@ -463,7 +491,11 @@ func TestServer_FeedbackHandler_DatabaseErrors(t *testing.T) {
 			},
 		}
 
-		scheduler := &mocks.SchedulerMock{}
+		scheduler := &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {
+				// do nothing in tests
+			},
+		}
 		srv := testServer(t, cfg, database, scheduler)
 
 		req := httptest.NewRequest("POST", "/api/v1/feedback/123/like", http.NoBody)
@@ -487,7 +519,11 @@ func TestServer_FeedbackHandler_DatabaseErrors(t *testing.T) {
 			},
 		}
 
-		scheduler := &mocks.SchedulerMock{}
+		scheduler := &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {
+				// do nothing in tests
+			},
+		}
 		srv := testServer(t, cfg, database, scheduler)
 
 		req := httptest.NewRequest("POST", "/api/v1/feedback/123/like", http.NoBody)
@@ -634,7 +670,11 @@ func TestServer_CreateFeedHandler_InvalidForm(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{}
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		TriggerPreferenceUpdateFunc: func() {
+			// do nothing in tests
+		},
+	}
 	srv := testServer(t, cfg, database, scheduler)
 
 	t.Run("missing URL", func(t *testing.T) {

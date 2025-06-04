@@ -49,6 +49,9 @@ func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// trigger preference summary update in background
+	s.scheduler.TriggerPreferenceUpdate()
+
 	// get the updated article
 	article, err := s.db.GetClassifiedItem(ctx, id)
 	if err != nil {

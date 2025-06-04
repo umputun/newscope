@@ -78,7 +78,11 @@ func TestServer_articlesHandler(t *testing.T) {
 		},
 	}
 
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		TriggerPreferenceUpdateFunc: func() {
+			// do nothing in tests
+		},
+	}
 	srv := testServer(t, cfg, database, scheduler)
 
 	// test regular request (full page)
@@ -203,7 +207,11 @@ func TestServer_feedsHandler(t *testing.T) {
 		},
 	}
 
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+			return nil
+		},
+	}
 	srv := testServer(t, cfg, database, scheduler)
 
 	req := httptest.NewRequest("GET", "/feeds", http.NoBody)
@@ -247,7 +255,11 @@ func TestServer_SettingsHandler(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{}
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+			return nil
+		},
+	}
 	srv := testServer(t, cfg, database, scheduler)
 
 	req := httptest.NewRequest("GET", "/settings", http.NoBody)
@@ -279,7 +291,11 @@ func TestServer_articleContentHandler(t *testing.T) {
 		},
 	}
 
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+			return nil
+		},
+	}
 	srv := testServer(t, cfg, database, scheduler)
 
 	req := httptest.NewRequest("GET", "/api/v1/articles/789/content", http.NoBody)
@@ -302,7 +318,11 @@ func TestServer_HideContentHandler(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{}
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+			return nil
+		},
+	}
 	srv := testServer(t, cfg, database, scheduler)
 
 	req := httptest.NewRequest("GET", "/api/v1/articles/123/hide", http.NoBody)
@@ -327,7 +347,11 @@ func TestServer_HideContentHandler_InvalidID(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{}
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+			return nil
+		},
+	}
 	srv := testServer(t, cfg, database, scheduler)
 
 	req := httptest.NewRequest("GET", "/api/v1/articles/invalid/hide", http.NoBody)
@@ -369,7 +393,11 @@ func TestServer_ArticlesHandler_DatabaseError(t *testing.T) {
 			},
 		}
 
-		scheduler := &mocks.SchedulerMock{}
+		scheduler := &mocks.SchedulerMock{
+			UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}
 		srv := testServer(t, cfg, database, scheduler)
 
 		req := httptest.NewRequest("GET", "/articles", http.NoBody)
@@ -391,7 +419,11 @@ func TestServer_ArticlesHandler_DatabaseError(t *testing.T) {
 			},
 		}
 
-		scheduler := &mocks.SchedulerMock{}
+		scheduler := &mocks.SchedulerMock{
+			UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}
 		srv := testServer(t, cfg, database, scheduler)
 
 		req := httptest.NewRequest("GET", "/articles", http.NoBody)
@@ -417,7 +449,11 @@ func TestServer_FeedsHandler_DatabaseError(t *testing.T) {
 		},
 	}
 
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+			return nil
+		},
+	}
 	srv := testServer(t, cfg, database, scheduler)
 
 	req := httptest.NewRequest("GET", "/feeds", http.NoBody)
@@ -438,7 +474,11 @@ func TestServer_ArticleContentHandler_Errors(t *testing.T) {
 
 	t.Run("invalid article ID", func(t *testing.T) {
 		database := &mocks.DatabaseMock{}
-		scheduler := &mocks.SchedulerMock{}
+		scheduler := &mocks.SchedulerMock{
+			UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}
 		srv := testServer(t, cfg, database, scheduler)
 
 		req := httptest.NewRequest("GET", "/api/v1/articles/invalid/content", http.NoBody)
@@ -457,7 +497,11 @@ func TestServer_ArticleContentHandler_Errors(t *testing.T) {
 				return nil, errors.New("article not found")
 			},
 		}
-		scheduler := &mocks.SchedulerMock{}
+		scheduler := &mocks.SchedulerMock{
+			UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}
 		srv := testServer(t, cfg, database, scheduler)
 
 		req := httptest.NewRequest("GET", "/api/v1/articles/123/content", http.NoBody)
@@ -481,7 +525,11 @@ func TestServer_RenderFeedCard_TemplateError(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{}
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+			return nil
+		},
+	}
 
 	// create server with invalid templates to trigger template error
 	srv := &Server{
@@ -515,7 +563,11 @@ func TestServer_RenderArticleCard_TemplateError(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{}
-	scheduler := &mocks.SchedulerMock{}
+	scheduler := &mocks.SchedulerMock{
+		UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+			return nil
+		},
+	}
 
 	// create server with invalid templates to trigger template error
 	srv := &Server{
@@ -586,7 +638,11 @@ func TestServer_TemplateErrors(t *testing.T) {
 			},
 		}
 
-		scheduler := &mocks.SchedulerMock{}
+		scheduler := &mocks.SchedulerMock{
+			UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}
 
 		// create server with broken page templates
 		srv := &Server{
@@ -622,7 +678,11 @@ func TestServer_TemplateErrors(t *testing.T) {
 			},
 		}
 
-		scheduler := &mocks.SchedulerMock{}
+		scheduler := &mocks.SchedulerMock{
+			UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}
 
 		// create server with broken page templates
 		srv := &Server{
@@ -647,7 +707,11 @@ func TestServer_TemplateErrors(t *testing.T) {
 
 	t.Run("SettingsHandler template error", func(t *testing.T) {
 		database := &mocks.DatabaseMock{}
-		scheduler := &mocks.SchedulerMock{}
+		scheduler := &mocks.SchedulerMock{
+			UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}
 
 		// create server with broken page templates
 		srv := &Server{
@@ -680,7 +744,11 @@ func TestServer_TemplateErrors(t *testing.T) {
 				}, nil
 			},
 		}
-		scheduler := &mocks.SchedulerMock{}
+		scheduler := &mocks.SchedulerMock{
+			UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}
 
 		// create server with broken templates
 		srv := &Server{

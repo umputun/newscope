@@ -44,6 +44,7 @@ type ClassificationRepo interface {
 	GetTopics(ctx context.Context) ([]string, error)
 	GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error)
 	GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error)
+	GetFeedbackCount(ctx context.Context) (int64, error)
 }
 
 // NewRepositoryAdapter creates a new repository adapter from concrete repositories
@@ -258,6 +259,11 @@ func (r *RepositoryAdapter) GetTopTopicsByScore(ctx context.Context, minScore fl
 		}
 	}
 	return result, nil
+}
+
+// GetFeedbackCount returns the total number of feedback items
+func (r *RepositoryAdapter) GetFeedbackCount(ctx context.Context) (int64, error) {
+	return r.classificationRepo.GetFeedbackCount(ctx)
 }
 
 // GetAllFeeds returns all feeds with full details

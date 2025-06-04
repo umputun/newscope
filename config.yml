@@ -47,6 +47,7 @@ llm:
   classification:
     feedback_examples: 50      # Recent examples to include
     use_json_mode: true        # Use JSON mode for classification
+    preference_summary_threshold: 25  # Number of new feedbacks before updating preference summary
     preferred_topics:          # Topics that increase article scores based on Radio-T content
       - "golang"
       - "rust" 
