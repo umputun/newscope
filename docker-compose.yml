@@ -1,0 +1,27 @@
+version: '2'
+
+services:
+  newscope:
+    build: .
+    image: umputun/newscope:latest
+    container_name: newscope
+    hostname: newscope
+    restart: always
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    environment:
+      - TZ=America/Chicago
+
+    volumes:
+      - ./config.yml:/srv/config.yml:ro
+      - ./var:/srv/var
+
+    ports:
+      - "8080:8080"
+
+    command: ["--config=/srv/config.yml", "--dbg"]

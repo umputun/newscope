@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: set up go 1.24
+      - name: set up go
         uses: actions/setup-go@v5
         with:
           go-version: "1.24"
@@ -28,12 +28,54 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.1.6
-
-      - name: install goveralls
-        run: go install github.com/mattn/goveralls@latest
+          version: latest
 
       - name: submit coverage
-        run: $(go env GOPATH)/bin/goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
+        run: |
+          go install github.com/mattn/goveralls@latest
+          goveralls -service="github" -coverprofile=$GITHUB_WORKSPACE/profile.cov
         env:
           COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: available platforms
+        run: echo ${{ steps.buildx.outputs.platforms }}
+
+      - name: build and deploy master image to ghcr.io and dockerhub
+        if: ${{ github.ref == 'refs/heads/master' }}
+        env:
+          GITHUB_PACKAGE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+          USERNAME: ${{ github.actor }}
+          GITHUB_SHA: ${{ github.sha}}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          echo ${GITHUB_PACKAGE_TOKEN} | docker login ghcr.io -u ${USERNAME} --password-stdin
+          echo ${DOCKER_HUB_TOKEN} | docker login -u ${USERNAME} --password-stdin
+          docker buildx build --push \
+              --build-arg CI=github --build-arg GITHUB_SHA=${GITHUB_SHA} --build-arg GITHUB_REF_NAME=${GITHUB_REF_NAME} \
+              --platform linux/amd64,linux/arm/v7,linux/arm64 \
+              -t ghcr.io/${USERNAME}/newscope:${GITHUB_REF_NAME} -t ${USERNAME}/newscope:${GITHUB_REF_NAME} .
+
+      - name: build and deploy tagged image to ghcr.io and dockerhub
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GITHUB_PACKAGE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+          USERNAME: ${{ github.actor }}
+          GITHUB_SHA: ${{ github.sha}}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          echo ${GITHUB_PACKAGE_TOKEN} | docker login ghcr.io -u ${USERNAME} --password-stdin
+          echo ${DOCKER_HUB_TOKEN} | docker login -u ${USERNAME} --password-stdin
+          docker buildx build --push \
+              --build-arg CI=github --build-arg GITHUB_SHA=${GITHUB_SHA} --build-arg GITHUB_REF_NAME=${GITHUB_REF_NAME} \
+              --platform linux/amd64,linux/arm/v7,linux/arm64 \
+              -t ghcr.io/${USERNAME}/newscope:${GITHUB_REF_NAME} -t ghcr.io/${USERNAME}/newscope:latest \
+              -t ${USERNAME}/newscope:${GITHUB_REF_NAME} -t ${USERNAME}/newscope:latest .

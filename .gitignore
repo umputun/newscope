@@ -20,6 +20,8 @@ go.work
 # Build output
 .bin/
 dist/
+bin/
+newscope
 
 # IDE specific files
 .idea/
