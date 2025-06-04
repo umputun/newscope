@@ -1,4 +1,4 @@
-FROM umputun/baseimage:buildgo-latest as build
+FROM ghcr.io/umputun/baseimage/buildgo:latest as build
 
 WORKDIR /build
 ADD . /build
@@ -15,7 +15,7 @@ RUN \
     go build -mod=vendor -o newscope -ldflags "-X main.version=$version -s -w" ./cmd/newscope
 
 
-FROM umputun/baseimage:app-latest
+FROM ghcr.io/umputun/baseimage/app:latest
 
 LABEL org.opencontainers.image.source="https://github.com/umputun/newscope"
 

@@ -1,26 +1,107 @@
 # Contributing to Newscope
 
-Thank you for your interest in contributing to our project!
+Thank you for considering contributing to Newscope!
+
+## How Can I Contribute?
+
+### Reporting Bugs
+
+Before creating bug reports, please check existing issues to avoid duplicates. When creating a bug report, include:
+
+- Clear and descriptive title
+- Steps to reproduce the issue
+- Expected behavior vs actual behavior
+- Your environment (OS, Go version, etc.)
+- Relevant logs or error messages
+
+### Suggesting Enhancements
+
+Enhancement suggestions are welcome! Please provide:
+
+- Clear and descriptive title
+- Detailed description of the proposed functionality
+- Why this enhancement would be useful
+- Examples of how it would work
+
+### Pull Requests
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests (`go test ./...`)
+5. Run linter (`golangci-lint run`)
+6. Commit your changes (`git commit -m 'add amazing feature'`)
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
 
 ## Development Setup
 
-1. Fork the repository
-2. Clone your fork: `git clone https://github.com/your-username/newscope.git`
-3. Create a feature branch: `git checkout -b feature-name`
-4. Make your changes
-5. Run tests: `make test`
-6. Run linter: `make lint`
-7. Commit your changes: `git commit -am 'Add feature'`
-8. Push to the branch: `git push origin feature-name`
-9. Submit a pull request
+### Prerequisites
 
-## Code Style
+- Go 1.24 or higher
+- golangci-lint
+- Docker (optional, for container builds)
 
-Please follow the code style guidelines in [CLAUDE.md](CLAUDE.md).
+### Building
 
-## Pull Request Process
+```bash
+go build -o newscope ./cmd/newscope
+```
 
-1. Update the README.md with details of changes if applicable
-2. Update the CHANGELOG.md with details of changes
-3. The PR should work for all configured platforms and pass all tests
-4. PR will be merged once it receives approval from maintainers
+### Testing
+
+```bash
+# Run all tests
+go test ./...
+
+# Run with coverage
+go test -cover ./...
+
+# Run with race detection
+go test -race ./...
+```
+
+### Code Style
+
+- Follow standard Go formatting (`gofmt`)
+- Use meaningful variable and function names
+- Write clear comments for exported functions
+- Keep functions focused and concise
+- Add tests for new functionality
+
+### Commit Messages
+
+- Use clear and meaningful commit messages
+- Start with a verb in present tense (add, fix, update, etc.)
+- Keep the first line under 72 characters
+- Reference issues when applicable
+
+## Project Structure
+
+```
+newscope/
+├── cmd/newscope/       # Main application entry point
+├── pkg/
+│   ├── config/         # Configuration management
+│   ├── content/        # Content extraction
+│   ├── domain/         # Domain models
+│   ├── feed/           # RSS feed parsing
+│   ├── llm/            # AI classification
+│   ├── repository/     # Database layer
+│   └── scheduler/      # Feed update scheduler
+├── server/             # HTTP server and handlers
+├── templates/          # HTML templates
+└── static/            # CSS, JS, images
+```
+
+## Getting Help
+
+If you need help, you can:
+
+- Open an issue for bugs or feature requests
+- Check existing issues and pull requests
+- Review the documentation in the README
+
+## License
+
+By contributing to Newscope, you agree that your contributions will be licensed under the MIT License.
