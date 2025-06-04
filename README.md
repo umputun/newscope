@@ -6,24 +6,7 @@
 
 [![Build Status](https://github.com/umputun/newscope/workflows/build/badge.svg)](https://github.com/umputun/newscope/actions) [![Coverage Status](https://coveralls.io/repos/github/umputun/newscope/badge.svg?branch=master)](https://coveralls.io/github/umputun/newscope?branch=master)
 
-AI-powered RSS feed curator that automatically classifies and scores articles based on your interests.
-
-## Why Newscope?
-
-- **Focus on What Matters** - AI scores articles 0-10 based on your interests
-- **Learns Your Preferences** - Improves recommendations from your feedback
-- **Smart Categorization** - Automatic topic extraction and tagging
-- **Full Content Extraction** - Read complete articles without leaving the app
-- **Custom RSS Feeds** - Generate filtered feeds for any RSS reader
-- **Privacy First** - Self-hosted solution, your data stays with you
-
-## Use Cases
-
-- You have too many RSS feeds and want to focus on what matters
-- You need a personalized news feed that learns from your preferences
-- You want to filter out noise and see only high-quality, relevant content
-- You need custom RSS feeds for specific topics with quality thresholds
-- You want full article content without leaving your feed reader
+Newscope is a self-hosted RSS feed reader that uses AI to score articles based on your interests. It learns from your feedback to filter out noise and surface content you actually want to read. Instead of drowning in hundreds of articles, you get a personalized feed with scores from 0-10, automatic topic extraction, and the ability to generate custom RSS feeds for any topic with quality thresholds.
 
 ## Features
 
@@ -40,14 +23,13 @@ In addition to intelligent feed curation, newscope provides:
 ## Basic Usage
 
 ```bash
-# Run with default config (config.yml)
-./newscope
+# Use the provided docker-compose.yml
+# Create config.yml (see Configuration section below)
+# Set your OpenAI API key
+export OPENAI_API_KEY=your-api-key
 
-# Run with custom config
-./newscope --config /path/to/config.yml
-
-# Run in debug mode
-./newscope --dbg
+# Start with docker-compose
+docker-compose up -d
 ```
 
 Open http://localhost:8080 to access the web interface.
@@ -254,51 +236,6 @@ Application Options:
 
 Help Options:
   -h, --help     Show this help message
-```
-
-## Development
-
-### Running Tests
-
-```bash
-# All tests
-go test ./...
-
-# With coverage
-go test -cover ./...
-
-# With race detection
-go test -race ./...
-```
-
-### Building
-
-```bash
-# Local build
-make build
-
-# Docker image
-make docker
-
-# Multi-arch Docker build
-make docker-multi
-```
-
-### Project Structure
-
-```
-newscope/
-├── cmd/newscope/       # Main application
-├── pkg/
-│   ├── config/         # Configuration
-│   ├── content/        # Content extraction
-│   ├── feed/           # RSS parsing
-│   ├── llm/            # AI classification
-│   ├── repository/     # Database layer
-│   └── scheduler/      # Feed updates
-├── server/             # HTTP server
-├── templates/          # HTML templates
-└── static/            # Assets
 ```
 
 ## Credits

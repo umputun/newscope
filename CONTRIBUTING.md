@@ -45,19 +45,26 @@ Enhancement suggestions are welcome! Please provide:
 ### Building
 
 ```bash
+# Local build
 go build -o newscope ./cmd/newscope
+
+# Docker image
+docker build -t newscope .
+
+# Multi-arch Docker build
+docker buildx build --platform linux/amd64,linux/arm64 -t newscope .
 ```
 
-### Testing
+### Running Tests
 
 ```bash
-# Run all tests
+# All tests
 go test ./...
 
-# Run with coverage
+# With coverage
 go test -cover ./...
 
-# Run with race detection
+# With race detection
 go test -race ./...
 ```
 
