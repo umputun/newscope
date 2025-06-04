@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:generate go run ../../cmd/schema/main.go schema.json
+//go:generate go run internal/schema/main.go schema.json
 
 // Config holds the application configuration
 type Config struct {
