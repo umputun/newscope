@@ -118,6 +118,11 @@ func (r *ClassificationRepository) GetClassifiedItems(ctx context.Context, filte
 		args = append(args, filter.FeedName, filter.FeedName)
 	}
 
+	// add liked only filter if specified
+	if filter.ShowLikedOnly {
+		query += ` AND i.user_feedback = 'like'`
+	}
+
 	// add sorting
 	switch filter.SortBy {
 	case "score":
@@ -453,6 +458,11 @@ func (r *ClassificationRepository) GetClassifiedItemsCount(ctx context.Context, 
 	if filter.FeedName != "" {
 		query += ` AND (f.title = ? OR f.title = '' AND ? LIKE '%' || REPLACE(REPLACE(SUBSTR(f.url, INSTR(f.url, '://') + 3), 'www.', ''), '/', '') || '%')`
 		args = append(args, filter.FeedName, filter.FeedName)
+	}
+
+	// add liked only filter if specified
+	if filter.ShowLikedOnly {
+		query += ` AND i.user_feedback = 'like'`
 	}
 
 	var count int

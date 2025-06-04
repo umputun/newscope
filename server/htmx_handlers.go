@@ -19,6 +19,7 @@ type articlesPageRequest struct {
 	selectedTopic string
 	selectedFeed  string
 	selectedSort  string
+	showLikedOnly bool
 	// pagination
 	currentPage int
 	totalPages  int
@@ -47,6 +48,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	if sortBy == "" {
 		sortBy = "published" // default sort
 	}
+	showLikedOnly := r.URL.Query().Get("liked") == "true" || r.URL.Query().Get("liked") == "on"
 
 	// get page parameter
 	page := 1
@@ -59,12 +61,13 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	// get articles with classification
 	pageSize := s.GetPageSize()
 	req := domain.ArticlesRequest{
-		MinScore: minScore,
-		Topic:    topic,
-		FeedName: feedName,
-		SortBy:   sortBy,
-		Limit:    pageSize,
-		Page:     page,
+		MinScore:      minScore,
+		Topic:         topic,
+		FeedName:      feedName,
+		SortBy:        sortBy,
+		Limit:         pageSize,
+		Page:          page,
+		ShowLikedOnly: showLikedOnly,
 	}
 	articles, err := s.db.GetClassifiedItemsWithFilters(ctx, req)
 	if err != nil {
@@ -109,6 +112,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 			selectedTopic: topic,
 			selectedFeed:  feedName,
 			selectedSort:  sortBy,
+			showLikedOnly: showLikedOnly,
 			// pagination
 			currentPage: page,
 			totalPages:  totalPages,
@@ -134,6 +138,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedTopic string
 		SelectedFeed  string
 		SelectedSort  string
+		ShowLikedOnly bool
 		// pagination
 		CurrentPage int
 		TotalPages  int
@@ -153,6 +158,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedTopic: topic,
 		SelectedFeed:  feedName,
 		SelectedSort:  sortBy,
+		ShowLikedOnly: showLikedOnly,
 		// pagination
 		CurrentPage: page,
 		TotalPages:  totalPages,
@@ -183,6 +189,9 @@ func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, req articlesPa
 
 	// update feed dropdown using out-of-band swap
 	s.writeFeedDropdown(w, req.feeds, req.selectedFeed)
+
+	// update liked button state using out-of-band swap
+	s.writeLikedButton(w, req.showLikedOnly)
 
 	// render the complete articles-with-pagination wrapper
 	if _, err := w.Write([]byte(`<div id="articles-container" class="view-expanded"><div id="articles-list">`)); err != nil {
@@ -436,6 +445,31 @@ func (s *Server) writeFeedDropdown(w http.ResponseWriter, feeds []string, select
 	}
 }
 
+// writeLikedButton writes the liked button with proper state using out-of-band swap
+func (s *Server) writeLikedButton(w http.ResponseWriter, showLikedOnly bool) {
+	activeClass := ""
+	nextValue := "true"
+	if showLikedOnly {
+		activeClass = " active"
+		nextValue = "false"
+	}
+
+	buttonHTML := fmt.Sprintf(`<button id="liked-toggle" class="btn-toggle%s" 
+                    title="Show liked articles only"
+                    hx-get="/articles"
+                    hx-trigger="click"
+                    hx-target="#articles-with-pagination"
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter"
+                    hx-vals='{"liked": "%s"}'
+                    hx-swap-oob="true">
+                ★ Liked
+            </button>`, activeClass, nextValue)
+
+	if _, err := w.Write([]byte(buttonHTML)); err != nil {
+		log.Printf("[ERROR] failed to write liked button: %v", err)
+	}
+}
+
 // writePaginationControls renders pagination using the pagination template
 func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPageRequest) {
 	// create template data matching the structure used by full page render
@@ -446,6 +480,7 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		SelectedTopic string
 		SelectedFeed  string
 		SelectedSort  string
+		ShowLikedOnly bool
 		CurrentPage   int
 		TotalPages    int
 		PageNumbers   []int
@@ -459,6 +494,7 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		SelectedTopic: req.selectedTopic,
 		SelectedFeed:  req.selectedFeed,
 		SelectedSort:  req.selectedSort,
+		ShowLikedOnly: req.showLikedOnly,
 		CurrentPage:   req.currentPage,
 		TotalPages:    req.totalPages,
 		PageNumbers:   req.pageNumbers,

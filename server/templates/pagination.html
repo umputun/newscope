@@ -6,15 +6,15 @@
     </div>
     <div class="pagination-controls">
         {{if .HasPrev}}
-            <a href="/articles?page=1&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}" 
+            <a href="/articles?page=1&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}&liked={{.ShowLikedOnly}}" 
                class="pagination-btn"
-               hx-get="/articles?page=1&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}"
+               hx-get="/articles?page=1&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}&liked={{.ShowLikedOnly}}"
                hx-target="#articles-with-pagination"
                hx-push-url="true"
                title="First page">⏮</a>
-            <a href="/articles?page={{sub .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}" 
+            <a href="/articles?page={{sub .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}&liked={{.ShowLikedOnly}}" 
                class="pagination-btn"
-               hx-get="/articles?page={{sub .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}"
+               hx-get="/articles?page={{sub .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}&liked={{.ShowLikedOnly}}"
                hx-target="#articles-with-pagination"
                hx-push-url="true"
                title="Previous page">◀</a>
@@ -25,24 +25,24 @@
             {{if eq $page $.CurrentPage}}
                 <span class="pagination-btn current">{{$page}}</span>
             {{else}}
-                <a href="/articles?page={{$page}}&score={{$.MinScore}}&topic={{$.SelectedTopic}}&feed={{$.SelectedFeed}}&sort={{$.SelectedSort}}" 
+                <a href="/articles?page={{$page}}&score={{$.MinScore}}&topic={{$.SelectedTopic}}&feed={{$.SelectedFeed}}&sort={{$.SelectedSort}}{{if $.ShowLikedOnly}}&liked=on{{end}}" 
                    class="pagination-btn"
-                   hx-get="/articles?page={{$page}}&score={{$.MinScore}}&topic={{$.SelectedTopic}}&feed={{$.SelectedFeed}}&sort={{$.SelectedSort}}"
+                   hx-get="/articles?page={{$page}}&score={{$.MinScore}}&topic={{$.SelectedTopic}}&feed={{$.SelectedFeed}}&sort={{$.SelectedSort}}{{if $.ShowLikedOnly}}&liked=on{{end}}"
                    hx-target="#articles-with-pagination"
                    hx-push-url="true">{{$page}}</a>
             {{end}}
         {{end}}
         
         {{if .HasNext}}
-            <a href="/articles?page={{add .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}" 
+            <a href="/articles?page={{add .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}&liked={{.ShowLikedOnly}}" 
                class="pagination-btn"
-               hx-get="/articles?page={{add .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}"
+               hx-get="/articles?page={{add .CurrentPage 1}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}&liked={{.ShowLikedOnly}}"
                hx-target="#articles-with-pagination"
                hx-push-url="true"
                title="Next page">▶</a>
-            <a href="/articles?page={{.TotalPages}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}" 
+            <a href="/articles?page={{.TotalPages}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}&liked={{.ShowLikedOnly}}" 
                class="pagination-btn"
-               hx-get="/articles?page={{.TotalPages}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}"
+               hx-get="/articles?page={{.TotalPages}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}&liked={{.ShowLikedOnly}}"
                hx-target="#articles-with-pagination"
                hx-push-url="true"
                title="Last page">⏭</a>

@@ -1086,3 +1086,145 @@ func TestClassificationRepository_GetTopTopicsByScore(t *testing.T) {
 		assert.LessOrEqual(t, len(topics), 2)
 	})
 }
+
+func TestClassificationRepository_GetClassifiedItems_LikedFilter(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// create test feed
+	feed := &domain.Feed{
+		URL:           "https://example.com/feed.xml",
+		Title:         "Test Feed",
+		Description:   "Test feed for liked filter",
+		FetchInterval: 3600,
+		Enabled:       true,
+	}
+	err := repos.Feed.CreateFeed(context.Background(), feed)
+	require.NoError(t, err)
+
+	// create test items
+	baseTime := time.Now().Add(-24 * time.Hour)
+	items := []domain.Item{
+		{
+			FeedID:      feed.ID,
+			GUID:        "liked-item-1",
+			Title:       "Liked Article 1",
+			Link:        "https://example.com/liked1",
+			Description: "This is a liked article",
+			Published:   baseTime.Add(1 * time.Hour),
+		},
+		{
+			FeedID:      feed.ID,
+			GUID:        "liked-item-2",
+			Title:       "Liked Article 2",
+			Link:        "https://example.com/liked2",
+			Description: "Another liked article",
+			Published:   baseTime.Add(2 * time.Hour),
+		},
+		{
+			FeedID:      feed.ID,
+			GUID:        "disliked-item",
+			Title:       "Disliked Article",
+			Link:        "https://example.com/disliked",
+			Description: "This article was disliked",
+			Published:   baseTime.Add(3 * time.Hour),
+		},
+		{
+			FeedID:      feed.ID,
+			GUID:        "neutral-item",
+			Title:       "Neutral Article",
+			Link:        "https://example.com/neutral",
+			Description: "No feedback on this article",
+			Published:   baseTime.Add(4 * time.Hour),
+		},
+	}
+
+	// create items and add classifications
+	for i := range items {
+		err = repos.Item.CreateItem(context.Background(), &items[i])
+		require.NoError(t, err)
+
+		// add classification
+		classification := &domain.Classification{
+			GUID:        items[i].GUID,
+			Score:       7.5,
+			Explanation: "Test classification",
+			Topics:      []string{"test"},
+		}
+		err = repos.Item.UpdateItemClassification(context.Background(), items[i].ID, classification)
+		require.NoError(t, err)
+	}
+
+	// add user feedback
+	err = repos.Classification.UpdateItemFeedback(context.Background(), items[0].ID, &domain.Feedback{Type: domain.FeedbackLike})
+	require.NoError(t, err)
+
+	err = repos.Classification.UpdateItemFeedback(context.Background(), items[1].ID, &domain.Feedback{Type: domain.FeedbackLike})
+	require.NoError(t, err)
+
+	err = repos.Classification.UpdateItemFeedback(context.Background(), items[2].ID, &domain.Feedback{Type: domain.FeedbackDislike})
+	require.NoError(t, err)
+	// items[3] has no feedback
+
+	t.Run("filter liked only", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore:      0.0,
+			ShowLikedOnly: true,
+			SortBy:        "published",
+			Limit:         10,
+		}
+
+		result, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		require.Len(t, result, 2) // only 2 liked items
+
+		// verify only liked items are returned
+		assert.Equal(t, "Liked Article 2", result[0].Title) // newer first
+		assert.Equal(t, "Liked Article 1", result[1].Title)
+
+		// verify feedback is correctly set
+		assert.Equal(t, domain.FeedbackLike, result[0].UserFeedback.Type)
+		assert.Equal(t, domain.FeedbackLike, result[1].UserFeedback.Type)
+	})
+
+	t.Run("filter without liked only shows all", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore:      0.0,
+			ShowLikedOnly: false,
+			SortBy:        "published",
+			Limit:         10,
+		}
+
+		result, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
+		require.NoError(t, err)
+		require.Len(t, result, 4) // all 4 items
+
+		// verify all items are returned in correct order
+		assert.Equal(t, "Neutral Article", result[0].Title)
+		assert.Equal(t, "Disliked Article", result[1].Title)
+		assert.Equal(t, "Liked Article 2", result[2].Title)
+		assert.Equal(t, "Liked Article 1", result[3].Title)
+	})
+
+	t.Run("count with liked filter", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore:      0.0,
+			ShowLikedOnly: true,
+		}
+
+		count, err := repos.Classification.GetClassifiedItemsCount(context.Background(), filter)
+		require.NoError(t, err)
+		assert.Equal(t, 2, count) // only 2 liked items
+	})
+
+	t.Run("count without liked filter", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore:      0.0,
+			ShowLikedOnly: false,
+		}
+
+		count, err := repos.Classification.GetClassifiedItemsCount(context.Background(), filter)
+		require.NoError(t, err)
+		assert.Equal(t, 4, count) // all 4 items
+	})
+}

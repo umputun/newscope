@@ -13,7 +13,7 @@
                hx-get="/articles"
                hx-trigger="change"
                hx-target="#articles-with-pagination"
-               hx-include="#topic-filter, #feed-filter, #sort-filter">
+               hx-include="#topic-filter, #feed-filter, #sort-filter, #liked-toggle">
         <span id="score-value">{{.MinScore}}</span>
         
         <!-- Topic filter -->
@@ -22,7 +22,7 @@
                 hx-get="/articles"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
-                hx-include="#score-filter, #feed-filter, #sort-filter">
+                hx-include="#score-filter, #feed-filter, #sort-filter, #liked-toggle">
             <option value="">All Topics</option>
             {{range .Topics}}
             <option value="{{.}}" {{if eq $.SelectedTopic .}}selected{{end}}>{{.}}</option>
@@ -35,7 +35,7 @@
                 hx-get="/articles"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
-                hx-include="#score-filter, #topic-filter, #sort-filter">
+                hx-include="#score-filter, #topic-filter, #sort-filter, #liked-toggle">
             <option value="">All Feeds</option>
             {{range .Feeds}}
             <option value="{{.}}" {{if eq $.SelectedFeed .}}selected{{end}}>{{.}}</option>
@@ -48,18 +48,28 @@
                 hx-get="/articles"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
-                hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
+                hx-include="#score-filter, #topic-filter, #feed-filter, #liked-toggle">
             <option value="published" {{if eq .SelectedSort "published"}}selected{{end}}>Date</option>
             <option value="score" {{if eq .SelectedSort "score"}}selected{{end}}>Score</option>
             <option value="source+date" {{if eq .SelectedSort "source+date"}}selected{{end}}>Source + Date</option>
             <option value="source+score" {{if eq .SelectedSort "source+score"}}selected{{end}}>Source + Score</option>
         </select>
         
-        <!-- View mode toggle -->
-        <label>View:</label>
-        <div class="view-toggle-buttons">
-            <button id="view-expanded" class="btn-view-toggle active" title="Expanded view">⊞</button>
-            <button id="view-condensed" class="btn-view-toggle" title="Condensed view">☰</button>
+        <!-- Toggle buttons group -->
+        <div class="toggle-buttons-group">
+            <button id="liked-toggle" class="btn-toggle {{if .ShowLikedOnly}}active{{end}}" 
+                    title="Show liked articles only"
+                    hx-get="/articles"
+                    hx-trigger="click"
+                    hx-target="#articles-with-pagination"
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter"
+                    hx-vals='{"liked": "{{if .ShowLikedOnly}}false{{else}}true{{end}}"}'>
+                ★ Liked
+            </button>
+            <div class="view-toggle-buttons">
+                <button id="view-expanded" class="btn-view-toggle active" title="Expanded view">⊞</button>
+                <button id="view-condensed" class="btn-view-toggle" title="Condensed view">☰</button>
+            </div>
         </div>
     </div>
 </div>
@@ -108,6 +118,14 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Trigger HTMX request to load articles with saved sort
         htmx.trigger(sortFilter, 'change');
+    }
+    
+    // Load saved liked only preference
+    const savedLikedOnly = localStorage.getItem('newscopeLikedOnly') === 'true';
+    if (savedLikedOnly !== {{.ShowLikedOnly}}) {
+        // trigger a click to load with saved preference
+        const likedToggle = document.getElementById('liked-toggle');
+        htmx.trigger(likedToggle, 'click');
     }
 });
 
@@ -158,6 +176,21 @@ document.getElementById('view-condensed').addEventListener('click', function() {
 // Sort preference persistence
 document.getElementById('sort-filter').addEventListener('change', function(e) {
     localStorage.setItem('newscopeSortBy', e.target.value);
+});
+
+// Liked button click handler for immediate visual feedback
+document.getElementById('liked-toggle').addEventListener('click', function() {
+    this.classList.toggle('active');
+});
+
+// Liked only preference persistence - update on HTMX events
+document.addEventListener('htmx:afterRequest', function(event) {
+    if (event.detail.elt && event.detail.elt.id === 'liked-toggle') {
+        // save the localStorage value based on button state after request
+        const btn = event.detail.elt;
+        const isActive = btn.classList.contains('active');
+        localStorage.setItem('newscopeLikedOnly', isActive);
+    }
 });
 
 // Handle topic tag clicks to update the dropdown

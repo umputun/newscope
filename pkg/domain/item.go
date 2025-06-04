@@ -76,16 +76,18 @@ type ItemFilter struct {
 	Limit          int
 	Offset         int
 	OnlyClassified bool
+	ShowLikedOnly  bool
 }
 
 // ArticlesRequest holds parameters for fetching articles
 type ArticlesRequest struct {
-	MinScore float64
-	Topic    string
-	FeedName string
-	SortBy   string
-	Limit    int
-	Page     int
+	MinScore      float64
+	Topic         string
+	FeedName      string
+	SortBy        string
+	Limit         int
+	Page          int
+	ShowLikedOnly bool
 }
 
 // PaginatedResponse represents a paginated response with metadata

@@ -123,6 +123,48 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w3.Body.String(), "No articles found")
 	assert.NotContains(t, w3.Body.String(), "<html")                                                                       // should NOT contain full HTML
 	assert.Contains(t, w3.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(0/1)</span>`) // should show 0 count
+
+	// test liked filter
+	database.GetClassifiedItemsWithFiltersFunc = func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+		// verify that ShowLikedOnly is passed correctly
+		if req.ShowLikedOnly {
+			return []domain.ItemWithClassification{
+				{
+					Title:          "Liked Article",
+					Link:           "https://example.com/liked",
+					Description:    "A liked article",
+					Published:      now,
+					ID:             2,
+					FeedName:       "Test Feed",
+					RelevanceScore: 9.0,
+					Explanation:    "User liked this",
+					Topics:         []string{"favorites"},
+					ClassifiedAt:   &classifiedAt,
+					UserFeedback:   "like",
+				},
+			}, nil
+		}
+		return []domain.ItemWithClassification{}, nil
+	}
+
+	// test with liked filter on
+	req4 := httptest.NewRequest("GET", "/articles?liked=on", http.NoBody)
+	w4 := httptest.NewRecorder()
+
+	srv.articlesHandler(w4, req4)
+
+	assert.Equal(t, http.StatusOK, w4.Code)
+	assert.Contains(t, w4.Body.String(), "Liked Article")
+	assert.Contains(t, w4.Body.String(), "★ Liked") // check that button is rendered
+
+	// test with liked filter using "true" value
+	req5 := httptest.NewRequest("GET", "/articles?liked=true", http.NoBody)
+	w5 := httptest.NewRecorder()
+
+	srv.articlesHandler(w5, req5)
+
+	assert.Equal(t, http.StatusOK, w5.Code)
+	assert.Contains(t, w5.Body.String(), "Liked Article")
 }
 
 func TestServer_feedsHandler(t *testing.T) {

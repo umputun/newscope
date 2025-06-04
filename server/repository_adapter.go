@@ -107,12 +107,13 @@ func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, r
 	}
 
 	filter := &domain.ItemFilter{
-		MinScore: req.MinScore,
-		Topic:    req.Topic,
-		FeedName: req.FeedName,
-		SortBy:   req.SortBy,
-		Limit:    req.Limit,
-		Offset:   offset,
+		MinScore:      req.MinScore,
+		Topic:         req.Topic,
+		FeedName:      req.FeedName,
+		SortBy:        req.SortBy,
+		Limit:         req.Limit,
+		Offset:        offset,
+		ShowLikedOnly: req.ShowLikedOnly,
 	}
 
 	// get items from repository

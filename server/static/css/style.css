@@ -203,7 +203,8 @@ main {
     cursor: pointer;
     transition: all 0.2s;
     border-right: 1px solid var(--border-secondary);
-    min-width: 2.5rem;
+    min-width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -260,6 +261,39 @@ main {
     background-color: var(--bg-primary);
     color: var(--text-primary);
     transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.toggle-buttons-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.btn-toggle {
+    padding: 0.5rem 0.75rem;
+    background-color: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-secondary);
+    border-radius: 0.25rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 36px;
+}
+
+.btn-toggle:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.btn-toggle.active {
+    background-color: var(--danger-color);
+    color: white;
+    border-color: var(--danger-color);
 }
 
 /* Buttons */
