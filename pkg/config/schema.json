@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/umputun/newscope/pkg/config/config",
+  "$ref": "#/$defs/Config",
+  "$defs": {
+    "ClassificationConfig": {
+      "properties": {
+        "feedback_examples": {
+          "type": "integer",
+          "description": "Number of recent feedback examples to include in prompt",
+          "default": 10
+        },
+        "use_json_mode": {
+          "type": "boolean",
+          "description": "Use JSON response format (not all models support this)",
+          "default": false
+        },
+        "preferred_topics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Topics to prefer (increases score by 1-2 points)"
+        },
+        "avoided_topics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Topics to avoid (decreases score by 1-2 points)"
+        },
+        "preference_summary_threshold": {
+          "type": "integer",
+          "minimum": 5,
+          "description": "Number of new feedbacks required before updating preference summary",
+          "default": 25
+        },
+        "prompts": {
+          "$ref": "#/$defs/ClassificationPrompts",
+          "description": "Custom prompts for classification and preference summaries"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "feedback_examples",
+        "use_json_mode",
+        "preferred_topics",
+        "avoided_topics",
+        "preference_summary_threshold",
+        "prompts"
+      ]
+    },
+    "ClassificationPrompts": {
+      "properties": {
+        "generate_summary": {
+          "type": "string",
+          "description": "Prompt for generating preference summary from feedback history"
+        },
+        "update_summary": {
+          "type": "string",
+          "description": "Prompt for updating existing preference summary with new feedback"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "generate_summary",
+        "update_summary"
+      ]
+    },
+    "Config": {
+      "properties": {
+        "server": {
+          "properties": {
+            "listen": {
+              "type": "string",
+              "description": "HTTP server listen address",
+              "default": ":8080"
+            },
+            "timeout": {
+              "type": "integer",
+              "description": "HTTP server timeout"
+            },
+            "page_size": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Articles per page for pagination",
+              "default": 50
+            },
+            "base_url": {
+              "type": "string",
+              "description": "Base URL for RSS feeds and external links",
+              "default": "http://localhost:8080"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "listen",
+            "timeout",
+            "page_size",
+            "base_url"
+          ],
+          "description": "Server configuration"
+        },
+        "database": {
+          "properties": {
+            "dsn": {
+              "type": "string",
+              "description": "Database connection string",
+              "default": "file:newscope.db?cache=shared\u0026mode=rwc"
+            },
+            "max_open_conns": {
+              "type": "integer",
+              "description": "Maximum number of open connections",
+              "default": 10
+            },
+            "max_idle_conns": {
+              "type": "integer",
+              "description": "Maximum number of idle connections",
+              "default": 5
+            },
+            "conn_max_lifetime": {
+              "type": "integer",
+              "description": "Connection maximum lifetime in seconds",
+              "default": 3600
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "dsn",
+            "max_open_conns",
+            "max_idle_conns",
+            "conn_max_lifetime"
+          ],
+          "description": "Database configuration"
+        },
+        "schedule": {
+          "properties": {
+            "update_interval": {
+              "type": "integer",
+              "description": "Feed update interval in minutes",
+              "default": 30
+            },
+            "max_workers": {
+              "type": "integer",
+              "description": "Maximum concurrent workers",
+              "default": 5
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "update_interval",
+            "max_workers"
+          ],
+          "description": "Scheduler configuration"
+        },
+        "llm": {
+          "$ref": "#/$defs/LLMConfig",
+          "description": "LLM configuration for article classification"
+        },
+        "extraction": {
+          "$ref": "#/$defs/ExtractionConfig",
+          "description": "Content extraction configuration"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "server",
+        "database",
+        "schedule",
+        "llm",
+        "extraction"
+      ]
+    },
+    "ExtractionConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable content extraction",
+          "default": false
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Extraction timeout per article"
+        },
+        "max_concurrent": {
+          "type": "integer",
+          "description": "Maximum concurrent extractions",
+          "default": 5
+        },
+        "rate_limit": {
+          "type": "integer",
+          "description": "Rate limit between extractions"
+        },
+        "user_agent": {
+          "type": "string",
+          "description": "User agent for HTTP requests",
+          "default": "Newscope/1.0"
+        },
+        "fallback_url": {
+          "type": "string",
+          "description": "Fallback trafilatura API URL"
+        },
+        "min_text_length": {
+          "type": "integer",
+          "description": "Minimum text length to consider valid",
+          "default": 100
+        },
+        "include_images": {
+          "type": "boolean",
+          "description": "Include images in extraction",
+          "default": false
+        },
+        "include_links": {
+          "type": "boolean",
+          "description": "Include links in extraction",
+          "default": false
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "enabled",
+        "timeout",
+        "max_concurrent",
+        "rate_limit",
+        "user_agent",
+        "fallback_url",
+        "min_text_length",
+        "include_images",
+        "include_links"
+      ]
+    },
+    "LLMConfig": {
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "description": "OpenAI-compatible API endpoint"
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key (can use environment variable)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name (e.g. gpt-4o-mini or llama3)"
+        },
+        "temperature": {
+          "type": "number",
+          "description": "Temperature for response generation",
+          "default": 0.3
+        },
+        "max_tokens": {
+          "type": "integer",
+          "description": "Maximum tokens in response",
+          "default": 500
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Request timeout"
+        },
+        "system_prompt": {
+          "type": "string",
+          "description": "System prompt for the LLM (optional)"
+        },
+        "classification": {
+          "$ref": "#/$defs/ClassificationConfig",
+          "description": "Classification-specific settings"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "endpoint",
+        "api_key",
+        "model",
+        "temperature",
+        "max_tokens",
+        "timeout",
+        "system_prompt",
+        "classification"
+      ]
+    }
+  }
+}

@@ -52,4 +52,3 @@ var/
 .claude/
 
 # Generated files
-pkg/config/schema.json

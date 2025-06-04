@@ -20,9 +20,6 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
 
-      - name: generate files
-        run: go generate ./...
-
       - name: build and test
         run: |
           go test -v -timeout=100s -covermode=count -coverprofile=$GITHUB_WORKSPACE/profile.cov_tmp ./...
