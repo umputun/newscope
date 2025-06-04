@@ -8,8 +8,10 @@ import (
 	_ "embed"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -25,7 +27,7 @@ import (
 
 var errFailedRead = errors.New("failed to read from wasm memory")
 
-//go:embed wasm/libcre2.so
+//go:embed wasm/libcre2.wasm
 var libre2 []byte
 
 // memoryWasm created by `wat2wasm --enable-threads internal/wasm/memory.wat -o internal/wasm/memory.wasm`
@@ -60,6 +62,12 @@ type libre2ABI struct {
 	cre2OptSetCaseSensitive   lazyFunction
 	cre2OptSetLatin1Encoding  lazyFunction
 	cre2OptSetMaxMem          lazyFunction
+
+	cre2SetNew     lazyFunction
+	cre2SetAdd     lazyFunction
+	cre2SetCompile lazyFunction
+	cre2SetMatch   lazyFunction
+	cre2SetDelete  lazyFunction
 
 	malloc lazyFunction
 	free   lazyFunction
@@ -99,7 +107,8 @@ func createChildModule(rt wazero.Runtime, root api.Module) *childModule {
 
 	child, err := rt.InstantiateModule(ctx, wasmCompiled, wazero.NewModuleConfig().WithSysNanotime().WithSysWalltime().WithSysNanosleep().WithStdout(os.Stdout).WithStderr(os.Stderr).
 		// Don't need to execute start functions again in child, it crashes anyways.
-		WithStartFunctions())
+		WithStartFunctions().
+		WithName(""))
 	if err != nil {
 		panic(err)
 	}
@@ -135,6 +144,9 @@ func createChildModule(rt wazero.Runtime, root api.Module) *childModule {
 
 func getChildModule() *childModule {
 	modPoolMu.Lock()
+	if modPool == nil {
+		initWASM()
+	}
 	e := modPool.Front()
 	if e == nil {
 		modPoolMu.Unlock()
@@ -151,11 +163,18 @@ func putChildModule(cm *childModule) {
 	modPoolMu.Unlock()
 }
 
-func init() {
+func initWASM() {
 	ctx := context.Background()
 	ctx = experimental.WithMemoryAllocator(ctx, allocator.NewNonMoving())
 
 	rtCfg := wazero.NewRuntimeConfig().WithCoreFeatures(api.CoreFeaturesV2 | experimental.CoreFeaturesThreads)
+	uc, err := os.UserCacheDir()
+	if err == nil {
+		cache, err := wazero.NewCompilationCacheWithDir(filepath.Join(uc, "com.github.wasilibs"))
+		if err == nil {
+			rtCfg = rtCfg.WithCompilationCache(cache)
+		}
+	}
 
 	maxPages := defaultMaxPages
 	if unsafe.Sizeof(uintptr(0)) < 8 {
@@ -224,9 +243,13 @@ func newABI() *libre2ABI {
 		cre2OptSetCaseSensitive:   newLazyFunction("cre2_opt_set_case_sensitive"),
 		cre2OptSetLatin1Encoding:  newLazyFunction("cre2_opt_set_latin1_encoding"),
 		cre2OptSetMaxMem:          newLazyFunction("cre2_opt_set_max_mem"),
-
-		malloc: newLazyFunction("malloc"),
-		free:   newLazyFunction("free"),
+		cre2SetNew:                newLazyFunction("cre2_set_new"),
+		cre2SetAdd:                newLazyFunction("cre2_set_add"),
+		cre2SetCompile:            newLazyFunction("cre2_set_compile"),
+		cre2SetMatch:              newLazyFunction("cre2_set_match"),
+		cre2SetDelete:             newLazyFunction("cre2_set_delete"),
+		malloc:                    newLazyFunction("malloc"),
+		free:                      newLazyFunction("free"),
 	}
 
 	return abi
@@ -291,7 +314,7 @@ func newRE(abi *libre2ABI, pattern cString, opts CompileOptions) wasmPtr {
 	return wasmPtr(res)
 }
 
-func reError(abi *libre2ABI, alloc *allocation, rePtr wasmPtr) (int, string) {
+func reError(abi *libre2ABI, rePtr wasmPtr) (int, string) {
 	ctx := context.Background()
 	res, err := abi.cre2ErrorCode.Call1(ctx, uint64(rePtr))
 	if err != nil {
@@ -302,15 +325,12 @@ func reError(abi *libre2ABI, alloc *allocation, rePtr wasmPtr) (int, string) {
 		return 0, ""
 	}
 
-	argPtr := alloc.newCStringArray(1)
-	_, err = abi.cre2ErrorArg.Call2(ctx, uint64(rePtr), uint64(argPtr.ptr))
+	res, err = abi.cre2ErrorArg.Call1(ctx, uint64(rePtr))
 	if err != nil {
 		panic(err)
 	}
-	sPtr := binary.LittleEndian.Uint32(alloc.read(argPtr.ptr, 4))
-	sLen := binary.LittleEndian.Uint32(alloc.read(argPtr.ptr+4, 4))
-
-	return code, string(alloc.read(wasmPtr(sPtr), int(sLen)))
+	msg := copyCString(wasmPtr(res))
+	return code, msg
 }
 
 func numCapturingGroups(abi *libre2ABI, rePtr wasmPtr) int {
@@ -416,32 +436,115 @@ func namedGroupsIterNext(abi *libre2ABI, iterPtr wasmPtr) (string, int, bool) {
 		panic(errFailedRead)
 	}
 
-	// C-string, read content until NULL.
-	name := strings.Builder{}
-	for {
-		b, ok := wasmMemory.ReadByte(namePtr)
-		if !ok {
-			panic(errFailedRead)
-		}
-		if b == 0 {
-			break
-		}
-		name.WriteByte(b)
-		namePtr++
-	}
+	name := copyCString(wasmPtr(namePtr))
 
 	index, ok := wasmMemory.ReadUint32Le(uint32(indexPtr))
 	if !ok {
 		panic(errFailedRead)
 	}
 
-	return name.String(), int(index), true
+	return name, int(index), true
 }
 
 func namedGroupsIterDelete(abi *libre2ABI, iterPtr wasmPtr) {
 	ctx := context.Background()
 
 	_, err := abi.cre2NamedGroupsIterDelete.Call1(ctx, uint64(iterPtr))
+	if err != nil {
+		panic(err)
+	}
+}
+
+func newSet(abi *libre2ABI, opts CompileOptions) wasmPtr {
+	ctx := context.Background()
+	optPtr := uint32(0)
+	res, err := abi.cre2OptNew.Call0(ctx)
+	if err != nil {
+		panic(err)
+	}
+	optPtr = uint32(res)
+	defer func() {
+		if _, err := abi.cre2OptDelete.Call1(ctx, uint64(optPtr)); err != nil {
+			panic(err)
+		}
+	}()
+
+	_, err = abi.cre2OptSetMaxMem.Call2(ctx, uint64(optPtr), uint64(maxSize))
+	if err != nil {
+		panic(err)
+	}
+
+	if opts.Longest {
+		_, err = abi.cre2OptSetLongestMatch.Call2(ctx, uint64(optPtr), 1)
+		if err != nil {
+			panic(err)
+		}
+	}
+	if opts.Posix {
+		_, err = abi.cre2OptSetPosixSyntax.Call2(ctx, uint64(optPtr), 1)
+		if err != nil {
+			panic(err)
+		}
+	}
+	if opts.CaseInsensitive {
+		_, err = abi.cre2OptSetCaseSensitive.Call2(ctx, uint64(optPtr), 0)
+		if err != nil {
+			panic(err)
+		}
+	}
+	if opts.Latin1 {
+		_, err = abi.cre2OptSetLatin1Encoding.Call1(ctx, uint64(optPtr))
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	res, err = abi.cre2SetNew.Call2(ctx, uint64(optPtr), 0)
+	if err != nil {
+		panic(err)
+	}
+	return wasmPtr(res)
+}
+
+func setAdd(set *Set, s cString) string {
+	ctx := context.Background()
+	res, err := set.abi.cre2SetAdd.Call3(ctx, uint64(set.ptr), uint64(s.ptr), uint64(s.length))
+	if err != nil {
+		panic(err)
+	}
+	if res == 0 {
+		return unknownCompileError
+	}
+	msgPtr := wasmPtr(res)
+	msg := copyCString(wasmPtr(msgPtr))
+	if msg != "ok" {
+		free(set.abi, msgPtr)
+		return fmt.Sprintf("error parsing regexp: %s", msg)
+	}
+	return ""
+}
+
+func setCompile(set *Set) int32 {
+	ctx := context.Background()
+	res, err := set.abi.cre2SetCompile.Call1(ctx, uint64(set.ptr))
+	if err != nil {
+		panic(err)
+	}
+	return int32(res)
+}
+
+func setMatch(set *Set, cs cString, matchedPtr wasmPtr, nMatch int) int {
+	ctx := context.Background()
+	res, err := set.abi.cre2SetMatch.Call5(ctx, uint64(set.ptr), uint64(cs.ptr), uint64(cs.length), uint64(matchedPtr), uint64(nMatch))
+	if err != nil {
+		panic(err)
+	}
+	return int(res)
+}
+
+func deleteSet(abi *libre2ABI, setPtr wasmPtr) {
+	ctx := context.Background()
+	_, err := abi.cre2SetDelete.Call1(ctx, uint64(setPtr))
 	if err != nil {
 		panic(err)
 	}
@@ -472,6 +575,22 @@ func free(abi *libre2ABI, ptr wasmPtr) {
 	if _, err := abi.free.Call1(context.Background(), uint64(ptr)); err != nil {
 		panic(err)
 	}
+}
+
+func copyCString(ptr wasmPtr) string {
+	res := strings.Builder{}
+	for {
+		b, ok := wasmMemory.ReadByte(uint32(ptr))
+		if !ok {
+			panic(errFailedRead)
+		}
+		if b == 0 {
+			break
+		}
+		res.WriteByte(b)
+		ptr++
+	}
+	return res.String()
 }
 
 type allocation struct {
@@ -577,6 +696,16 @@ func (f *lazyFunction) Call3(ctx context.Context, arg1 uint64, arg2 uint64, arg3
 	callStack[0] = arg1
 	callStack[1] = arg2
 	callStack[2] = arg3
+	return f.callWithStack(ctx, callStack[:])
+}
+
+func (f *lazyFunction) Call5(ctx context.Context, arg1 uint64, arg2 uint64, arg3 uint64, arg4 uint64, arg5 uint64) (uint64, error) {
+	var callStack [5]uint64
+	callStack[0] = arg1
+	callStack[1] = arg2
+	callStack[2] = arg3
+	callStack[3] = arg4
+	callStack[4] = arg5
 	return f.callWithStack(ctx, callStack[:])
 }
 

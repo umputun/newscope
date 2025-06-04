@@ -43,7 +43,7 @@ go get -u -v github.com/markusmobius/go-dateparser
 
 ## <a name="status"></a> 2. Status [▲](#table-of-contents)
 
-This package is up to date with the original dateparser until commit [748e48a][original-commit] (several commits after [v1.2.0][original-tag]). There are several behavior and implementation differences between this port and the original:
+This package is up to date with the original dateparser until commit [02bd2e5][original-commit] (several commits after [v1.2.1][original-tag]). There are several behavior and implementation differences between this port and the original:
 
 - In Python, timezone data is not included in date and time objects. Meanwhile in Go timezone data is required.
 - Regex in Go is pretty slow, so in this port whenever possible we use basic strings or runes operations instead of regex to improve the performance.
@@ -484,6 +484,7 @@ On Windows start by installing [MSYS2][msys2]. Then open the MINGW64 terminal an
 ```bash
 pacman -S mingw-w64-x86_64-gcc
 pacman -S mingw-w64-x86_64-re2
+pacman -S mingw-w64-x86_64-pkg-config
 ```
 
 If you want to run the resulting exe program outside the MINGW64 terminal you need to add a path to the MinGW-w64 libraries to the PATH environmental variable (adjust as needed for your system):
@@ -530,8 +531,8 @@ Just like the original, this package is licensed under [BSD-3 License][bsd3].
 [go-ref-icon]: https://pkg.go.dev/badge/github.com/markusmobius/go-dateparser.svg
 [go-ref]: https://pkg.go.dev/github.com/markusmobius/go-dateparser
 [original]: https://github.com/scrapinghub/dateparser
-[original-commit]: https://github.com/scrapinghub/dateparser/tree/748e48a
-[original-tag]: https://github.com/scrapinghub/dateparser/releases/tag/v1.2.0
+[original-commit]: https://github.com/scrapinghub/dateparser/tree/02bd2e5
+[original-tag]: https://github.com/scrapinghub/dateparser/releases/tag/v1.2.1
 [dps-parse]: https://pkg.go.dev/github.com/markusmobius/go-dateparser#Parse
 [dps-jalali]: https://pkg.go.dev/github.com/markusmobius/go-dateparser#ParseJalali
 [dps-hijri]: https://pkg.go.dev/github.com/markusmobius/go-dateparser#ParseHijri

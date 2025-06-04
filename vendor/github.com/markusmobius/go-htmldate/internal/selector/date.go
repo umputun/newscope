@@ -51,7 +51,8 @@ func FastDate(n *html.Node) bool {
 // contains(@class, 'fa-clock-o') or
 // contains(@class, 'fa-calendar') or
 // contains(@class, 'fecha') or
-// contains(@class, 'parution')
+// contains(@class, 'parution') or
+// contains(@id, 'footer-info-lastmod')
 // ]
 //
 // Further tests needed:
@@ -89,7 +90,8 @@ func dateRule(n *html.Node) bool {
 		contains(class, "fa-clock-o"),
 		contains(class, "fa-calendar"),
 		contains(class, "fecha"),
-		contains(class, "parution"):
+		contains(class, "parution"),
+		contains(id, "footer-info-lastmod"):
 		return true
 	default:
 		return false

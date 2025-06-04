@@ -9,7 +9,7 @@ package cre2
 void* cre2_new(void* pattern, int pattern_len, void* opts);
 void cre2_delete(void* re);
 int cre2_error_code(void* re);
-void cre2_error_arg(void* re, void* arg);
+void* cre2_error_arg(void* re);
 int cre2_match(void* re, void* text, int text_len, int startpos, int endpos, int anchor, void* match_arr, int nmatch);
 int cre2_find_and_consume_re(void* re, void* text, void* match, int nmatch);
 int cre2_global_replace_re(void* re, void* textAndTarget, void* rewrite);
@@ -26,12 +26,20 @@ void cre2_opt_set_posix_syntax(void* opt, int flag);
 void cre2_opt_set_case_sensitive(void* opt, int flag);
 void cre2_opt_set_latin1_encoding(void* opt);
 void cre2_opt_set_max_mem(void* opt, int64_t size);
+void* cre2_set_new(void* opt, int anchor);
+void* cre2_set_add(void* set, void* pattern, int pattern_len);
+int cre2_set_compile(void* set);
+int cre2_set_match(void* set, void* text, int text_len, void* match, int nmatch);
+void cre2_set_delete(void* set);
 
 void* malloc(size_t size);
 void free(void* ptr);
 */
 import "C"
-import "unsafe"
+
+import (
+	"unsafe"
+)
 
 func New(patternPtr unsafe.Pointer, patternLen int, opts unsafe.Pointer) unsafe.Pointer {
 	return C.cre2_new(patternPtr, C.int(patternLen), opts)
@@ -45,8 +53,8 @@ func ErrorCode(rePtr unsafe.Pointer) int {
 	return int(C.cre2_error_code(rePtr))
 }
 
-func ErrorArg(rePtr unsafe.Pointer, argPtr unsafe.Pointer) {
-	C.cre2_error_arg(rePtr, argPtr)
+func ErrorArg(rePtr unsafe.Pointer) unsafe.Pointer {
+	return C.cre2_error_arg(rePtr)
 }
 
 func FindAndConsume(rePtr unsafe.Pointer, textPtr unsafe.Pointer, matchPtr unsafe.Pointer, nMatch int) bool {
@@ -110,6 +118,26 @@ func OptSetLatin1Encoding(opt unsafe.Pointer) {
 
 func OptSetMaxMem(opt unsafe.Pointer, size int) {
 	C.cre2_opt_set_max_mem(opt, C.int64_t(size))
+}
+
+func NewSet(opt unsafe.Pointer, anchor int) unsafe.Pointer {
+	return C.cre2_set_new(opt, C.int(anchor))
+}
+
+func SetAdd(set unsafe.Pointer, patternPtr unsafe.Pointer, patternLen int) unsafe.Pointer {
+	return C.cre2_set_add(set, patternPtr, C.int(patternLen))
+}
+
+func SetCompile(set unsafe.Pointer) int {
+	return int(C.cre2_set_compile(set))
+}
+
+func SetMatch(set unsafe.Pointer, textPtr unsafe.Pointer, textLen int, match unsafe.Pointer, nMatch int) int {
+	return int(C.cre2_set_match(set, textPtr, C.int(textLen), match, C.int(nMatch)))
+}
+
+func SetDelete(ptr unsafe.Pointer) {
+	C.cre2_set_delete(ptr)
 }
 
 func Malloc(size int) unsafe.Pointer {

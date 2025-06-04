@@ -17,8 +17,5 @@ type sliceBuffer struct {
 func (b *sliceBuffer) Free() {}
 
 func (b *sliceBuffer) Reallocate(size uint64) []byte {
-	if int(size) > cap(b.buf) {
-		panic(errInvalidReallocation)
-	}
 	return b.buf[:size]
 }

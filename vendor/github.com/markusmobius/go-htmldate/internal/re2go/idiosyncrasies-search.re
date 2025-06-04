@@ -2,7 +2,7 @@
 
 // PYTHON NAME: TEXT_PATTERNS
 // Original pattern:
-// - EN : (?i)(?:date[^0-9"]{0,20}|updated|published|on)(?:[ :])*?([0-9]{1,4})[./]([0-9]{1,2})[./]([0-9]{2,4})
+// - EN : (?i)(?:date[^0-9"]{0,20}|updated|last-modified|published|posted|on)(?:[ :])*?([0-9]{1,4})[./]([0-9]{1,2})[./]([0-9]{2,4})
 // - DE : (?i)(?:Datum|Stand|Veröffentlicht am):? ?([0-9]{1,2})\.([0-9]{1,2})\.([0-9]{2,4})
 // - TR1: (?i)(?:güncellen?me|yayı(?:m|n)lan?ma) *?(?:tarihi)? *?:? *?([0-9]{1,2})[./]([0-9]{1,2})[./]([0-9]{2,4})
 // - TR2: (?i)([0-9]{1,2})[./]([0-9]{1,2})[./]([0-9]{2,4}) *?(?:'de|'da|'te|'ta|’de|’da|’te|’ta|tarihinde) *(?:güncellendi|yayı(?:m|n)landı)
@@ -25,7 +25,7 @@ func IdiosyncracyPatternSubmatch(input string) ([]string, int) {
 		re2c:posix-captures   = 1;
 		re2c:case-insensitive = 1;
 
-		en  = (!date[^0-9"]{0,20}|updated|published|on)(![ :])*?([0-9]{1,4})[./]([0-9]{1,2})[./]([0-9]{2,4});
+		en  = (!date[^0-9"]{0,20}|updated|last-modified|published|posted|on)(![ :])*?([0-9]{1,4})[./]([0-9]{1,2})[./]([0-9]{2,4});
 		de  = (!Datum|Stand|Ver[öÖ]ffentlicht[ ]am):?[ ]?([0-9]{1,2})[.]([0-9]{1,2})[.]([0-9]{2,4});
 		tr1 = (!g[üÜ]ncellen?me|yay[ıI](!m|n)lan?ma)[ ]*?(!tarihi)?[ ]*?:?[ ]*?([0-9]{1,2})[./]([0-9]{1,2})[./]([0-9]{2,4});
 		tr2 = ([0-9]{1,2})[./]([0-9]{1,2})[./]([0-9]{2,4})[ ]*(![']de|[']da|[']te|[']ta|’de|’da|’te|’ta|tarihinde)[ ]*(!g[üÜ]ncellendi|yay[ıI][mnMN]land[ıI]);

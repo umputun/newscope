@@ -31,7 +31,7 @@ func Parse(cfg *setting.Configuration, str string) date.Date {
 	str, tzData := timezone.PopTzOffset(str)
 
 	// Parse time
-	t, _ := parseTime(str)
+	t, tPeriod, _ := parseTime(str)
 
 	// Find current time
 	now := time.Now().UTC()
@@ -54,9 +54,7 @@ func Parse(cfg *setting.Configuration, str string) date.Date {
 		dt = time.Date(dt.Year(), dt.Month(), dt.Day(),
 			t.Hour(), t.Minute(), t.Second(), t.Nanosecond(),
 			dt.Location())
-		if period > date.Hour {
-			period = date.Hour
-		}
+		period = min(period, tPeriod)
 	}
 
 	if cfg != nil && !cfg.ReturnTimeAsPeriod && period.IsTime() {
@@ -67,7 +65,7 @@ func Parse(cfg *setting.Configuration, str string) date.Date {
 	return date.Date{Time: dt, Period: period}
 }
 
-func parseTime(s string) (time.Time, error) {
+func parseTime(s string) (time.Time, date.Period, error) {
 	s = rxRelativePattern.ReplaceAllString(s, "")
 	s = rxInAgo.ReplaceAllString(s, "")
 	return common.ParseTime(s)
@@ -112,18 +110,37 @@ func parseDate(cfg *setting.Configuration, str string, now time.Time) (time.Time
 
 	date := now
 	if (rxIn.MatchString(str) || cfg.PreferredDateSource == setting.Future) && !rxAgo.MatchString(str) {
-		date = date.AddDate(year, month, day)
+		date = addDate(cfg, date, year, month, day)
 		date = date.Add(hour)
 		date = date.Add(minute)
 		date = date.Add(second)
 	} else {
-		date = date.AddDate(-year, -month, -day)
+		date = addDate(cfg, date, -year, -month, -day)
 		date = date.Add(-hour)
 		date = date.Add(-minute)
 		date = date.Add(-second)
 	}
 
 	return date, period
+}
+
+func addDate(cfg *setting.Configuration, date time.Time, years, months, days int) time.Time {
+	if !cfg.PreserveEndOfMonth {
+		return date.AddDate(years, months, days)
+	}
+
+	y, m, d := date.Date()
+	m += time.Month(months)
+	y += years
+
+	lastDay := time.Date(y, m+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	if d > lastDay {
+		d = lastDay
+	}
+
+	date = time.Date(y, m, d, date.Hour(), date.Minute(), date.Second(), date.Nanosecond(), date.Location())
+
+	return date.AddDate(0, 0, days)
 }
 
 func allWordsAreUnits(s string) bool {
@@ -166,7 +183,7 @@ func getRelativeDurations(s string) map[string]float64 {
 	}
 
 	// Convert fractional values to lower unit
-	for _, unit := range strings.Split(relativeUnits, "|") {
+	for unit := range strings.SplitSeq(relativeUnits, "|") {
 		// Make sure duration exist
 		value, exist := floatDurations[unit]
 		if !exist {

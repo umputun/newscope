@@ -30,7 +30,7 @@ By default Go-HtmlDate will run in extensive mode. You can disabled it by settin
 
 ## Status
 
-This package is stable enough for use and up to date with the original `htmldate` [v1.9.1][2] (commit [3e2a230][3]). However, since time extraction is a brand new feature which doesn't exist in the original, use it with care. So far it works quite nicely on most news sites that I've tried, but it still needs more testing.
+This package is stable enough for use and up to date with the original `htmldate` [v1.9.3][2] (commit [1074ee7][3]). However, since time extraction is a brand new feature which doesn't exist in the original, use it with care. So far it works quite nicely on most news sites that I've tried, but it still needs more testing.
 
 When time extraction is enabled, there are some behaviors that I'd like to note:
 
@@ -153,8 +153,8 @@ Like the original, `go-htmldate` is distributed under the [Apache v2.0](LICENSE)
 
 [0]: https://github.com/adbar/htmldate
 [1]: https://github.com/adbar
-[2]: https://github.com/adbar/htmldate/tree/v1.9.1
-[3]: https://github.com/adbar/htmldate/commit/3e2a230
+[2]: https://github.com/adbar/htmldate/tree/v1.9.3
+[3]: https://github.com/adbar/htmldate/commit/1074ee7
 [dcg]: https://dataculturegroup.org
 [ref-badge]: https://pkg.go.dev/badge/github.com/markusmobius/go-htmldate.svg
 [ref-link]: https://pkg.go.dev/github.com/markusmobius/go-htmldate

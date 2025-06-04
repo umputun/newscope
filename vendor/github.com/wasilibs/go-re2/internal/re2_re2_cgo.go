@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"fmt"
 	"unsafe"
 
 	"github.com/wasilibs/go-re2/internal/cre2"
@@ -45,16 +46,14 @@ func newRE(abi *libre2ABI, pattern cString, opts CompileOptions) wasmPtr {
 	return wasmPtr(cre2.New(pattern.ptr, pattern.length, opt))
 }
 
-func reError(abi *libre2ABI, _ *allocation, rePtr wasmPtr) (int, string) {
+func reError(abi *libre2ABI, rePtr wasmPtr) (int, string) {
 	code := cre2.ErrorCode(unsafe.Pointer(rePtr))
 	if code == 0 {
 		return 0, ""
 	}
 
-	arg := cString{}
-	cre2.ErrorArg(unsafe.Pointer(rePtr), unsafe.Pointer(&arg))
-
-	return code, cre2.CopyCStringN(arg.ptr, arg.length)
+	arg := cre2.CopyCString(cre2.ErrorArg(unsafe.Pointer(rePtr)))
+	return code, arg
 }
 
 func numCapturingGroups(abi *libre2ABI, rePtr wasmPtr) int {
@@ -114,6 +113,10 @@ func (a *allocation) newCStringArray(n int) cStringArray {
 	return cStringArray{ptr: wasmPtr(ptr)}
 }
 
+func (a *allocation) read(ptr wasmPtr, size int) []byte {
+	return (*[1 << 30]byte)(unsafe.Pointer(ptr))[:size:size]
+}
+
 type cString struct {
 	ptr    unsafe.Pointer
 	length int
@@ -165,4 +168,49 @@ func readMatches(alloc *allocation, cs cString, matchesPtr wasmPtr, n int, deliv
 			break
 		}
 	}
+}
+
+func newSet(_ *libre2ABI, opts CompileOptions) wasmPtr {
+	opt := cre2.NewOpt()
+	defer cre2.DeleteOpt(opt)
+	cre2.OptSetMaxMem(opt, maxSize)
+	cre2.OptSetLogErrors(opt, false)
+	if opts.Longest {
+		cre2.OptSetLongestMatch(opt, true)
+	}
+	if opts.Posix {
+		cre2.OptSetPosixSyntax(opt, true)
+	}
+	if opts.CaseInsensitive {
+		cre2.OptSetCaseSensitive(opt, false)
+	}
+	if opts.Latin1 {
+		cre2.OptSetLatin1Encoding(opt)
+	}
+	return wasmPtr(cre2.NewSet(opt, 0))
+}
+
+func setAdd(set *Set, s cString) string {
+	msgPtr := cre2.SetAdd(unsafe.Pointer(set.ptr), s.ptr, s.length)
+	if msgPtr == nil {
+		return unknownCompileError
+	}
+	msg := cre2.CopyCString(msgPtr)
+	if msg != "ok" {
+		cre2.Free(msgPtr)
+		return fmt.Sprintf("error parsing regexp: %s", msg)
+	}
+	return ""
+}
+
+func setCompile(set *Set) int32 {
+	return int32(cre2.SetCompile(unsafe.Pointer(set.ptr)))
+}
+
+func setMatch(set *Set, cs cString, matchedPtr wasmPtr, nMatch int) int {
+	return cre2.SetMatch(unsafe.Pointer(set.ptr), cs.ptr, cs.length, unsafe.Pointer(matchedPtr), nMatch)
+}
+
+func deleteSet(_ *libre2ABI, setPtr wasmPtr) {
+	cre2.SetDelete(unsafe.Pointer(setPtr))
 }
