@@ -605,9 +605,6 @@ func (s *Server) addTopicHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// trigger preference update for classifier
-	s.scheduler.TriggerPreferenceUpdate()
-
 	// render updated topics list
 	s.renderTopicsList(w, topics, topicType)
 }
@@ -668,9 +665,6 @@ func (s *Server) deleteTopicHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save topics", http.StatusInternalServerError)
 		return
 	}
-
-	// trigger preference update for classifier
-	s.scheduler.TriggerPreferenceUpdate()
 
 	// render updated topics list
 	s.renderTopicsList(w, updatedTopics, topicType)

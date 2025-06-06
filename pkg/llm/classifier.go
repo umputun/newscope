@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/go-pkgz/repeater/v2"
 	"github.com/sashabaranov/go-openai"
 
 	"github.com/umputun/newscope/pkg/config"
@@ -90,9 +92,13 @@ func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domai
 	// prepare the prompt
 	prompt := c.buildPromptWithSummary(req.Articles, req.Feedbacks, req.CanonicalTopics, req.PreferenceSummary, req.PreferredTopics, req.AvoidedTopics)
 
-	// retry up to 3 times if we get invalid JSON
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
+	var classifications []domain.Classification
+
+	// use repeater for resilient API calls with exponential backoff
+	err := repeater.NewBackoff(5, time.Second,
+		repeater.WithMaxDelay(30*time.Second),
+		repeater.WithJitter(0.1),
+	).Do(ctx, func() error {
 		// create the chat completion request
 		chatReq := openai.ChatCompletionRequest{
 			Model:       c.config.Model,
@@ -120,33 +126,32 @@ func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domai
 		// call the LLM
 		resp, err := c.client.CreateChatCompletion(ctx, chatReq)
 		if err != nil {
-			return nil, fmt.Errorf("llm request failed: %w", err)
+			// all errors will be retried by repeater
+			return fmt.Errorf("llm request failed: %w", err)
 		}
 
 		if len(resp.Choices) == 0 {
-			return nil, fmt.Errorf("no response from llm")
+			// this is an unexpected response, but we'll retry it
+			return fmt.Errorf("no response from llm")
 		}
 
 		// parse the response
 		content := resp.Choices[0].Message.Content
-		classifications, err := c.parseResponse(content, req.Articles)
-		if err == nil {
-			return classifications, nil
+		var parseErr error
+		classifications, parseErr = c.parseResponse(content, req.Articles)
+		if parseErr != nil {
+			// all parsing errors will be retried
+			return fmt.Errorf("failed to parse response: %w", parseErr)
 		}
 
-		// save the error for potential return
-		lastErr = err
+		return nil
+	})
 
-		// if this was a JSON parsing error, retry
-		if strings.Contains(err.Error(), "failed to parse json") || strings.Contains(err.Error(), "no json array found") {
-			continue
-		}
-
-		// for other errors, don't retry
+	if err != nil {
 		return nil, err
 	}
 
-	return nil, fmt.Errorf("failed after 3 attempts: %w", lastErr)
+	return classifications, nil
 }
 
 // buildPrompt creates the prompt for the LLM
@@ -323,33 +328,48 @@ func (c *Classifier) GeneratePreferenceSummary(ctx context.Context, feedback []d
 
 	sb.WriteString("Generate a preference summary that will help classify future articles more accurately.")
 
-	// create the chat completion request
-	req := openai.ChatCompletionRequest{
-		Model:       c.config.Model,
-		Temperature: 0.7,
-		MaxTokens:   500,
-		Messages: []openai.ChatCompletionMessage{
-			{
-				Role:    openai.ChatMessageRoleSystem,
-				Content: "You are an AI assistant that analyzes user preferences based on their article feedback.",
-			},
-			{
-				Role:    openai.ChatMessageRoleUser,
-				Content: sb.String(),
-			},
-		},
-	}
+	var summary string
 
-	resp, err := c.client.CreateChatCompletion(ctx, req)
+	// use repeater for resilient API calls with exponential backoff
+	err := repeater.NewBackoff(5, time.Second,
+		repeater.WithMaxDelay(30*time.Second),
+		repeater.WithJitter(0.1),
+	).Do(ctx, func() error {
+		// create the chat completion request
+		req := openai.ChatCompletionRequest{
+			Model:       c.config.Model,
+			Temperature: 0.7,
+			MaxTokens:   500,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: "You are an AI assistant that analyzes user preferences based on their article feedback.",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: sb.String(),
+				},
+			},
+		}
+
+		resp, err := c.client.CreateChatCompletion(ctx, req)
+		if err != nil {
+			return fmt.Errorf("generate preference summary failed: %w", err)
+		}
+
+		if len(resp.Choices) == 0 {
+			return fmt.Errorf("no response from llm")
+		}
+
+		summary = resp.Choices[0].Message.Content
+		return nil
+	})
+
 	if err != nil {
-		return "", fmt.Errorf("generate preference summary failed: %w", err)
+		return "", err
 	}
 
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("no response from llm")
-	}
-
-	return resp.Choices[0].Message.Content, nil
+	return summary, nil
 }
 
 // UpdatePreferenceSummary updates existing summary with new feedback
@@ -393,31 +413,46 @@ func (c *Classifier) UpdatePreferenceSummary(ctx context.Context, currentSummary
 
 	sb.WriteString("Generate an updated preference summary that incorporates these new insights.")
 
-	// create the chat completion request
-	req := openai.ChatCompletionRequest{
-		Model:       c.config.Model,
-		Temperature: 0.7,
-		MaxTokens:   500,
-		Messages: []openai.ChatCompletionMessage{
-			{
-				Role:    openai.ChatMessageRoleSystem,
-				Content: "You are an AI assistant that refines user preference summaries based on ongoing feedback.",
-			},
-			{
-				Role:    openai.ChatMessageRoleUser,
-				Content: sb.String(),
-			},
-		},
-	}
+	var updatedSummary string
 
-	resp, err := c.client.CreateChatCompletion(ctx, req)
+	// use repeater for resilient API calls with exponential backoff
+	err := repeater.NewBackoff(5, time.Second,
+		repeater.WithMaxDelay(30*time.Second),
+		repeater.WithJitter(0.1),
+	).Do(ctx, func() error {
+		// create the chat completion request
+		req := openai.ChatCompletionRequest{
+			Model:       c.config.Model,
+			Temperature: 0.7,
+			MaxTokens:   500,
+			Messages: []openai.ChatCompletionMessage{
+				{
+					Role:    openai.ChatMessageRoleSystem,
+					Content: "You are an AI assistant that refines user preference summaries based on ongoing feedback.",
+				},
+				{
+					Role:    openai.ChatMessageRoleUser,
+					Content: sb.String(),
+				},
+			},
+		}
+
+		resp, err := c.client.CreateChatCompletion(ctx, req)
+		if err != nil {
+			return fmt.Errorf("update preference summary failed: %w", err)
+		}
+
+		if len(resp.Choices) == 0 {
+			return fmt.Errorf("no response from llm")
+		}
+
+		updatedSummary = resp.Choices[0].Message.Content
+		return nil
+	})
+
 	if err != nil {
-		return "", fmt.Errorf("update preference summary failed: %w", err)
+		return "", err
 	}
 
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("no response from llm")
-	}
-
-	return resp.Choices[0].Message.Content, nil
+	return updatedSummary, nil
 }
