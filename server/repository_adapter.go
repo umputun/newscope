@@ -12,12 +12,14 @@ import (
 //go:generate moq -out mocks/feed_repo.go -pkg mocks -skip-ensure -fmt goimports . FeedRepo
 //go:generate moq -out mocks/item_repo.go -pkg mocks -skip-ensure -fmt goimports . ItemRepo
 //go:generate moq -out mocks/classification_repo.go -pkg mocks -skip-ensure -fmt goimports . ClassificationRepo
+//go:generate moq -out mocks/setting_repo.go -pkg mocks -skip-ensure -fmt goimports . SettingRepo
 
 // RepositoryAdapter adapts repositories to server.Database interface
 type RepositoryAdapter struct {
 	feedRepo           FeedRepo
 	itemRepo           ItemRepo
 	classificationRepo ClassificationRepo
+	settingRepo        SettingRepo
 }
 
 // FeedRepo defines the feed repository interface used by the adapter
@@ -47,21 +49,29 @@ type ClassificationRepo interface {
 	GetFeedbackCount(ctx context.Context) (int64, error)
 }
 
+// SettingRepo defines the setting repository interface used by the adapter
+type SettingRepo interface {
+	GetSetting(ctx context.Context, key string) (string, error)
+	SetSetting(ctx context.Context, key, value string) error
+}
+
 // NewRepositoryAdapter creates a new repository adapter from concrete repositories
 func NewRepositoryAdapter(repos *repository.Repositories) *RepositoryAdapter {
 	return &RepositoryAdapter{
 		feedRepo:           repos.Feed,
 		itemRepo:           repos.Item,
 		classificationRepo: repos.Classification,
+		settingRepo:        repos.Setting,
 	}
 }
 
 // NewRepositoryAdapterWithInterfaces creates a new repository adapter with interface dependencies for testing
-func NewRepositoryAdapterWithInterfaces(feedRepo FeedRepo, itemRepo ItemRepo, classificationRepo ClassificationRepo) *RepositoryAdapter {
+func NewRepositoryAdapterWithInterfaces(feedRepo FeedRepo, itemRepo ItemRepo, classificationRepo ClassificationRepo, settingRepo SettingRepo) *RepositoryAdapter {
 	return &RepositoryAdapter{
 		feedRepo:           feedRepo,
 		itemRepo:           itemRepo,
 		classificationRepo: classificationRepo,
+		settingRepo:        settingRepo,
 	}
 }
 
@@ -170,11 +180,12 @@ func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, r
 // GetClassifiedItemsCount returns total count of classified items matching filters
 func (r *RepositoryAdapter) GetClassifiedItemsCount(ctx context.Context, req domain.ArticlesRequest) (int, error) {
 	filter := &domain.ItemFilter{
-		MinScore: req.MinScore,
-		Topic:    req.Topic,
-		FeedName: req.FeedName,
-		SortBy:   req.SortBy,
-		Limit:    req.Limit,
+		MinScore:      req.MinScore,
+		Topic:         req.Topic,
+		FeedName:      req.FeedName,
+		SortBy:        req.SortBy,
+		Limit:         req.Limit,
+		ShowLikedOnly: req.ShowLikedOnly,
 	}
 
 	return r.classificationRepo.GetClassifiedItemsCount(ctx, filter)
@@ -299,6 +310,16 @@ func (r *RepositoryAdapter) DeleteFeed(ctx context.Context, feedID int64) error 
 // GetActiveFeedNames returns names of feeds that have classified articles
 func (r *RepositoryAdapter) GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error) {
 	return r.feedRepo.GetActiveFeedNames(ctx, minScore)
+}
+
+// GetSetting retrieves a setting value by key
+func (r *RepositoryAdapter) GetSetting(ctx context.Context, key string) (string, error) {
+	return r.settingRepo.GetSetting(ctx, key)
+}
+
+// SetSetting stores a setting value
+func (r *RepositoryAdapter) SetSetting(ctx context.Context, key, value string) error {
+	return r.settingRepo.SetSetting(ctx, key, value)
 }
 
 // getFeedDisplayName returns the feed title if available, otherwise extracts hostname from URL

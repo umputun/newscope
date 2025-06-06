@@ -10,6 +10,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"sync"
@@ -229,6 +230,19 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 		preferenceSummary = ""
 	}
 
+	// get topic preferences
+	var preferredTopics, avoidedTopics []string
+	if preferredJSON, err := s.settingManager.GetSetting(ctx, domain.SettingPreferredTopics); err == nil && preferredJSON != "" {
+		if err := json.Unmarshal([]byte(preferredJSON), &preferredTopics); err != nil {
+			lgr.Printf("[WARN] failed to parse preferred topics: %v", err)
+		}
+	}
+	if avoidedJSON, err := s.settingManager.GetSetting(ctx, domain.SettingAvoidedTopics); err == nil && avoidedJSON != "" {
+		if err := json.Unmarshal([]byte(avoidedJSON), &avoidedTopics); err != nil {
+			lgr.Printf("[WARN] failed to parse avoided topics: %v", err)
+		}
+	}
+
 	// set extracted content for classification
 	item.Content = extracted.Content
 
@@ -238,6 +252,8 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 		Feedbacks:         feedbacks,
 		CanonicalTopics:   topics,
 		PreferenceSummary: preferenceSummary,
+		PreferredTopics:   preferredTopics,
+		AvoidedTopics:     avoidedTopics,
 	}
 	classifications, err := s.classifier.ClassifyItems(ctx, req)
 	if err != nil {

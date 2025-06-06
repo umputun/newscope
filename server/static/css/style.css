@@ -43,6 +43,12 @@
     --status-error-border: #fecaca;
     --status-info-bg: #d1ecf1;
     --status-info-text: #0c5460;
+    
+    /* Tag colors */
+    --tag-bg: #e0f2fe;
+    --tag-text: #0369a1;
+    --tag-border: #7dd3fc;
+    --bg-danger: #fee2e2;
 }
 
 /* Dark Theme */
@@ -84,6 +90,12 @@
         --status-error-border: rgba(248, 113, 113, 0.3);
         --status-info-bg: rgba(96, 165, 250, 0.1);
         --status-info-text: #60a5fa;
+        
+        /* Tag colors */
+        --tag-bg: rgba(59, 130, 246, 0.1);
+        --tag-text: #60a5fa;
+        --tag-border: rgba(59, 130, 246, 0.3);
+        --bg-danger: rgba(239, 68, 68, 0.1);
     }
 }
 
@@ -516,7 +528,7 @@ main {
     flex-wrap: wrap;
 }
 
-.topic-tag {
+.topics .topic-tag {
     display: inline-block;
     padding: 0.25rem 0.75rem;
     background-color: var(--primary-color);
@@ -527,7 +539,7 @@ main {
     transition: background-color 0.2s, transform 0.2s;
 }
 
-.topic-tag.clickable-topic:hover {
+.topics .topic-tag.clickable-topic:hover {
     background-color: var(--primary-hover);
     transform: scale(1.05);
     cursor: pointer;
@@ -1591,5 +1603,156 @@ footer p {
     
     .pagination-info {
         font-size: 0.8rem;
+    }
+}
+
+/* Topic Management */
+.topic-preferences-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin: 1.5rem;
+}
+
+.topic-section {
+    background: var(--bg-secondary);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    border: 1px solid var(--border-primary);
+}
+
+.topic-section .subsection-header {
+    margin: 0 0 1rem 0;
+    padding: 0;
+    border: none;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-primary);
+}
+
+.topic-management {
+    margin-bottom: 0;
+}
+
+.topic-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    min-height: 3rem;
+    padding: 1rem;
+    background: var(--bg-primary);
+    border-radius: 0.375rem;
+    border: 1px solid var(--border-primary);
+}
+
+.topic-list:empty::before {
+    content: "No topics selected";
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    font-style: italic;
+}
+
+.topic-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid transparent;
+    padding: 0.375rem 0.75rem;
+    border-radius: 2rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.topic-tag i {
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.topic-tag.topic-preferred {
+    background: var(--tag-bg);
+    color: var(--tag-text);
+    border-color: var(--tag-border);
+}
+
+.topic-tag.topic-avoided {
+    background: var(--bg-danger);
+    color: var(--danger-color);
+    border-color: var(--danger-color);
+}
+
+.topic-delete {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 0.25rem;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.topic-delete:hover {
+    opacity: 1;
+}
+
+.topic-add-form {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+}
+
+.topic-select {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-primary);
+    border-radius: 0.375rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+
+.topic-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-color-alpha);
+}
+
+.topic-add-form .btn {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+
+.topic-add-form .btn i {
+    font-size: 0.75rem;
+}
+
+.settings-description {
+    margin: 0 1.5rem 1rem 1.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* Responsive topic preferences */
+@media (max-width: 768px) {
+    .topic-preferences-container {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
     }
 }

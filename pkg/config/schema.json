@@ -15,20 +15,6 @@
           "description": "Use JSON response format (not all models support this)",
           "default": false
         },
-        "preferred_topics": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "description": "Topics to prefer (increases score by 1-2 points)"
-        },
-        "avoided_topics": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "description": "Topics to avoid (decreases score by 1-2 points)"
-        },
         "preference_summary_threshold": {
           "type": "integer",
           "minimum": 5,
@@ -45,8 +31,6 @@
       "required": [
         "feedback_examples",
         "use_json_mode",
-        "preferred_topics",
-        "avoided_topics",
         "preference_summary_threshold",
         "prompts"
       ]

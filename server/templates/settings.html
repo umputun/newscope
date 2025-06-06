@@ -157,34 +157,84 @@
                 </div>
             </div>
             
-            <h4 class="subsection-header">Topic Preferences</h4>
-            <div class="settings-grid">
-                <div class="setting-item">
-                    <label>Preferred Topics</label>
-                    <div class="setting-value">
-                        {{if .Config.LLM.Classification.PreferredTopics}}
-                            <div class="topic-list">
-                                {{range .Config.LLM.Classification.PreferredTopics}}
-                                <span class="topic-tag topic-preferred">{{.}}</span>
+        </div>
+
+        <div class="settings-section">
+            <div class="section-header">
+                <i class="fas fa-tags"></i>
+                <h3>Topic Preferences</h3>
+            </div>
+            
+            <div class="topic-preferences-container">
+                <div class="topic-section">
+                    <h4 class="subsection-header">
+                        <i class="fas fa-heart"></i>
+                        Preferred Topics
+                    </h4>
+                    <div class="topic-management">
+                        <div id="preferred-topics-list" class="topic-list">
+                            {{range .PreferredTopics}}
+                            <span class="topic-tag topic-preferred">
+                                <i class="fas fa-heart"></i>
+                                {{.}}
+                                <button class="topic-delete"
+                                    hx-delete="/api/v1/topics/{{.}}?type=preferred"
+                                    hx-target="#preferred-topics-list"
+                                    hx-confirm="Remove '{{.}}' from preferred topics?">
+                                    ×
+                                </button>
+                            </span>
+                            {{end}}
+                        </div>
+                        <form class="topic-add-form" hx-post="/api/v1/topics" hx-target="#preferred-topics-list">
+                            <input type="hidden" name="type" value="preferred">
+                            <select name="topic" class="form-control topic-select" required>
+                                <option value="">Select a topic to prefer...</option>
+                                {{range .AvailableTopics}}
+                                <option value="{{.}}">{{.}}</option>
                                 {{end}}
-                            </div>
-                        {{else}}
-                        <span class="text-muted">None configured</span>
-                        {{end}}
+                            </select>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-plus"></i>
+                                Add
+                            </button>
+                        </form>
                     </div>
                 </div>
-                <div class="setting-item">
-                    <label>Avoided Topics</label>
-                    <div class="setting-value">
-                        {{if .Config.LLM.Classification.AvoidedTopics}}
-                            <div class="topic-list">
-                                {{range .Config.LLM.Classification.AvoidedTopics}}
-                                <span class="topic-tag topic-avoided">{{.}}</span>
+                
+                <div class="topic-section">
+                    <h4 class="subsection-header">
+                        <i class="fas fa-ban"></i>
+                        Avoided Topics
+                    </h4>
+                    <div class="topic-management">
+                        <div id="avoided-topics-list" class="topic-list">
+                            {{range .AvoidedTopics}}
+                            <span class="topic-tag topic-avoided">
+                                <i class="fas fa-ban"></i>
+                                {{.}}
+                                <button class="topic-delete"
+                                    hx-delete="/api/v1/topics/{{.}}?type=avoided"
+                                    hx-target="#avoided-topics-list"
+                                    hx-confirm="Remove '{{.}}' from avoided topics?">
+                                    ×
+                                </button>
+                            </span>
+                            {{end}}
+                        </div>
+                        <form class="topic-add-form" hx-post="/api/v1/topics" hx-target="#avoided-topics-list">
+                            <input type="hidden" name="type" value="avoided">
+                            <select name="topic" class="form-control topic-select" required>
+                                <option value="">Select a topic to avoid...</option>
+                                {{range .AvailableTopics}}
+                                <option value="{{.}}">{{.}}</option>
                                 {{end}}
-                            </div>
-                        {{else}}
-                        <span class="text-muted">None configured</span>
-                        {{end}}
+                            </select>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-plus"></i>
+                                Add
+                            </button>
+                        </form>
                     </div>
                 </div>
             </div>

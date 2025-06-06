@@ -79,6 +79,8 @@ type Database interface {
 	UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval int) error
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
 	DeleteFeed(ctx context.Context, feedID int64) error
+	GetSetting(ctx context.Context, key string) (string, error)
+	SetSetting(ctx context.Context, key, value string) error
 }
 
 // Scheduler interface for on-demand operations
@@ -203,7 +205,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"templates/article-card.html",
 		"templates/feed-card.html",
 		"templates/article-content.html",
-		"templates/pagination.html")
+		"templates/pagination.html",
+		"templates/topic-tags.html")
 	if err != nil {
 		log.Printf("[ERROR] failed to parse templates: %v", err)
 	}
@@ -323,6 +326,10 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("POST /feeds/{id}/disable", s.disableFeedHandler)
 		r.HandleFunc("POST /feeds/{id}/fetch", s.fetchFeedHandler)
 		r.HandleFunc("DELETE /feeds/{id}", s.deleteFeedHandler)
+
+		// topic preferences management
+		r.HandleFunc("POST /topics", s.addTopicHandler)
+		r.HandleFunc("DELETE /topics/{topic}", s.deleteTopicHandler)
 	})
 
 	// RSS routes

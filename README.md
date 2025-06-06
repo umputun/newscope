@@ -15,6 +15,7 @@ In addition to intelligent feed curation, newscope provides:
 - AI-powered article scoring (0-10) with explanations
 - Automatic topic extraction and tagging
 - Learning from your feedback (likes/dislikes) with adaptive preference summaries
+- Topic preferences management (preferred/avoided topics)
 - Full content extraction from article pages
 - Custom RSS feed generation with filters
 - Modern web UI with multiple view modes
@@ -37,9 +38,10 @@ Open http://localhost:8080 to access the web interface.
 ### Quick Start
 
 1. Add RSS feeds through the web UI
-2. Let the AI analyze and score articles
-3. Provide feedback to improve recommendations
-4. Subscribe to filtered RSS feeds in your reader
+2. Configure topic preferences in Settings (optional)
+3. Let the AI analyze and score articles
+4. Provide feedback to improve recommendations
+5. Subscribe to filtered RSS feeds in your reader
 
 <details>
 <summary>Screenshots</summary>
@@ -108,13 +110,6 @@ llm:
   classification:
     feedback_examples: 50
     preference_summary_threshold: 25  # Number of new feedbacks before updating preference summary
-    preferred_topics:
-      - "programming"
-      - "golang"
-      - "ai"
-    avoided_topics:
-      - "politics"
-      - "celebrity"
 
 extraction:
   enabled: true
@@ -142,6 +137,14 @@ The **Articles** page provides:
 - **Dislike** - Articles you want to avoid
 
 The AI learns from your feedback to improve future scoring.
+
+### Topic Preferences
+
+Configure preferred and avoided topics in Settings to influence article scoring:
+- **Preferred topics**: Increase article scores by 1-2 points
+- **Avoided topics**: Decrease article scores by 1-2 points
+
+This allows you to boost content you're interested in and filter out topics you want to avoid.
 
 ### Content Extraction
 

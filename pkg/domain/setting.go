@@ -8,3 +8,9 @@ type Setting struct {
 	Value     string
 	UpdatedAt time.Time
 }
+
+// Setting keys
+const (
+	SettingPreferredTopics = "preferred_topics"
+	SettingAvoidedTopics   = "avoided_topics"
+)

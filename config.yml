@@ -48,31 +48,6 @@ llm:
     feedback_examples: 50      # Recent examples to include
     use_json_mode: true        # Use JSON mode for classification
     preference_summary_threshold: 25  # Number of new feedbacks before updating preference summary
-    preferred_topics:          # Topics that increase article scores based on Radio-T content
-      - "golang"
-      - "rust" 
-      - "ai"
-      - "machine learning"
-      - "programming"
-      - "software development"
-      - "open source"
-      - "github"
-      - "docker"
-      - "coding"
-      - "tech industry"
-      - "claude"
-      - "openai"
-      - "anthropic"
-      - "coding assistants"
-      - "development tools"
-      - "software engineering"
-    avoided_topics:            # Topics that decrease article scores
-      - "sports"
-      - "politics"
-      - "celebrity"
-      - "entertainment"
-      - "fashion"
-      - "lifestyle"
     
     # Optional: Custom prompts for preference summary generation
     # prompts:

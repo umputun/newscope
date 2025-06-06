@@ -1,0 +1,12 @@
+{{range .Topics}}
+<span class="topic-tag {{if $.IsAvoided}}topic-avoided{{else}}topic-preferred{{end}}">
+    <i class="fas {{if $.IsAvoided}}fa-ban{{else}}fa-heart{{end}}"></i>
+    {{.}}
+    <button class="topic-delete"
+        hx-delete="/api/v1/topics/{{. | urlquery}}?type={{$.TopicType}}"
+        hx-target="#{{$.TopicType}}-topics-list"
+        hx-confirm="Remove '{{.}}' from {{if $.IsAvoided}}avoided{{else}}preferred{{end}} topics?">
+        ×
+    </button>
+</span>
+{{end}}

@@ -269,8 +269,17 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 	}
 
 	settingManager.GetSettingFunc = func(ctx context.Context, key string) (string, error) {
-		assert.Equal(t, "preference_summary", key)
-		return "", nil
+		switch key {
+		case "preference_summary":
+			return "", nil
+		case domain.SettingPreferredTopics:
+			return "", nil
+		case domain.SettingAvoidedTopics:
+			return "", nil
+		default:
+			t.Fatalf("unexpected setting key: %s", key)
+			return "", nil
+		}
 	}
 
 	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
@@ -304,7 +313,7 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 	assert.Len(t, extractor.ExtractCalls(), 1)
 	assert.Len(t, classificationManager.GetRecentFeedbackCalls(), 1)
 	assert.Len(t, classificationManager.GetTopicsCalls(), 1)
-	assert.Len(t, settingManager.GetSettingCalls(), 1)
+	assert.Len(t, settingManager.GetSettingCalls(), 3) // preference_summary, preferred_topics, avoided_topics
 	assert.Len(t, classifier.ClassifyItemsCalls(), 1)
 	assert.Len(t, itemManager.UpdateItemProcessedCalls(), 1)
 }

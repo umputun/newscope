@@ -153,15 +153,13 @@ func TestClassifier_TopicPreferences(t *testing.T) {
 	cfg := config.LLMConfig{
 		APIKey: "test-key",
 		Model:  "gpt-4",
-		Classification: config.ClassificationConfig{
-			PreferredTopics: []string{"golang", "ai"},
-			AvoidedTopics:   []string{"sports", "politics"},
-		},
 	}
 	classifier := NewClassifier(cfg)
 
 	articles := []domain.Item{{GUID: "item1", Title: "Test Article"}}
-	prompt := classifier.buildPrompt(articles, nil, nil)
+	preferredTopics := []string{"golang", "ai"}
+	avoidedTopics := []string{"sports", "politics"}
+	prompt := classifier.buildPromptWithSummary(articles, nil, nil, "", preferredTopics, avoidedTopics)
 
 	// check topic preferences section
 	assert.Contains(t, prompt, "Topic preferences:")

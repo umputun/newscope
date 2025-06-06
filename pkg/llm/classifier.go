@@ -77,6 +77,8 @@ type ClassifyRequest struct {
 	Feedbacks         []domain.FeedbackExample
 	CanonicalTopics   []string
 	PreferenceSummary string
+	PreferredTopics   []string
+	AvoidedTopics     []string
 }
 
 // classify classifies articles using the provided request parameters (internal implementation)
@@ -86,7 +88,7 @@ func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domai
 	}
 
 	// prepare the prompt
-	prompt := c.buildPromptWithSummary(req.Articles, req.Feedbacks, req.CanonicalTopics, req.PreferenceSummary)
+	prompt := c.buildPromptWithSummary(req.Articles, req.Feedbacks, req.CanonicalTopics, req.PreferenceSummary, req.PreferredTopics, req.AvoidedTopics)
 
 	// retry up to 3 times if we get invalid JSON
 	var lastErr error
@@ -149,11 +151,11 @@ func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domai
 
 // buildPrompt creates the prompt for the LLM
 func (c *Classifier) buildPrompt(articles []domain.Item, feedbackExamples []domain.FeedbackExample, canonicalTopics []string) string {
-	return c.buildPromptWithSummary(articles, feedbackExamples, canonicalTopics, "")
+	return c.buildPromptWithSummary(articles, feedbackExamples, canonicalTopics, "", nil, nil)
 }
 
 // buildPromptWithSummary creates the prompt for the LLM with optional preference summary
-func (c *Classifier) buildPromptWithSummary(articles []domain.Item, feedbackExamples []domain.FeedbackExample, canonicalTopics []string, preferenceSummary string) string {
+func (c *Classifier) buildPromptWithSummary(articles []domain.Item, feedbackExamples []domain.FeedbackExample, canonicalTopics []string, preferenceSummary string, preferredTopics, avoidedTopics []string) string {
 	var sb strings.Builder
 
 	// add preference summary if available
@@ -171,13 +173,13 @@ func (c *Classifier) buildPromptWithSummary(articles []domain.Item, feedbackExam
 	}
 
 	// add topic preferences
-	if len(c.config.Classification.PreferredTopics) > 0 || len(c.config.Classification.AvoidedTopics) > 0 {
+	if len(preferredTopics) > 0 || len(avoidedTopics) > 0 {
 		sb.WriteString("Topic preferences:\n")
-		if len(c.config.Classification.PreferredTopics) > 0 {
-			sb.WriteString(fmt.Sprintf("- Preferred topics (increase score by 1-2): %s\n", strings.Join(c.config.Classification.PreferredTopics, ", ")))
+		if len(preferredTopics) > 0 {
+			sb.WriteString(fmt.Sprintf("- Preferred topics (increase score by 1-2): %s\n", strings.Join(preferredTopics, ", ")))
 		}
-		if len(c.config.Classification.AvoidedTopics) > 0 {
-			sb.WriteString(fmt.Sprintf("- Avoided topics (decrease score by 1-2): %s\n", strings.Join(c.config.Classification.AvoidedTopics, ", ")))
+		if len(avoidedTopics) > 0 {
+			sb.WriteString(fmt.Sprintf("- Avoided topics (decrease score by 1-2): %s\n", strings.Join(avoidedTopics, ", ")))
 		}
 		sb.WriteString("\n")
 	}

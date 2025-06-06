@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -245,21 +246,51 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // settingsHandler displays the settings page
-func (s *Server) settingsHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	// get full configuration
 	cfg := s.config.GetFullConfig()
 
+	// get topic preferences from database
+	var preferredTopics, avoidedTopics []string
+
+	if preferredJSON, err := s.db.GetSetting(ctx, domain.SettingPreferredTopics); err == nil && preferredJSON != "" {
+		if err := json.Unmarshal([]byte(preferredJSON), &preferredTopics); err != nil {
+			log.Printf("[ERROR] failed to parse preferred topics: %v", err)
+		}
+	}
+
+	if avoidedJSON, err := s.db.GetSetting(ctx, domain.SettingAvoidedTopics); err == nil && avoidedJSON != "" {
+		if err := json.Unmarshal([]byte(avoidedJSON), &avoidedTopics); err != nil {
+			log.Printf("[ERROR] failed to parse avoided topics: %v", err)
+		}
+	}
+
+	// get all available topics for the dropdown
+	availableTopics, err := s.db.GetTopics(ctx)
+	if err != nil {
+		log.Printf("[ERROR] failed to get available topics: %v", err)
+		availableTopics = []string{} // continue with empty topics
+	}
+
 	// prepare data for display
 	data := struct {
-		ActivePage string
-		Config     *config.Config
-		Version    string
-		Debug      bool
+		ActivePage      string
+		Config          *config.Config
+		Version         string
+		Debug           bool
+		PreferredTopics []string
+		AvoidedTopics   []string
+		AvailableTopics []string
 	}{
-		ActivePage: "settings",
-		Config:     cfg,
-		Version:    s.version,
-		Debug:      s.debug,
+		ActivePage:      "settings",
+		Config:          cfg,
+		Version:         s.version,
+		Debug:           s.debug,
+		PreferredTopics: preferredTopics,
+		AvoidedTopics:   avoidedTopics,
+		AvailableTopics: availableTopics,
 	}
 
 	// render settings page
@@ -506,5 +537,161 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 	// execute the pagination template
 	if err := s.templates.ExecuteTemplate(w, "pagination", paginationData); err != nil {
 		log.Printf("[ERROR] failed to render pagination: %v", err)
+	}
+}
+
+// addTopicHandler handles adding a new topic preference
+func (s *Server) addTopicHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	topic := strings.TrimSpace(r.FormValue("topic"))
+	topicType := r.FormValue("type") // "preferred" or "avoided"
+
+	if topic == "" || (topicType != "preferred" && topicType != "avoided") {
+		http.Error(w, "Invalid topic or type", http.StatusBadRequest)
+		return
+	}
+
+	// get current topics
+	settingKey := domain.SettingPreferredTopics
+	if topicType == "avoided" {
+		settingKey = domain.SettingAvoidedTopics
+	}
+
+	currentValue, err := s.db.GetSetting(ctx, settingKey)
+	if err != nil {
+		log.Printf("[ERROR] failed to get setting %s: %v", settingKey, err)
+		http.Error(w, "Failed to get topics", http.StatusInternalServerError)
+		return
+	}
+
+	// parse current topics
+	var topics []string
+	if currentValue != "" {
+		if err := json.Unmarshal([]byte(currentValue), &topics); err != nil {
+			log.Printf("[ERROR] failed to parse topics: %v", err)
+			topics = []string{}
+		}
+	}
+
+	// check if topic already exists
+	for _, t := range topics {
+		if strings.EqualFold(t, topic) {
+			// topic already exists, just return current list
+			s.renderTopicsList(w, topics, topicType)
+			return
+		}
+	}
+
+	// add new topic
+	topics = append(topics, topic)
+
+	// save updated topics
+	updatedValue, err := json.Marshal(topics)
+	if err != nil {
+		log.Printf("[ERROR] failed to marshal topics: %v", err)
+		http.Error(w, "Failed to save topics", http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.db.SetSetting(ctx, settingKey, string(updatedValue)); err != nil {
+		log.Printf("[ERROR] failed to save setting %s: %v", settingKey, err)
+		http.Error(w, "Failed to save topics", http.StatusInternalServerError)
+		return
+	}
+
+	// trigger preference update for classifier
+	s.scheduler.TriggerPreferenceUpdate()
+
+	// render updated topics list
+	s.renderTopicsList(w, topics, topicType)
+}
+
+// deleteTopicHandler handles removing a topic preference
+func (s *Server) deleteTopicHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	topicToDelete := r.PathValue("topic")
+	topicType := r.URL.Query().Get("type") // "preferred" or "avoided"
+
+	if topicToDelete == "" || (topicType != "preferred" && topicType != "avoided") {
+		http.Error(w, "Invalid topic or type", http.StatusBadRequest)
+		return
+	}
+
+	// get current topics
+	settingKey := domain.SettingPreferredTopics
+	if topicType == "avoided" {
+		settingKey = domain.SettingAvoidedTopics
+	}
+
+	currentValue, err := s.db.GetSetting(ctx, settingKey)
+	if err != nil {
+		log.Printf("[ERROR] failed to get setting %s: %v", settingKey, err)
+		http.Error(w, "Failed to get topics", http.StatusInternalServerError)
+		return
+	}
+
+	// parse current topics
+	var topics []string
+	if currentValue != "" {
+		if err := json.Unmarshal([]byte(currentValue), &topics); err != nil {
+			log.Printf("[ERROR] failed to parse topics: %v", err)
+			http.Error(w, "Failed to parse topics", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// remove topic
+	var updatedTopics []string
+	for _, t := range topics {
+		if !strings.EqualFold(t, topicToDelete) {
+			updatedTopics = append(updatedTopics, t)
+		}
+	}
+
+	// save updated topics
+	updatedValue, err := json.Marshal(updatedTopics)
+	if err != nil {
+		log.Printf("[ERROR] failed to marshal topics: %v", err)
+		http.Error(w, "Failed to save topics", http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.db.SetSetting(ctx, settingKey, string(updatedValue)); err != nil {
+		log.Printf("[ERROR] failed to save setting %s: %v", settingKey, err)
+		http.Error(w, "Failed to save topics", http.StatusInternalServerError)
+		return
+	}
+
+	// trigger preference update for classifier
+	s.scheduler.TriggerPreferenceUpdate()
+
+	// render updated topics list
+	s.renderTopicsList(w, updatedTopics, topicType)
+}
+
+// renderTopicsList renders the topics list HTML using template
+func (s *Server) renderTopicsList(w http.ResponseWriter, topics []string, topicType string) {
+	data := struct {
+		Topics    []string
+		TopicType string
+		IsAvoided bool
+	}{
+		Topics:    topics,
+		TopicType: topicType,
+		IsAvoided: topicType == "avoided",
+	}
+
+	// use the pre-loaded template
+	if err := s.templates.ExecuteTemplate(w, "topic-tags.html", data); err != nil {
+		log.Printf("[ERROR] failed to render topics list: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 }

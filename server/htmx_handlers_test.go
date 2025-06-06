@@ -2,15 +2,19 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-pkgz/routegroup"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
@@ -254,7 +258,16 @@ func TestServer_SettingsHandler(t *testing.T) {
 		},
 	}
 
-	database := &mocks.DatabaseMock{}
+	database := &mocks.DatabaseMock{
+		GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+			// return empty strings for topic preferences
+			return "", nil
+		},
+		GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+			// return some sample topics for testing
+			return []string{"technology", "science", "business"}, nil
+		},
+	}
 	scheduler := &mocks.SchedulerMock{
 		UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
 			return nil
@@ -706,7 +719,15 @@ func TestServer_TemplateErrors(t *testing.T) {
 	})
 
 	t.Run("SettingsHandler template error", func(t *testing.T) {
-		database := &mocks.DatabaseMock{}
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				// return empty strings for topic preferences
+				return "", nil
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{}, nil
+			},
+		}
 		scheduler := &mocks.SchedulerMock{
 			UpdatePreferenceSummaryFunc: func(ctx context.Context) error {
 				return nil
@@ -769,5 +790,256 @@ func TestServer_TemplateErrors(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.Contains(t, w.Body.String(), "Failed to render content")
+	})
+}
+
+func TestServer_AddTopicHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	t.Run("add preferred topic successfully", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				assert.Equal(t, domain.SettingPreferredTopics, key)
+				return `["golang", "rust"]`, nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				assert.Equal(t, domain.SettingPreferredTopics, key)
+				// verify the new topic was added
+				var topics []string
+				err := json.Unmarshal([]byte(value), &topics)
+				require.NoError(t, err)
+				assert.Contains(t, topics, "golang")
+				assert.Contains(t, topics, "rust")
+				assert.Contains(t, topics, "python")
+				return nil
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		form := url.Values{}
+		form.Add("topic", "python")
+		form.Add("type", "preferred")
+
+		req := httptest.NewRequest("POST", "/api/v1/topics", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.addTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "golang")
+		assert.Contains(t, w.Body.String(), "rust")
+		assert.Contains(t, w.Body.String(), "python")
+	})
+
+	t.Run("add avoided topic successfully", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				assert.Equal(t, domain.SettingAvoidedTopics, key)
+				return `[]`, nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				assert.Equal(t, domain.SettingAvoidedTopics, key)
+				assert.Equal(t, `["sports"]`, value)
+				return nil
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		form := url.Values{}
+		form.Add("topic", "sports")
+		form.Add("type", "avoided")
+
+		req := httptest.NewRequest("POST", "/api/v1/topics", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.addTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "sports")
+	})
+
+	t.Run("add duplicate topic", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				return `["golang", "rust"]`, nil
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		form := url.Values{}
+		form.Add("topic", "golang")
+		form.Add("type", "preferred")
+
+		req := httptest.NewRequest("POST", "/api/v1/topics", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.addTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		// should return existing list without duplicates
+		assert.Contains(t, w.Body.String(), "golang")
+		assert.Contains(t, w.Body.String(), "rust")
+	})
+
+	t.Run("invalid topic type", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		form := url.Values{}
+		form.Add("topic", "test")
+		form.Add("type", "invalid")
+
+		req := httptest.NewRequest("POST", "/api/v1/topics", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.addTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("add topic with spaces", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				return `[]`, nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				// verify the topic with spaces is properly handled
+				assert.Equal(t, `["machine learning"]`, value)
+				return nil
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		form := url.Values{}
+		form.Add("topic", "machine learning")
+		form.Add("type", "preferred")
+
+		req := httptest.NewRequest("POST", "/api/v1/topics", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.addTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "machine learning")
+	})
+
+	t.Run("add empty topic after trim", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		form := url.Values{}
+		form.Add("topic", "   ") // only spaces
+		form.Add("type", "preferred")
+
+		req := httptest.NewRequest("POST", "/api/v1/topics", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.addTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+func TestServer_DeleteTopicHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	t.Run("delete preferred topic successfully", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				assert.Equal(t, domain.SettingPreferredTopics, key)
+				return `["golang", "rust", "python"]`, nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				assert.Equal(t, domain.SettingPreferredTopics, key)
+				// verify rust was removed
+				var topics []string
+				err := json.Unmarshal([]byte(value), &topics)
+				require.NoError(t, err)
+				assert.NotContains(t, topics, "rust")
+				assert.Contains(t, topics, "golang")
+				assert.Contains(t, topics, "python")
+				return nil
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		req := httptest.NewRequest("DELETE", "/api/v1/topics/rust?type=preferred", http.NoBody)
+		req.SetPathValue("topic", "rust")
+		w := httptest.NewRecorder()
+
+		srv.deleteTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "golang")
+		assert.Contains(t, w.Body.String(), "python")
+		assert.NotContains(t, w.Body.String(), "rust")
+	})
+
+	t.Run("delete non-existent topic", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				return `["golang"]`, nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				// should still be called with unchanged list
+				assert.Equal(t, `["golang"]`, value)
+				return nil
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		req := httptest.NewRequest("DELETE", "/api/v1/topics/nonexistent?type=preferred", http.NoBody)
+		req.SetPathValue("topic", "nonexistent")
+		w := httptest.NewRecorder()
+
+		srv.deleteTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "golang")
+	})
+
+	t.Run("invalid topic type", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		req := httptest.NewRequest("DELETE", "/api/v1/topics/test?type=invalid", http.NoBody)
+		req.SetPathValue("topic", "test")
+		w := httptest.NewRecorder()
+
+		srv.deleteTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }

@@ -46,6 +46,9 @@ import (
 //			GetItemsFunc: func(ctx context.Context, limit int, offset int) ([]domain.Item, error) {
 //				panic("mock out the GetItems method")
 //			},
+//			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+//				panic("mock out the GetSetting method")
+//			},
 //			GetTopTopicsByScoreFunc: func(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error) {
 //				panic("mock out the GetTopTopicsByScore method")
 //			},
@@ -54,6 +57,9 @@ import (
 //			},
 //			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetTopicsFiltered method")
+//			},
+//			SetSettingFunc: func(ctx context.Context, key string, value string) error {
+//				panic("mock out the SetSetting method")
 //			},
 //			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval int) error {
 //				panic("mock out the UpdateFeed method")
@@ -101,6 +107,9 @@ type DatabaseMock struct {
 	// GetItemsFunc mocks the GetItems method.
 	GetItemsFunc func(ctx context.Context, limit int, offset int) ([]domain.Item, error)
 
+	// GetSettingFunc mocks the GetSetting method.
+	GetSettingFunc func(ctx context.Context, key string) (string, error)
+
 	// GetTopTopicsByScoreFunc mocks the GetTopTopicsByScore method.
 	GetTopTopicsByScoreFunc func(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error)
 
@@ -109,6 +118,9 @@ type DatabaseMock struct {
 
 	// GetTopicsFilteredFunc mocks the GetTopicsFiltered method.
 	GetTopicsFilteredFunc func(ctx context.Context, minScore float64) ([]string, error)
+
+	// SetSettingFunc mocks the SetSetting method.
+	SetSettingFunc func(ctx context.Context, key string, value string) error
 
 	// UpdateFeedFunc mocks the UpdateFeed method.
 	UpdateFeedFunc func(ctx context.Context, feedID int64, title string, fetchInterval int) error
@@ -193,6 +205,13 @@ type DatabaseMock struct {
 			// Offset is the offset argument value.
 			Offset int
 		}
+		// GetSetting holds details about calls to the GetSetting method.
+		GetSetting []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Key is the key argument value.
+			Key string
+		}
 		// GetTopTopicsByScore holds details about calls to the GetTopTopicsByScore method.
 		GetTopTopicsByScore []struct {
 			// Ctx is the ctx argument value.
@@ -213,6 +232,15 @@ type DatabaseMock struct {
 			Ctx context.Context
 			// MinScore is the minScore argument value.
 			MinScore float64
+		}
+		// SetSetting holds details about calls to the SetSetting method.
+		SetSetting []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Key is the key argument value.
+			Key string
+			// Value is the value argument value.
+			Value string
 		}
 		// UpdateFeed holds details about calls to the UpdateFeed method.
 		UpdateFeed []struct {
@@ -254,9 +282,11 @@ type DatabaseMock struct {
 	lockGetClassifiedItemsWithFilters sync.RWMutex
 	lockGetFeeds                      sync.RWMutex
 	lockGetItems                      sync.RWMutex
+	lockGetSetting                    sync.RWMutex
 	lockGetTopTopicsByScore           sync.RWMutex
 	lockGetTopics                     sync.RWMutex
 	lockGetTopicsFiltered             sync.RWMutex
+	lockSetSetting                    sync.RWMutex
 	lockUpdateFeed                    sync.RWMutex
 	lockUpdateFeedStatus              sync.RWMutex
 	lockUpdateItemFeedback            sync.RWMutex
@@ -626,6 +656,42 @@ func (mock *DatabaseMock) GetItemsCalls() []struct {
 	return calls
 }
 
+// GetSetting calls GetSettingFunc.
+func (mock *DatabaseMock) GetSetting(ctx context.Context, key string) (string, error) {
+	if mock.GetSettingFunc == nil {
+		panic("DatabaseMock.GetSettingFunc: method is nil but Database.GetSetting was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		Key string
+	}{
+		Ctx: ctx,
+		Key: key,
+	}
+	mock.lockGetSetting.Lock()
+	mock.calls.GetSetting = append(mock.calls.GetSetting, callInfo)
+	mock.lockGetSetting.Unlock()
+	return mock.GetSettingFunc(ctx, key)
+}
+
+// GetSettingCalls gets all the calls that were made to GetSetting.
+// Check the length with:
+//
+//	len(mockedDatabase.GetSettingCalls())
+func (mock *DatabaseMock) GetSettingCalls() []struct {
+	Ctx context.Context
+	Key string
+} {
+	var calls []struct {
+		Ctx context.Context
+		Key string
+	}
+	mock.lockGetSetting.RLock()
+	calls = mock.calls.GetSetting
+	mock.lockGetSetting.RUnlock()
+	return calls
+}
+
 // GetTopTopicsByScore calls GetTopTopicsByScoreFunc.
 func (mock *DatabaseMock) GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error) {
 	if mock.GetTopTopicsByScoreFunc == nil {
@@ -731,6 +797,46 @@ func (mock *DatabaseMock) GetTopicsFilteredCalls() []struct {
 	mock.lockGetTopicsFiltered.RLock()
 	calls = mock.calls.GetTopicsFiltered
 	mock.lockGetTopicsFiltered.RUnlock()
+	return calls
+}
+
+// SetSetting calls SetSettingFunc.
+func (mock *DatabaseMock) SetSetting(ctx context.Context, key string, value string) error {
+	if mock.SetSettingFunc == nil {
+		panic("DatabaseMock.SetSettingFunc: method is nil but Database.SetSetting was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Key   string
+		Value string
+	}{
+		Ctx:   ctx,
+		Key:   key,
+		Value: value,
+	}
+	mock.lockSetSetting.Lock()
+	mock.calls.SetSetting = append(mock.calls.SetSetting, callInfo)
+	mock.lockSetSetting.Unlock()
+	return mock.SetSettingFunc(ctx, key, value)
+}
+
+// SetSettingCalls gets all the calls that were made to SetSetting.
+// Check the length with:
+//
+//	len(mockedDatabase.SetSettingCalls())
+func (mock *DatabaseMock) SetSettingCalls() []struct {
+	Ctx   context.Context
+	Key   string
+	Value string
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Key   string
+		Value string
+	}
+	mock.lockSetSetting.RLock()
+	calls = mock.calls.SetSetting
+	mock.lockSetSetting.RUnlock()
 	return calls
 }
 
