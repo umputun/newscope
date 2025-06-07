@@ -98,40 +98,18 @@
 <script>
 // Load saved preferences from localStorage
 document.addEventListener('DOMContentLoaded', function() {
-    // Load saved min score
-    const savedScore = localStorage.getItem('newscopeMinScore');
-    if (savedScore !== null && savedScore !== '{{.MinScore}}') {
-        // If saved score differs from server default, navigate to it
-        const scoreFilter = document.getElementById('score-filter');
-        scoreFilter.value = savedScore;
-        document.getElementById('score-value').textContent = savedScore;
-        
-        // Trigger HTMX request to load articles with saved score
-        htmx.trigger(scoreFilter, 'change');
-    }
+    // Simply update the score display from the current value
+    const scoreFilter = document.getElementById('score-filter');
+    document.getElementById('score-value').textContent = scoreFilter.value;
     
-    // Load saved view mode
+    // Load saved view mode (this is client-side only)
     const savedView = localStorage.getItem('newscopeViewMode') || 'expanded';
     setViewMode(savedView);
     
-    // Load saved sort preference
-    const savedSort = localStorage.getItem('newscopeSortBy');
-    if (savedSort !== null && savedSort !== '{{.SelectedSort}}') {
-        // If saved sort differs from server default, navigate to it
-        const sortFilter = document.getElementById('sort-filter');
-        sortFilter.value = savedSort;
-        
-        // Trigger HTMX request to load articles with saved sort
-        htmx.trigger(sortFilter, 'change');
-    }
-    
-    // Load saved liked only preference
-    const savedLikedOnly = localStorage.getItem('newscopeLikedOnly') === 'true';
-    if (savedLikedOnly !== {{.ShowLikedOnly}}) {
-        // trigger a click to load with saved preference
-        const likedToggle = document.getElementById('liked-toggle');
-        htmx.trigger(likedToggle, 'click');
-    }
+    // Save current state to localStorage to keep it in sync
+    localStorage.setItem('newscopeMinScore', '{{.MinScore}}');
+    localStorage.setItem('newscopeSortBy', '{{.SelectedSort}}');
+    localStorage.setItem('newscopeLikedOnly', '{{.ShowLikedOnly}}');
 });
 
 // Update score display and save to localStorage
@@ -183,18 +161,25 @@ document.getElementById('sort-filter').addEventListener('change', function(e) {
     localStorage.setItem('newscopeSortBy', e.target.value);
 });
 
-// Liked button click handler for immediate visual feedback
-document.getElementById('liked-toggle').addEventListener('click', function() {
-    this.classList.toggle('active');
-});
+// Liked button state is managed by server through out-of-band swaps
 
-// Liked only preference persistence - update on HTMX events
+// Preference persistence and view mode restoration after HTMX updates
 document.addEventListener('htmx:afterRequest', function(event) {
     if (event.detail.elt && event.detail.elt.id === 'liked-toggle') {
         // save the localStorage value based on button state after request
         const btn = event.detail.elt;
         const isActive = btn.classList.contains('active');
         localStorage.setItem('newscopeLikedOnly', isActive);
+    }
+});
+
+// Send view mode with HTMX requests
+document.addEventListener('htmx:configRequest', function(event) {
+    // Add current view mode to request headers
+    const container = document.getElementById('articles-container');
+    if (container) {
+        const viewMode = container.classList.contains('view-condensed') ? 'condensed' : 'expanded';
+        event.detail.headers['X-View-Mode'] = viewMode;
     }
 });
 

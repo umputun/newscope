@@ -147,7 +147,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 
 	// check if this is an HTMX request for partial update
 	if r.Header.Get("HX-Request") == "true" {
-		s.handleHTMXArticlesRequest(w, articlesPageRequest{
+		s.handleHTMXArticlesRequest(w, r, articlesPageRequest{
 			articles:      articles,
 			topics:        topics,
 			feeds:         feeds,
@@ -219,7 +219,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleHTMXArticlesRequest handles HTMX requests for articles page
-func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, req articlesPageRequest) {
+func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, r *http.Request, req articlesPageRequest) {
 	// for HTMX requests, return updated count, topic dropdown, feed dropdown, and articles with pagination
 	// first update the count using out-of-band swap
 	if _, err := fmt.Fprintf(w, `<span id="article-count" class="article-count" hx-swap-oob="true">(%d/%d)</span>`, len(req.articles), req.totalCount); err != nil {
@@ -235,8 +235,14 @@ func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, req articlesPa
 	// update liked button state using out-of-band swap
 	s.writeLikedButton(w, req.showLikedOnly)
 
+	// get view mode from request or default to expanded
+	viewMode := r.Header.Get("X-View-Mode")
+	if viewMode == "" {
+		viewMode = "expanded"
+	}
+
 	// render the complete articles-with-pagination wrapper
-	if _, err := w.Write([]byte(`<div id="articles-container" class="view-expanded"><div id="articles-list">`)); err != nil {
+	if _, err := fmt.Fprintf(w, `<div id="articles-container" class="view-%s"><div id="articles-list">`, viewMode); err != nil {
 		log.Printf("[ERROR] failed to write articles container start: %v", err)
 	}
 
@@ -534,6 +540,7 @@ func (s *Server) writeLikedButton(w http.ResponseWriter, showLikedOnly bool) {
                     hx-get="/articles"
                     hx-trigger="click"
                     hx-target="#articles-with-pagination"
+                    hx-swap="innerHTML show:top"
                     hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter"
                     hx-vals='{"liked": "%s"}'
                     hx-swap-oob="true">

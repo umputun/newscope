@@ -1,16 +1,16 @@
 # Development Guidelines
 
 ## Build & Test Commands
-- Build Go projects: `go build ./...` or `make build`
-- Run tests: `go test ./...` or `make test`
+- Build Go projects: `go build ./...`
+- Run tests: `go test ./...` 
 - Run specific test: `go test -run TestName ./path/to/package`
 - Run tests with coverage: `go test -cover ./...`
-- Run linting: `golangci-lint run ./...` or `make lint`
+- Run linting: `golangci-lint run ./...`
 - Format code: `gofmt -s -w .`
 - Run code generation: `go generate ./...`
 - Coverage report: `go test -race -coverprofile=coverage.out ./... && go tool cover -func=coverage.out`
 - Normalize code comments: `command -v unfuck-ai-comments >/dev/null || go install github.com/umputun/unfuck-ai-comments@latest; unfuck-ai-comments run --fmt --skip=mocks ./...`
-- Run server in debug mode: `make run`
+- Run server in debug mode: `go run ./cmd/newscope --dbg`
 - On completion, run: formatting, tests, and code generation
 - Never commit without running completion sequence
 
