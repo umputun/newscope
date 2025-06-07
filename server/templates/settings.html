@@ -188,7 +188,7 @@
                         </div>
                         <form class="topic-add-form" hx-post="/api/v1/topics" hx-target="#preferred-topics-list">
                             <input type="hidden" name="type" value="preferred">
-                            <select name="topic" class="form-control topic-select" required>
+                            <select id="preferred-topic-select" name="topic" class="form-control topic-select" required>
                                 <option value="">Select a topic to prefer...</option>
                                 {{range .AvailableTopics}}
                                 <option value="{{.}}">{{.}}</option>
@@ -224,7 +224,7 @@
                         </div>
                         <form class="topic-add-form" hx-post="/api/v1/topics" hx-target="#avoided-topics-list">
                             <input type="hidden" name="type" value="avoided">
-                            <select name="topic" class="form-control topic-select" required>
+                            <select id="avoided-topic-select" name="topic" class="form-control topic-select" required>
                                 <option value="">Select a topic to avoid...</option>
                                 {{range .AvailableTopics}}
                                 <option value="{{.}}">{{.}}</option>

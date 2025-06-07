@@ -801,10 +801,23 @@ func TestServer_AddTopicHandler(t *testing.T) {
 	}
 
 	t.Run("add preferred topic successfully", func(t *testing.T) {
-		database := &mocks.DatabaseMock{
+		var database *mocks.DatabaseMock
+		database = &mocks.DatabaseMock{
 			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-				assert.Equal(t, domain.SettingPreferredTopics, key)
-				return `["golang", "rust"]`, nil
+				callCount := len(database.GetSettingCalls())
+				switch callCount {
+				case 1: // first call for addTopicHandler
+					assert.Equal(t, domain.SettingPreferredTopics, key)
+					return `["golang", "rust"]`, nil
+				case 2: // second call for renderTopicsListWithDropdowns - preferred
+					assert.Equal(t, domain.SettingPreferredTopics, key)
+					return `["golang", "rust", "python"]`, nil
+				case 3: // third call for renderTopicsListWithDropdowns - avoided
+					assert.Equal(t, domain.SettingAvoidedTopics, key)
+					return `[]`, nil
+				default:
+					return "", nil
+				}
 			},
 			SetSettingFunc: func(ctx context.Context, key, value string) error {
 				assert.Equal(t, domain.SettingPreferredTopics, key)
@@ -816,6 +829,9 @@ func TestServer_AddTopicHandler(t *testing.T) {
 				assert.Contains(t, topics, "rust")
 				assert.Contains(t, topics, "python")
 				return nil
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{"golang", "rust", "python", "javascript", "database"}, nil
 			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
@@ -836,18 +852,37 @@ func TestServer_AddTopicHandler(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "golang")
 		assert.Contains(t, w.Body.String(), "rust")
 		assert.Contains(t, w.Body.String(), "python")
+		// verify dropdowns have available topics
+		assert.Contains(t, w.Body.String(), "javascript")
+		assert.Contains(t, w.Body.String(), "database")
 	})
 
 	t.Run("add avoided topic successfully", func(t *testing.T) {
-		database := &mocks.DatabaseMock{
+		var database *mocks.DatabaseMock
+		database = &mocks.DatabaseMock{
 			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-				assert.Equal(t, domain.SettingAvoidedTopics, key)
-				return `[]`, nil
+				callCount := len(database.GetSettingCalls())
+				switch callCount {
+				case 1: // first call for addTopicHandler
+					assert.Equal(t, domain.SettingAvoidedTopics, key)
+					return `[]`, nil
+				case 2: // second call for renderTopicsListWithDropdowns - preferred
+					assert.Equal(t, domain.SettingPreferredTopics, key)
+					return `[]`, nil
+				case 3: // third call for renderTopicsListWithDropdowns - avoided
+					assert.Equal(t, domain.SettingAvoidedTopics, key)
+					return `["sports"]`, nil
+				default:
+					return "", nil
+				}
 			},
 			SetSettingFunc: func(ctx context.Context, key, value string) error {
 				assert.Equal(t, domain.SettingAvoidedTopics, key)
 				assert.Equal(t, `["sports"]`, value)
 				return nil
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{"golang", "sports", "python", "javascript"}, nil
 			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
@@ -866,12 +901,29 @@ func TestServer_AddTopicHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "sports")
+		// verify dropdowns exclude sports
+		assert.Contains(t, w.Body.String(), "golang")
+		assert.Contains(t, w.Body.String(), "javascript")
 	})
 
 	t.Run("add duplicate topic", func(t *testing.T) {
-		database := &mocks.DatabaseMock{
+		var database *mocks.DatabaseMock
+		database = &mocks.DatabaseMock{
 			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-				return `["golang", "rust"]`, nil
+				callCount := len(database.GetSettingCalls())
+				switch callCount {
+				case 1: // first call for addTopicHandler
+					return `["golang", "rust"]`, nil
+				case 2: // second call for renderTopicsListWithDropdowns - preferred
+					return `["golang", "rust"]`, nil
+				case 3: // third call for renderTopicsListWithDropdowns - avoided
+					return `[]`, nil
+				default:
+					return "", nil
+				}
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{"golang", "rust", "python", "javascript"}, nil
 			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
@@ -914,14 +966,28 @@ func TestServer_AddTopicHandler(t *testing.T) {
 	})
 
 	t.Run("add topic with spaces", func(t *testing.T) {
-		database := &mocks.DatabaseMock{
+		var database *mocks.DatabaseMock
+		database = &mocks.DatabaseMock{
 			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-				return `[]`, nil
+				callCount := len(database.GetSettingCalls())
+				switch callCount {
+				case 1: // first call for addTopicHandler
+					return `[]`, nil
+				case 2: // second call for renderTopicsListWithDropdowns - preferred
+					return `["machine learning"]`, nil
+				case 3: // third call for renderTopicsListWithDropdowns - avoided
+					return `[]`, nil
+				default:
+					return "", nil
+				}
 			},
 			SetSettingFunc: func(ctx context.Context, key, value string) error {
 				// verify the topic with spaces is properly handled
 				assert.Equal(t, `["machine learning"]`, value)
 				return nil
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{"golang", "machine learning", "python"}, nil
 			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
@@ -960,6 +1026,46 @@ func TestServer_AddTopicHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
+
+	t.Run("add topic with invalid characters", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		form := url.Values{}
+		form.Add("topic", "test@#$%^&*") // invalid characters
+		form.Add("type", "preferred")
+
+		req := httptest.NewRequest("POST", "/api/v1/topics", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.addTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Invalid topic name format")
+	})
+
+	t.Run("add topic exceeding max length", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		form := url.Values{}
+		form.Add("topic", strings.Repeat("a", 51)) // exceeds 50 character limit
+		form.Add("type", "preferred")
+
+		req := httptest.NewRequest("POST", "/api/v1/topics", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.addTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Invalid topic name format")
+	})
 }
 
 func TestServer_DeleteTopicHandler(t *testing.T) {
@@ -970,10 +1076,23 @@ func TestServer_DeleteTopicHandler(t *testing.T) {
 	}
 
 	t.Run("delete preferred topic successfully", func(t *testing.T) {
-		database := &mocks.DatabaseMock{
+		var database *mocks.DatabaseMock
+		database = &mocks.DatabaseMock{
 			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-				assert.Equal(t, domain.SettingPreferredTopics, key)
-				return `["golang", "rust", "python"]`, nil
+				callCount := len(database.GetSettingCalls())
+				switch callCount {
+				case 1: // first call for deleteTopicHandler
+					assert.Equal(t, domain.SettingPreferredTopics, key)
+					return `["golang", "rust", "python"]`, nil
+				case 2: // second call for renderTopicsListWithDropdowns - preferred
+					assert.Equal(t, domain.SettingPreferredTopics, key)
+					return `["golang", "python"]`, nil
+				case 3: // third call for renderTopicsListWithDropdowns - avoided
+					assert.Equal(t, domain.SettingAvoidedTopics, key)
+					return `[]`, nil
+				default:
+					return "", nil
+				}
 			},
 			SetSettingFunc: func(ctx context.Context, key, value string) error {
 				assert.Equal(t, domain.SettingPreferredTopics, key)
@@ -985,6 +1104,9 @@ func TestServer_DeleteTopicHandler(t *testing.T) {
 				assert.Contains(t, topics, "golang")
 				assert.Contains(t, topics, "python")
 				return nil
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{"golang", "rust", "python", "javascript", "database"}, nil
 			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
@@ -998,20 +1120,40 @@ func TestServer_DeleteTopicHandler(t *testing.T) {
 		srv.deleteTopicHandler(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Body.String(), "golang")
-		assert.Contains(t, w.Body.String(), "python")
-		assert.NotContains(t, w.Body.String(), "rust")
+		body := w.Body.String()
+		// check topic tags don't contain rust
+		assert.Contains(t, body, "golang")
+		assert.Contains(t, body, "python")
+		assert.NotContains(t, body, `<span class="topic-tag topic-preferred">
+    <i class="fas fa-heart"></i>
+    rust`)
+		// verify rust is now available in dropdowns
+		assert.Contains(t, body, `<option value="rust">rust</option>`)
 	})
 
 	t.Run("delete non-existent topic", func(t *testing.T) {
-		database := &mocks.DatabaseMock{
+		var database *mocks.DatabaseMock
+		database = &mocks.DatabaseMock{
 			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-				return `["golang"]`, nil
+				callCount := len(database.GetSettingCalls())
+				switch callCount {
+				case 1: // first call for deleteTopicHandler
+					return `["golang"]`, nil
+				case 2: // second call for renderTopicsListWithDropdowns - preferred
+					return `["golang"]`, nil
+				case 3: // third call for renderTopicsListWithDropdowns - avoided
+					return `[]`, nil
+				default:
+					return "", nil
+				}
 			},
 			SetSettingFunc: func(ctx context.Context, key, value string) error {
 				// should still be called with unchanged list
 				assert.Equal(t, `["golang"]`, value)
 				return nil
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{"golang", "rust", "python", "javascript"}, nil
 			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{

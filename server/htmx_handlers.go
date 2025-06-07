@@ -1,16 +1,57 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
 )
+
+const (
+	// topic types
+	topicTypePreferred = "preferred"
+	topicTypeAvoided   = "avoided"
+
+	// template names
+	templateTopicTags      = "topic-tags.html"
+	templateTopicDropdowns = "topic-dropdowns.html"
+)
+
+var (
+	// topicNameRegex validates topic names: letters, numbers, spaces, dashes, up to 50 chars
+	topicNameRegex = regexp.MustCompile(`^[\w\s-]{1,50}$`)
+)
+
+// getAvailableTopics filters out already assigned topics from all topics
+func getAvailableTopics(allTopics, preferred, avoided []string) []string {
+	assigned := make(map[string]bool)
+	for _, t := range preferred {
+		assigned[strings.ToLower(t)] = true
+	}
+	for _, t := range avoided {
+		assigned[strings.ToLower(t)] = true
+	}
+
+	available := []string{}
+	for _, topic := range allTopics {
+		if !assigned[strings.ToLower(topic)] {
+			available = append(available, topic)
+		}
+	}
+	return available
+}
+
+// isValidTopicName validates topic name format
+func isValidTopicName(name string) bool {
+	return topicNameRegex.MatchString(name)
+}
 
 // articlesPageRequest holds data for rendering articles page
 type articlesPageRequest struct {
@@ -257,22 +298,25 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	if preferredJSON, err := s.db.GetSetting(ctx, domain.SettingPreferredTopics); err == nil && preferredJSON != "" {
 		if err := json.Unmarshal([]byte(preferredJSON), &preferredTopics); err != nil {
-			log.Printf("[ERROR] failed to parse preferred topics: %v", err)
+			log.Printf("[WARN] failed to parse preferred topics: %v", err)
 		}
 	}
 
 	if avoidedJSON, err := s.db.GetSetting(ctx, domain.SettingAvoidedTopics); err == nil && avoidedJSON != "" {
 		if err := json.Unmarshal([]byte(avoidedJSON), &avoidedTopics); err != nil {
-			log.Printf("[ERROR] failed to parse avoided topics: %v", err)
+			log.Printf("[WARN] failed to parse avoided topics: %v", err)
 		}
 	}
 
 	// get all available topics for the dropdown
-	availableTopics, err := s.db.GetTopics(ctx)
+	allTopics, err := s.db.GetTopics(ctx)
 	if err != nil {
-		log.Printf("[ERROR] failed to get available topics: %v", err)
-		availableTopics = []string{} // continue with empty topics
+		log.Printf("[WARN] failed to get available topics: %v", err)
+		allTopics = []string{} // continue with empty topics
 	}
+
+	// filter out already assigned topics
+	availableTopics := getAvailableTopics(allTopics, preferredTopics, avoidedTopics)
 
 	// prepare data for display
 	data := struct {
@@ -550,16 +594,22 @@ func (s *Server) addTopicHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	topic := strings.TrimSpace(r.FormValue("topic"))
-	topicType := r.FormValue("type") // "preferred" or "avoided"
+	topicType := r.FormValue("type")
 
-	if topic == "" || (topicType != "preferred" && topicType != "avoided") {
+	if topic == "" || (topicType != topicTypePreferred && topicType != topicTypeAvoided) {
 		http.Error(w, "Invalid topic or type", http.StatusBadRequest)
+		return
+	}
+
+	// validate topic name
+	if !isValidTopicName(topic) {
+		http.Error(w, "Invalid topic name format", http.StatusBadRequest)
 		return
 	}
 
 	// get current topics
 	settingKey := domain.SettingPreferredTopics
-	if topicType == "avoided" {
+	if topicType == topicTypeAvoided {
 		settingKey = domain.SettingAvoidedTopics
 	}
 
@@ -574,7 +624,7 @@ func (s *Server) addTopicHandler(w http.ResponseWriter, r *http.Request) {
 	var topics []string
 	if currentValue != "" {
 		if err := json.Unmarshal([]byte(currentValue), &topics); err != nil {
-			log.Printf("[ERROR] failed to parse topics: %v", err)
+			log.Printf("[WARN] failed to parse topics: %v", err)
 			topics = []string{}
 		}
 	}
@@ -605,8 +655,8 @@ func (s *Server) addTopicHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// render updated topics list
-	s.renderTopicsList(w, topics, topicType)
+	// render updated topics list and dropdowns
+	s.renderTopicsListWithDropdowns(ctx, w, topics, topicType)
 }
 
 // deleteTopicHandler handles removing a topic preference
@@ -614,16 +664,16 @@ func (s *Server) deleteTopicHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	topicToDelete := r.PathValue("topic")
-	topicType := r.URL.Query().Get("type") // "preferred" or "avoided"
+	topicType := r.URL.Query().Get("type")
 
-	if topicToDelete == "" || (topicType != "preferred" && topicType != "avoided") {
+	if topicToDelete == "" || (topicType != topicTypePreferred && topicType != topicTypeAvoided) {
 		http.Error(w, "Invalid topic or type", http.StatusBadRequest)
 		return
 	}
 
 	// get current topics
 	settingKey := domain.SettingPreferredTopics
-	if topicType == "avoided" {
+	if topicType == topicTypeAvoided {
 		settingKey = domain.SettingAvoidedTopics
 	}
 
@@ -666,8 +716,8 @@ func (s *Server) deleteTopicHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// render updated topics list
-	s.renderTopicsList(w, updatedTopics, topicType)
+	// render updated topics list and dropdowns
+	s.renderTopicsListWithDropdowns(ctx, w, updatedTopics, topicType)
 }
 
 // renderTopicsList renders the topics list HTML using template
@@ -679,13 +729,59 @@ func (s *Server) renderTopicsList(w http.ResponseWriter, topics []string, topicT
 	}{
 		Topics:    topics,
 		TopicType: topicType,
-		IsAvoided: topicType == "avoided",
+		IsAvoided: topicType == topicTypeAvoided,
 	}
 
 	// use the pre-loaded template
-	if err := s.templates.ExecuteTemplate(w, "topic-tags.html", data); err != nil {
+	if err := s.templates.ExecuteTemplate(w, templateTopicTags, data); err != nil {
 		log.Printf("[ERROR] failed to render topics list: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
+	}
+}
+
+// renderTopicsListWithDropdowns renders both the topics list and updated dropdowns
+func (s *Server) renderTopicsListWithDropdowns(ctx context.Context, w http.ResponseWriter, topics []string, topicType string) {
+	// first render the topic list
+	s.renderTopicsList(w, topics, topicType)
+
+	// get all topics to calculate available ones
+	preferredTopics := []string{}
+	avoidedTopics := []string{}
+
+	// get preferred topics
+	if preferredJSON, err := s.db.GetSetting(ctx, domain.SettingPreferredTopics); err == nil && preferredJSON != "" {
+		if err := json.Unmarshal([]byte(preferredJSON), &preferredTopics); err != nil {
+			log.Printf("[WARN] failed to parse preferred topics: %v", err)
+		}
+	}
+
+	// get avoided topics
+	if avoidedJSON, err := s.db.GetSetting(ctx, domain.SettingAvoidedTopics); err == nil && avoidedJSON != "" {
+		if err := json.Unmarshal([]byte(avoidedJSON), &avoidedTopics); err != nil {
+			log.Printf("[WARN] failed to parse avoided topics: %v", err)
+		}
+	}
+
+	// get all available topics
+	allTopics, err := s.db.GetTopics(ctx)
+	if err != nil {
+		log.Printf("[WARN] failed to get available topics: %v", err)
+		return // dropdowns won't be updated
+	}
+
+	// filter out already assigned topics
+	availableTopics := getAvailableTopics(allTopics, preferredTopics, avoidedTopics)
+
+	// render updated dropdowns
+	dropdownData := struct {
+		AvailableTopics []string
+	}{
+		AvailableTopics: availableTopics,
+	}
+
+	if err := s.templates.ExecuteTemplate(w, templateTopicDropdowns, dropdownData); err != nil {
+		log.Printf("[WARN] failed to render topic dropdowns: %v", err)
+		// not returning error since topic list was already rendered
 	}
 }

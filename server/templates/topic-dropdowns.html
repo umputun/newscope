@@ -1,0 +1,13 @@
+<select id="preferred-topic-select" name="topic" class="form-control topic-select" required hx-swap-oob="true">
+    <option value="">Select a topic to prefer...</option>
+    {{range .AvailableTopics}}
+    <option value="{{.}}">{{.}}</option>
+    {{end}}
+</select>
+
+<select id="avoided-topic-select" name="topic" class="form-control topic-select" required hx-swap-oob="true">
+    <option value="">Select a topic to avoid...</option>
+    {{range .AvailableTopics}}
+    <option value="{{.}}">{{.}}</option>
+    {{end}}
+</select>
