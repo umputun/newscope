@@ -15,8 +15,11 @@ database:
   conn_max_lifetime: 3600
 
 schedule:
-  update_interval: 30    # minutes
+  update_interval: "30m"    # Feed update interval (duration format: 30m, 1h, etc.)
   max_workers: 20
+  cleanup_age: "168h"       # Maximum age for low-score articles (default: 1 week)
+  cleanup_min_score: 5.0    # Minimum score to keep articles regardless of age
+  cleanup_interval: "24h"   # How often to run cleanup (default: daily)
 
 llm:
   # OpenAI-compatible endpoint (OpenAI, Ollama, etc)
