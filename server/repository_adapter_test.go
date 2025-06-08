@@ -576,14 +576,14 @@ func TestRepositoryAdapter_FeedOperations(t *testing.T) {
 	})
 
 	t.Run("UpdateFeed", func(t *testing.T) {
-		feedRepo.UpdateFeedFunc = func(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+		feedRepo.UpdateFeedFunc = func(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
 			assert.Equal(t, int64(123), feedID)
 			assert.Equal(t, "New Title", title)
-			assert.Equal(t, 3600, fetchInterval)
+			assert.Equal(t, 3600*time.Second, fetchInterval)
 			return nil
 		}
 
-		err := adapter.UpdateFeed(context.Background(), 123, "New Title", 3600)
+		err := adapter.UpdateFeed(context.Background(), 123, "New Title", 3600*time.Second)
 		require.NoError(t, err)
 		assert.Len(t, feedRepo.UpdateFeedCalls(), 1)
 	})

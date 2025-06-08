@@ -125,20 +125,35 @@
           "properties": {
             "update_interval": {
               "type": "integer",
-              "description": "Feed update interval in minutes",
-              "default": 30
+              "description": "Feed update interval"
             },
             "max_workers": {
               "type": "integer",
               "description": "Maximum concurrent workers",
               "default": 5
+            },
+            "cleanup_age": {
+              "type": "integer",
+              "description": "Maximum age for articles with low scores (default 1 week)"
+            },
+            "cleanup_min_score": {
+              "type": "number",
+              "description": "Minimum score to keep articles regardless of age",
+              "default": 5.0
+            },
+            "cleanup_interval": {
+              "type": "integer",
+              "description": "How often to run cleanup"
             }
           },
           "additionalProperties": false,
           "type": "object",
           "required": [
             "update_interval",
-            "max_workers"
+            "max_workers",
+            "cleanup_age",
+            "cleanup_min_score",
+            "cleanup_interval"
           ],
           "description": "Scheduler configuration"
         },

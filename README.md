@@ -98,8 +98,11 @@ database:
   dsn: "./var/newscope.db"
 
 schedule:
-  update_interval: 30    # minutes
-  max_workers: 20
+  update_interval: 30m              # Feed update interval (duration format: 30m, 1h, etc.)
+  max_workers: 20                   # Maximum concurrent workers
+  cleanup_age: 168h                 # Maximum age for low-score articles (default: 1 week)
+  cleanup_min_score: 5.0            # Minimum score to keep articles regardless of age
+  cleanup_interval: 24h             # How often to run cleanup (default: daily)
 
 llm:
   endpoint: "https://api.openai.com/v1"
@@ -203,6 +206,10 @@ llm:
 - Updates are debounced to prevent excessive API calls
 - Content extraction respects rate limits and robots.txt
 - Database is SQLite, stored in `var/` directory
+- Old articles with low scores are automatically cleaned up:
+  - Articles older than `cleanup_age` (default: 1 week) with scores below `cleanup_min_score` (default: 5.0) are removed
+  - Articles with user feedback (likes/dislikes) are preserved regardless of score
+  - Cleanup runs periodically based on `cleanup_interval` (default: daily)
 
 ## API Endpoints
 

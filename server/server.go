@@ -31,12 +31,6 @@ const (
 	defaultMinScore = 5.0
 	defaultRSSLimit = 100
 	defaultBaseURL  = "http://localhost:8080"
-
-	// feed defaults
-	defaultFetchInterval = 1800 // 30 minutes in seconds
-	minutesToSeconds     = 60
-
-	// article pagination
 )
 
 //go:generate moq -out mocks/config.go -pkg mocks -skip-ensure -fmt goimports . ConfigProvider
@@ -76,7 +70,7 @@ type Database interface {
 	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
 	GetAllFeeds(ctx context.Context) ([]domain.Feed, error)
 	CreateFeed(ctx context.Context, feed *domain.Feed) error
-	UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval int) error
+	UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
 	DeleteFeed(ctx context.Context, feedID int64) error
 	GetSetting(ctx context.Context, key string) (string, error)
@@ -163,6 +157,9 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 				return 0
 			}
 			return a / b
+		},
+		"durationMinutes": func(d time.Duration) int {
+			return int(d.Minutes())
 		},
 		"printf": fmt.Sprintf,
 		"safeHTML": func(s string) template.HTML {

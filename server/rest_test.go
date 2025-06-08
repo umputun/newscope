@@ -166,7 +166,7 @@ func TestServer_createFeedHandler(t *testing.T) {
 			feedCreated = true
 			assert.Equal(t, "https://newsite.com/feed", feed.URL)
 			assert.Equal(t, "New Site", feed.Title)
-			assert.Equal(t, 1800, feed.FetchInterval)
+			assert.Equal(t, 30*time.Minute, feed.FetchInterval)
 			assert.True(t, feed.Enabled)
 			feed.ID = 99 // simulate DB assigning ID
 			return nil
@@ -221,10 +221,10 @@ func TestServer_updateFeedHandler(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+		UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
 			assert.Equal(t, int64(123), feedID)
 			assert.Equal(t, "New Title", title)
-			assert.Equal(t, 2400, fetchInterval) // 40 minutes in seconds
+			assert.Equal(t, 40*time.Minute, fetchInterval) // 40 minutes
 			return nil
 		},
 		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
@@ -726,7 +726,7 @@ func TestServer_UpdateFeedHandler_Errors(t *testing.T) {
 
 	t.Run("database error", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
-			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
 				return fmt.Errorf("database error")
 			},
 		}
@@ -748,7 +748,7 @@ func TestServer_UpdateFeedHandler_Errors(t *testing.T) {
 
 	t.Run("feed not found", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
-			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
 				return nil
 			},
 			GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {

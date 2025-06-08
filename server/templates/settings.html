@@ -92,11 +92,23 @@
             <div class="settings-grid">
                 <div class="setting-item">
                     <label>Feed Update Interval</label>
-                    <span class="setting-value">{{.Config.Schedule.UpdateInterval}} minutes</span>
+                    <span class="setting-value">{{.Config.Schedule.UpdateInterval}}</span>
                 </div>
                 <div class="setting-item">
                     <label>Max Workers</label>
                     <span class="setting-value">{{.Config.Schedule.MaxWorkers}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Cleanup Interval</label>
+                    <span class="setting-value">{{.Config.Schedule.CleanupInterval}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Cleanup Age</label>
+                    <span class="setting-value">{{.Config.Schedule.CleanupAge}}</span>
+                </div>
+                <div class="setting-item">
+                    <label>Cleanup Min Score</label>
+                    <span class="setting-value">{{.Config.Schedule.CleanupMinScore}}</span>
                 </div>
             </div>
         </div>
@@ -154,6 +166,10 @@
                     <span class="setting-value {{if .Config.LLM.Classification.UseJSONMode}}text-success{{else}}text-muted{{end}}">
                         {{if .Config.LLM.Classification.UseJSONMode}}<i class="fas fa-check"></i> Enabled{{else}}<i class="fas fa-times"></i> Disabled{{end}}
                     </span>
+                </div>
+                <div class="setting-item">
+                    <label>Preference Summary Threshold</label>
+                    <span class="setting-value">{{.Config.LLM.Classification.PreferenceSummaryThreshold}}</span>
                 </div>
             </div>
             

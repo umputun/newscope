@@ -112,8 +112,12 @@ func main() {
 
 	// setup and start scheduler
 	schedulerCfg := scheduler.Config{
-		UpdateInterval: time.Duration(cfg.Schedule.UpdateInterval) * time.Minute,
-		MaxWorkers:     cfg.Schedule.MaxWorkers,
+		UpdateInterval:             cfg.Schedule.UpdateInterval,
+		MaxWorkers:                 cfg.Schedule.MaxWorkers,
+		PreferenceSummaryThreshold: cfg.LLM.Classification.PreferenceSummaryThreshold,
+		CleanupAge:                 cfg.Schedule.CleanupAge,
+		CleanupMinScore:            cfg.Schedule.CleanupMinScore,
+		CleanupInterval:            cfg.Schedule.CleanupInterval,
 	}
 	deps := scheduler.Dependencies{
 		FeedManager:           repos.Feed,

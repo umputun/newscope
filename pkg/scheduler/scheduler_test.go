@@ -68,8 +68,12 @@ func TestNewScheduler_DefaultConfig(t *testing.T) {
 	scheduler := NewScheduler(deps, cfg)
 
 	assert.NotNil(t, scheduler)
-	assert.Equal(t, 30*time.Minute, scheduler.updateInterval) // default
-	assert.Equal(t, 5, scheduler.maxWorkers)                  // default
+	assert.Equal(t, 30*time.Minute, scheduler.updateInterval)  // default
+	assert.Equal(t, 5, scheduler.maxWorkers)                   // default
+	assert.Equal(t, 25, scheduler.preferenceSummaryThreshold)  // default
+	assert.Equal(t, 168*time.Hour, scheduler.cleanupAge)       // default 1 week
+	assert.InEpsilon(t, 5.0, scheduler.cleanupMinScore, 0.001) // default
+	assert.Equal(t, 24*time.Hour, scheduler.cleanupInterval)   // default
 }
 
 func TestScheduler_UpdateFeedNow(t *testing.T) {
@@ -347,6 +351,11 @@ func TestScheduler_StartStop(t *testing.T) {
 	feedManager.GetFeedsFunc = func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error) {
 		assert.True(t, enabledOnly)
 		return []domain.Feed{}, nil
+	}
+
+	// setup cleanup mock to prevent panic
+	itemManager.DeleteOldItemsFunc = func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+		return 0, nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -787,6 +796,11 @@ func TestScheduler_UpdateAllFeeds_GetFeedsError(t *testing.T) {
 		return nil
 	}
 
+	// setup cleanup mock to prevent panic
+	itemManager.DeleteOldItemsFunc = func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+		return 0, nil
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -878,6 +892,11 @@ func TestScheduler_UpdateAllFeeds_MultipleFeeds(t *testing.T) {
 
 	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
 		return nil
+	}
+
+	// setup cleanup mock to prevent panic
+	itemManager.DeleteOldItemsFunc = func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+		return 0, nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1439,4 +1458,170 @@ func TestScheduler_DefaultThreshold(t *testing.T) {
 
 	scheduler := NewScheduler(deps, cfg)
 	assert.Equal(t, 25, scheduler.preferenceSummaryThreshold) // default value
+}
+
+func TestScheduler_PerformCleanup(t *testing.T) {
+	t.Run("successful cleanup", func(t *testing.T) {
+		itemManager := &mocks.ItemManagerMock{
+			DeleteOldItemsFunc: func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+				assert.Equal(t, 168*time.Hour, age)       // 1 week
+				assert.InEpsilon(t, 5.0, minScore, 0.001) // default min score
+				return 10, nil                            // deleted 10 items
+			},
+		}
+
+		scheduler := &Scheduler{
+			itemManager:     itemManager,
+			cleanupAge:      168 * time.Hour,
+			cleanupMinScore: 5.0,
+		}
+
+		// execute
+		scheduler.performCleanup(context.Background())
+
+		// verify
+		assert.Len(t, itemManager.DeleteOldItemsCalls(), 1)
+	})
+
+	t.Run("cleanup error", func(t *testing.T) {
+		itemManager := &mocks.ItemManagerMock{
+			DeleteOldItemsFunc: func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+				return 0, assert.AnError
+			},
+		}
+
+		scheduler := &Scheduler{
+			itemManager:     itemManager,
+			cleanupAge:      168 * time.Hour,
+			cleanupMinScore: 5.0,
+		}
+
+		// execute - should not panic on error
+		scheduler.performCleanup(context.Background())
+
+		// verify
+		assert.Len(t, itemManager.DeleteOldItemsCalls(), 1)
+	})
+
+	t.Run("no items to cleanup", func(t *testing.T) {
+		itemManager := &mocks.ItemManagerMock{
+			DeleteOldItemsFunc: func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+				return 0, nil // no items deleted
+			},
+		}
+
+		scheduler := &Scheduler{
+			itemManager:     itemManager,
+			cleanupAge:      24 * time.Hour,
+			cleanupMinScore: 8.0,
+		}
+
+		// execute
+		scheduler.performCleanup(context.Background())
+
+		// verify
+		assert.Len(t, itemManager.DeleteOldItemsCalls(), 1)
+	})
+}
+
+func TestScheduler_CleanupWorker(t *testing.T) {
+	itemManager := &mocks.ItemManagerMock{
+		DeleteOldItemsFunc: func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+			return 5, nil
+		},
+	}
+
+	feedManager := &mocks.FeedManagerMock{
+		GetFeedsFunc: func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error) {
+			return []domain.Feed{}, nil
+		},
+	}
+
+	extractor := &mocks.ExtractorMock{
+		ExtractFunc: func(ctx context.Context, url string) (*content.ExtractResult, error) {
+			return &content.ExtractResult{}, nil
+		},
+	}
+
+	classificationManager := &mocks.ClassificationManagerMock{
+		GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+			return []domain.FeedbackExample{}, nil
+		},
+		GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+			return []string{}, nil
+		},
+	}
+
+	settingManager := &mocks.SettingManagerMock{
+		GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+			return "", nil
+		},
+	}
+
+	classifier := &mocks.ClassifierMock{
+		ClassifyItemsFunc: func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+			return []domain.Classification{}, nil
+		},
+	}
+
+	cfg := Config{
+		UpdateInterval:  time.Hour,              // long interval to avoid feed updates
+		CleanupInterval: 100 * time.Millisecond, // short interval for testing
+		CleanupAge:      168 * time.Hour,
+		CleanupMinScore: 5.0,
+	}
+
+	deps := Dependencies{
+		FeedManager:           feedManager,
+		ItemManager:           itemManager,
+		ClassificationManager: classificationManager,
+		SettingManager:        settingManager,
+		Parser:                &mocks.ParserMock{},
+		Extractor:             extractor,
+		Classifier:            classifier,
+	}
+
+	scheduler := NewScheduler(deps, cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// start scheduler
+	scheduler.Start(ctx)
+
+	// wait for cleanup to run at least twice
+	time.Sleep(250 * time.Millisecond)
+
+	// stop scheduler
+	cancel()
+	scheduler.Stop()
+
+	// verify cleanup was called multiple times
+	require.GreaterOrEqual(t, len(itemManager.DeleteOldItemsCalls()), 2)
+}
+
+func TestScheduler_CleanupConfig(t *testing.T) {
+	t.Run("custom config values", func(t *testing.T) {
+		cfg := Config{
+			CleanupAge:      72 * time.Hour, // 3 days
+			CleanupMinScore: 7.5,
+			CleanupInterval: 12 * time.Hour,
+		}
+
+		deps := Dependencies{
+			FeedManager:           &mocks.FeedManagerMock{},
+			ItemManager:           &mocks.ItemManagerMock{},
+			ClassificationManager: &mocks.ClassificationManagerMock{},
+			SettingManager:        &mocks.SettingManagerMock{},
+			Parser:                &mocks.ParserMock{},
+			Extractor:             &mocks.ExtractorMock{},
+			Classifier:            &mocks.ClassifierMock{},
+		}
+
+		scheduler := NewScheduler(deps, cfg)
+
+		assert.Equal(t, 72*time.Hour, scheduler.cleanupAge)
+		assert.InEpsilon(t, 7.5, scheduler.cleanupMinScore, 0.001)
+		assert.Equal(t, 12*time.Hour, scheduler.cleanupInterval)
+	})
 }

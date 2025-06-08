@@ -196,7 +196,7 @@ func TestFeedRepository_UpdateFeed(t *testing.T) {
 
 	t.Run("update feed title and interval", func(t *testing.T) {
 		newTitle := "Updated Title"
-		newInterval := 3600 // 60 minutes
+		newInterval := 60 * time.Minute // 60 minutes
 
 		err := repos.Feed.UpdateFeed(context.Background(), testFeed.ID, newTitle, newInterval)
 		require.NoError(t, err)

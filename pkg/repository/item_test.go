@@ -464,3 +464,143 @@ func TestItemRepository_ItemExistsByTitleOrURL(t *testing.T) {
 		assert.True(t, exists) // should find by title match
 	})
 }
+
+func TestItemRepository_DeleteOldItems(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// create test feed
+	testFeed := createTestFeed(t, repos, "Test Feed")
+
+	// create test items with different ages, scores, and feedback
+	now := time.Now()
+	testCases := []struct {
+		guid         string
+		age          time.Duration
+		score        float64
+		userFeedback string
+		shouldDelete bool
+	}{
+		{"old-low-score", 10 * 24 * time.Hour, 3.0, "", true},            // old, low score, no feedback
+		{"old-high-score", 10 * 24 * time.Hour, 8.0, "", false},          // old, high score, no feedback
+		{"old-low-liked", 10 * 24 * time.Hour, 3.0, "like", false},       // old, low score, but liked
+		{"recent-low-score", 2 * 24 * time.Hour, 3.0, "", false},         // recent, low score
+		{"old-mid-score", 10 * 24 * time.Hour, 4.9, "", true},            // old, just below threshold
+		{"old-threshold", 10 * 24 * time.Hour, 5.0, "", false},           // old, exactly at threshold
+		{"old-low-disliked", 10 * 24 * time.Hour, 3.0, "dislike", false}, // old, low score, but has feedback
+	}
+
+	// create items
+	for _, tc := range testCases {
+		item := domain.Item{
+			FeedID:      testFeed.ID,
+			GUID:        tc.guid,
+			Title:       "Test " + tc.guid,
+			Link:        "https://example.com/" + tc.guid,
+			Description: "Description for " + tc.guid,
+			Published:   now.Add(-tc.age),
+		}
+		err := repos.Item.CreateItem(context.Background(), &item)
+		require.NoError(t, err)
+
+		// add classification
+		classification := &domain.Classification{
+			GUID:        item.GUID,
+			Score:       tc.score,
+			Explanation: "Test classification",
+			Topics:      []string{"test"},
+		}
+		err = repos.Item.UpdateItemClassification(context.Background(), item.ID, classification)
+		require.NoError(t, err)
+
+		// add feedback if specified
+		if tc.userFeedback != "" {
+			feedback := &domain.Feedback{
+				Type: domain.FeedbackType(tc.userFeedback),
+			}
+			err = repos.Classification.UpdateItemFeedback(context.Background(), item.ID, feedback)
+			require.NoError(t, err)
+		}
+	}
+
+	// run cleanup - delete items older than 7 days with score < 5.0
+	deleted, err := repos.Item.DeleteOldItems(context.Background(), 7*24*time.Hour, 5.0)
+	require.NoError(t, err)
+
+	// should delete 2 items: old-low-score and old-mid-score
+	assert.Equal(t, int64(2), deleted)
+
+	// verify remaining items
+	items, err := repos.Item.GetItems(context.Background(), 100, 0.0)
+	require.NoError(t, err)
+
+	// should have 5 items remaining
+	assert.Len(t, items, 5)
+
+	// verify the correct items were deleted
+	remainingGUIDs := make(map[string]bool)
+	for _, item := range items {
+		remainingGUIDs[item.GUID] = true
+	}
+
+	// check that deleted items are not present
+	assert.False(t, remainingGUIDs["old-low-score"])
+	assert.False(t, remainingGUIDs["old-mid-score"])
+
+	// check that preserved items are present
+	assert.True(t, remainingGUIDs["old-high-score"])   // high score
+	assert.True(t, remainingGUIDs["old-low-liked"])    // has feedback
+	assert.True(t, remainingGUIDs["recent-low-score"]) // too recent
+	assert.True(t, remainingGUIDs["old-threshold"])    // score at threshold
+	assert.True(t, remainingGUIDs["old-low-disliked"]) // has feedback
+}
+
+func TestItemRepository_DeleteOldItems_NoItems(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// run cleanup on empty database
+	deleted, err := repos.Item.DeleteOldItems(context.Background(), 7*24*time.Hour, 5.0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), deleted)
+}
+
+func TestItemRepository_DeleteOldItems_NoMatchingItems(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// create test feed
+	testFeed := createTestFeed(t, repos, "Test Feed")
+
+	// create recent high-score item
+	item := domain.Item{
+		FeedID:      testFeed.ID,
+		GUID:        "recent-high",
+		Title:       "Recent High Score",
+		Link:        "https://example.com/recent",
+		Description: "Recent item with high score",
+		Published:   time.Now().Add(-1 * time.Hour),
+	}
+	err := repos.Item.CreateItem(context.Background(), &item)
+	require.NoError(t, err)
+
+	// add high score classification
+	classification := &domain.Classification{
+		GUID:        item.GUID,
+		Score:       9.5,
+		Explanation: "High score",
+		Topics:      []string{"test"},
+	}
+	err = repos.Item.UpdateItemClassification(context.Background(), item.ID, classification)
+	require.NoError(t, err)
+
+	// run cleanup - should not delete anything
+	deleted, err := repos.Item.DeleteOldItems(context.Background(), 7*24*time.Hour, 5.0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), deleted)
+
+	// verify item still exists
+	items, err := repos.Item.GetItems(context.Background(), 10, 0.0)
+	require.NoError(t, err)
+	assert.Len(t, items, 1)
+}

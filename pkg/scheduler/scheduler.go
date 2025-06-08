@@ -45,6 +45,7 @@ type ItemManager interface {
 	ItemExistsByTitleOrURL(ctx context.Context, title, url string) (bool, error)
 	UpdateItemProcessed(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error
 	UpdateItemExtraction(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error
+	DeleteOldItems(ctx context.Context, age time.Duration, minScore float64) (int64, error)
 }
 
 // ClassificationManager handles classification operations for scheduler
@@ -73,6 +74,9 @@ type Scheduler struct {
 	updateInterval             time.Duration
 	maxWorkers                 int
 	preferenceSummaryThreshold int
+	cleanupAge                 time.Duration
+	cleanupMinScore            float64
+	cleanupInterval            time.Duration
 	preferenceUpdateCh         chan struct{}
 
 	wg     sync.WaitGroup
@@ -101,6 +105,9 @@ type Config struct {
 	UpdateInterval             time.Duration
 	MaxWorkers                 int
 	PreferenceSummaryThreshold int
+	CleanupAge                 time.Duration
+	CleanupMinScore            float64
+	CleanupInterval            time.Duration
 }
 
 // Dependencies groups all dependencies needed by the scheduler
@@ -125,6 +132,15 @@ func NewScheduler(deps Dependencies, cfg Config) *Scheduler {
 	if cfg.PreferenceSummaryThreshold == 0 {
 		cfg.PreferenceSummaryThreshold = 25
 	}
+	if cfg.CleanupInterval == 0 {
+		cfg.CleanupInterval = 24 * time.Hour
+	}
+	if cfg.CleanupAge == 0 {
+		cfg.CleanupAge = 168 * time.Hour // 1 week
+	}
+	if cfg.CleanupMinScore == 0 {
+		cfg.CleanupMinScore = 5.0
+	}
 
 	return &Scheduler{
 		feedManager:                deps.FeedManager,
@@ -137,6 +153,9 @@ func NewScheduler(deps Dependencies, cfg Config) *Scheduler {
 		updateInterval:             cfg.UpdateInterval,
 		maxWorkers:                 cfg.MaxWorkers,
 		preferenceSummaryThreshold: cfg.PreferenceSummaryThreshold,
+		cleanupAge:                 cfg.CleanupAge,
+		cleanupMinScore:            cfg.CleanupMinScore,
+		cleanupInterval:            cfg.CleanupInterval,
 		preferenceUpdateCh:         make(chan struct{}, 1), // buffered channel to coalesce updates
 	}
 }
@@ -160,8 +179,12 @@ func (s *Scheduler) Start(ctx context.Context) {
 	s.wg.Add(1)
 	go s.preferenceUpdateWorker(ctx)
 
-	lgr.Printf("[INFO] scheduler started with update interval %v, max workers %d, preference threshold %d",
-		s.updateInterval, s.maxWorkers, s.preferenceSummaryThreshold)
+	// start cleanup worker
+	s.wg.Add(1)
+	go s.cleanupWorker(ctx)
+
+	lgr.Printf("[INFO] scheduler started with update interval %v, max workers %d, preference threshold %d, cleanup interval %v",
+		s.updateInterval, s.maxWorkers, s.preferenceSummaryThreshold, s.cleanupInterval)
 }
 
 // Stop gracefully stops the scheduler
@@ -400,7 +423,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 	}
 
 	// update last fetched timestamp
-	nextFetch := time.Now().Add(time.Duration(f.FetchInterval) * time.Second)
+	nextFetch := time.Now().Add(f.FetchInterval)
 	if err := s.feedManager.UpdateFeedFetched(ctx, f.ID, nextFetch); err != nil {
 		lgr.Printf("[WARN] failed to update last fetched: %v", err)
 	}
@@ -574,5 +597,42 @@ func (s *Scheduler) preferenceUpdateWorker(ctx context.Context) {
 				lgr.Printf("[WARN] failed to update preference summary: %v", err)
 			}
 		}
+	}
+}
+
+// cleanupWorker periodically removes old articles with low scores
+func (s *Scheduler) cleanupWorker(ctx context.Context) {
+	defer s.wg.Done()
+
+	ticker := time.NewTicker(s.cleanupInterval)
+	defer ticker.Stop()
+
+	// run cleanup on start
+	s.performCleanup(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.performCleanup(ctx)
+		}
+	}
+}
+
+// performCleanup removes old articles with scores below the threshold
+func (s *Scheduler) performCleanup(ctx context.Context) {
+	lgr.Printf("[INFO] starting cleanup: removing articles older than %v with score below %.1f", s.cleanupAge, s.cleanupMinScore)
+
+	deleted, err := s.itemManager.DeleteOldItems(ctx, s.cleanupAge, s.cleanupMinScore)
+	if err != nil {
+		lgr.Printf("[ERROR] cleanup failed: %v", err)
+		return
+	}
+
+	if deleted > 0 {
+		lgr.Printf("[INFO] cleanup completed: removed %d old articles", deleted)
+	} else {
+		lgr.Printf("[DEBUG] cleanup completed: no articles to remove")
 	}
 }

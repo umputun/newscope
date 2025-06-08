@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/pkg/repository"
@@ -26,7 +27,7 @@ type RepositoryAdapter struct {
 type FeedRepo interface {
 	GetFeeds(ctx context.Context, enabledOnly bool) ([]domain.Feed, error)
 	CreateFeed(ctx context.Context, feed *domain.Feed) error
-	UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval int) error
+	UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
 	DeleteFeed(ctx context.Context, feedID int64) error
 	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
@@ -293,7 +294,7 @@ func (r *RepositoryAdapter) CreateFeed(ctx context.Context, feed *domain.Feed) e
 }
 
 // UpdateFeed updates feed title and interval
-func (r *RepositoryAdapter) UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+func (r *RepositoryAdapter) UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
 	return r.feedRepo.UpdateFeed(ctx, feedID, title, fetchInterval)
 }
 

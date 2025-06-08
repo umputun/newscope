@@ -130,10 +130,10 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// parse fetch interval
-	fetchInterval := defaultFetchInterval // default 30 minutes
+	fetchInterval := 30 * time.Minute // default 30 minutes
 	if intervalStr := r.FormValue("fetch_interval"); intervalStr != "" {
 		if minutes, err := strconv.Atoi(intervalStr); err == nil {
-			fetchInterval = minutes * minutesToSeconds // convert to seconds
+			fetchInterval = time.Duration(minutes) * time.Minute
 		}
 	}
 
@@ -183,10 +183,10 @@ func (s *Server) updateFeedHandler(w http.ResponseWriter, r *http.Request) {
 	title := r.FormValue("title")
 
 	// parse fetch interval
-	fetchInterval := defaultFetchInterval // default 30 minutes
+	fetchInterval := 30 * time.Minute // default 30 minutes
 	if intervalStr := r.FormValue("fetch_interval"); intervalStr != "" {
 		if minutes, err := strconv.Atoi(intervalStr); err == nil {
-			fetchInterval = minutes * minutesToSeconds // convert to seconds
+			fetchInterval = time.Duration(minutes) * time.Minute
 		}
 	}
 

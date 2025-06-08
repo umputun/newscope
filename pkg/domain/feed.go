@@ -10,7 +10,7 @@ type Feed struct {
 	Description   string
 	LastFetched   *time.Time
 	NextFetch     *time.Time
-	FetchInterval int // seconds
+	FetchInterval time.Duration
 	ErrorCount    int
 	LastError     string
 	Enabled       bool

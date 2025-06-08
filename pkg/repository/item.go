@@ -323,6 +323,29 @@ func (r *ItemRepository) ItemExistsByTitleOrURL(ctx context.Context, title, url 
 	return exists, nil
 }
 
+// DeleteOldItems removes articles older than specified age with score below threshold
+func (r *ItemRepository) DeleteOldItems(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+	cutoffTime := time.Now().Add(-age)
+
+	query := `
+		DELETE FROM items 
+		WHERE published < ? 
+		AND relevance_score < ?
+		AND (user_feedback IS NULL OR user_feedback = '')
+	`
+	result, err := r.db.ExecContext(ctx, query, cutoffTime, minScore)
+	if err != nil {
+		return 0, fmt.Errorf("delete old items: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("get rows affected: %w", err)
+	}
+
+	return rowsAffected, nil
+}
+
 // toDomainItem converts itemSQL to domain.Item
 func (r *ItemRepository) toDomainItem(sqlItem *itemSQL) *domain.Item {
 	return &domain.Item{

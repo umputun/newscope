@@ -27,8 +27,11 @@ type Config struct {
 	} `yaml:"database" json:"database" jsonschema:"description=Database configuration"`
 
 	Schedule struct {
-		UpdateInterval int `yaml:"update_interval" json:"update_interval" jsonschema:"default=30,description=Feed update interval in minutes"`
-		MaxWorkers     int `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
+		UpdateInterval  time.Duration `yaml:"update_interval" json:"update_interval" jsonschema:"default=30m,description=Feed update interval"`
+		MaxWorkers      int           `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
+		CleanupAge      time.Duration `yaml:"cleanup_age" json:"cleanup_age" jsonschema:"default=168h,description=Maximum age for articles with low scores (default 1 week)"`
+		CleanupMinScore float64       `yaml:"cleanup_min_score" json:"cleanup_min_score" jsonschema:"default=5.0,description=Minimum score to keep articles regardless of age"`
+		CleanupInterval time.Duration `yaml:"cleanup_interval" json:"cleanup_interval" jsonschema:"default=24h,description=How often to run cleanup"`
 	} `yaml:"schedule" json:"schedule" jsonschema:"description=Scheduler configuration"`
 
 	LLM LLMConfig `yaml:"llm" json:"llm" jsonschema:"description=LLM configuration for article classification"`
@@ -120,10 +123,19 @@ func Load(path string) (*Config, error) {
 
 	// set defaults for schedule
 	if cfg.Schedule.UpdateInterval == 0 {
-		cfg.Schedule.UpdateInterval = 30
+		cfg.Schedule.UpdateInterval = 30 * time.Minute
 	}
 	if cfg.Schedule.MaxWorkers == 0 {
 		cfg.Schedule.MaxWorkers = 5
+	}
+	if cfg.Schedule.CleanupAge == 0 {
+		cfg.Schedule.CleanupAge = 168 * time.Hour // 1 week
+	}
+	if cfg.Schedule.CleanupMinScore == 0 {
+		cfg.Schedule.CleanupMinScore = 5.0
+	}
+	if cfg.Schedule.CleanupInterval == 0 {
+		cfg.Schedule.CleanupInterval = 24 * time.Hour // daily cleanup
 	}
 
 	// set defaults for LLM

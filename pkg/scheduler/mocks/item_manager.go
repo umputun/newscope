@@ -6,6 +6,7 @@ package mocks
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/umputun/newscope/pkg/domain"
 )
@@ -18,6 +19,9 @@ import (
 //		mockedItemManager := &ItemManagerMock{
 //			CreateItemFunc: func(ctx context.Context, item *domain.Item) error {
 //				panic("mock out the CreateItem method")
+//			},
+//			DeleteOldItemsFunc: func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+//				panic("mock out the DeleteOldItems method")
 //			},
 //			GetItemFunc: func(ctx context.Context, id int64) (*domain.Item, error) {
 //				panic("mock out the GetItem method")
@@ -44,6 +48,9 @@ type ItemManagerMock struct {
 	// CreateItemFunc mocks the CreateItem method.
 	CreateItemFunc func(ctx context.Context, item *domain.Item) error
 
+	// DeleteOldItemsFunc mocks the DeleteOldItems method.
+	DeleteOldItemsFunc func(ctx context.Context, age time.Duration, minScore float64) (int64, error)
+
 	// GetItemFunc mocks the GetItem method.
 	GetItemFunc func(ctx context.Context, id int64) (*domain.Item, error)
 
@@ -67,6 +74,15 @@ type ItemManagerMock struct {
 			Ctx context.Context
 			// Item is the item argument value.
 			Item *domain.Item
+		}
+		// DeleteOldItems holds details about calls to the DeleteOldItems method.
+		DeleteOldItems []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Age is the age argument value.
+			Age time.Duration
+			// MinScore is the minScore argument value.
+			MinScore float64
 		}
 		// GetItem holds details about calls to the GetItem method.
 		GetItem []struct {
@@ -115,6 +131,7 @@ type ItemManagerMock struct {
 		}
 	}
 	lockCreateItem             sync.RWMutex
+	lockDeleteOldItems         sync.RWMutex
 	lockGetItem                sync.RWMutex
 	lockItemExists             sync.RWMutex
 	lockItemExistsByTitleOrURL sync.RWMutex
@@ -155,6 +172,46 @@ func (mock *ItemManagerMock) CreateItemCalls() []struct {
 	mock.lockCreateItem.RLock()
 	calls = mock.calls.CreateItem
 	mock.lockCreateItem.RUnlock()
+	return calls
+}
+
+// DeleteOldItems calls DeleteOldItemsFunc.
+func (mock *ItemManagerMock) DeleteOldItems(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+	if mock.DeleteOldItemsFunc == nil {
+		panic("ItemManagerMock.DeleteOldItemsFunc: method is nil but ItemManager.DeleteOldItems was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Age      time.Duration
+		MinScore float64
+	}{
+		Ctx:      ctx,
+		Age:      age,
+		MinScore: minScore,
+	}
+	mock.lockDeleteOldItems.Lock()
+	mock.calls.DeleteOldItems = append(mock.calls.DeleteOldItems, callInfo)
+	mock.lockDeleteOldItems.Unlock()
+	return mock.DeleteOldItemsFunc(ctx, age, minScore)
+}
+
+// DeleteOldItemsCalls gets all the calls that were made to DeleteOldItems.
+// Check the length with:
+//
+//	len(mockedItemManager.DeleteOldItemsCalls())
+func (mock *ItemManagerMock) DeleteOldItemsCalls() []struct {
+	Ctx      context.Context
+	Age      time.Duration
+	MinScore float64
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Age      time.Duration
+		MinScore float64
+	}
+	mock.lockDeleteOldItems.RLock()
+	calls = mock.calls.DeleteOldItems
+	mock.lockDeleteOldItems.RUnlock()
 	return calls
 }
 

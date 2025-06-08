@@ -20,7 +20,7 @@
         {{end}}
         
         <div class="feed-meta">
-            <span>Update interval: {{.FetchInterval}} seconds</span>
+            <span>Update interval: {{durationMinutes .FetchInterval}} minutes</span>
             {{if .LastFetched}}
             <span>Last fetched: <time datetime="{{.LastFetched.Format "2006-01-02T15:04:05Z07:00"}}">{{.LastFetched.Local.Format "Jan 2, 15:04 MST"}}</time></span>
             {{end}}
@@ -47,7 +47,7 @@
             </div>
             <div class="form-group">
                 <label for="edit-interval-{{.ID}}">Update Interval (minutes):</label>
-                <input type="number" id="edit-interval-{{.ID}}" name="fetch_interval" value="{{printf "%d" (div .FetchInterval 60)}}" min="5" max="1440">
+                <input type="number" id="edit-interval-{{.ID}}" name="fetch_interval" value="{{durationMinutes .FetchInterval}}" min="5" max="1440">
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn-primary">Save</button>

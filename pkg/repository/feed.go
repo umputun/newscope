@@ -42,7 +42,7 @@ func (r *FeedRepository) CreateFeed(ctx context.Context, feed *domain.Feed) erro
 		URL:           feed.URL,
 		Title:         feed.Title,
 		Description:   feed.Description,
-		FetchInterval: feed.FetchInterval,
+		FetchInterval: int(feed.FetchInterval.Seconds()),
 		Enabled:       feed.Enabled,
 	}
 
@@ -174,9 +174,9 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedID int64, ena
 }
 
 // UpdateFeed updates feed title and interval
-func (r *FeedRepository) UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval int) error {
+func (r *FeedRepository) UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
 	query := "UPDATE feeds SET title = ?, fetch_interval = ? WHERE id = ?"
-	_, err := r.db.ExecContext(ctx, query, title, fetchInterval, feedID)
+	_, err := r.db.ExecContext(ctx, query, title, int(fetchInterval.Seconds()), feedID)
 	if err != nil {
 		return fmt.Errorf("update feed: %w", err)
 	}
@@ -223,7 +223,7 @@ func (r *FeedRepository) toDomainFeed(sqlFeed *feedSQL) *domain.Feed {
 		Description:   sqlFeed.Description,
 		LastFetched:   sqlFeed.LastFetched,
 		NextFetch:     sqlFeed.NextFetch,
-		FetchInterval: sqlFeed.FetchInterval,
+		FetchInterval: time.Duration(sqlFeed.FetchInterval) * time.Second,
 		ErrorCount:    sqlFeed.ErrorCount,
 		LastError:     sqlFeed.LastError,
 		Enabled:       sqlFeed.Enabled,
