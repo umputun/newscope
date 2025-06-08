@@ -22,6 +22,10 @@ const (
 	// template names
 	templateTopicTags      = "topic-tags.html"
 	templateTopicDropdowns = "topic-dropdowns.html"
+
+	// view modes
+	viewModeExpanded  = "expanded"
+	viewModeCondensed = "condensed"
 )
 
 var (
@@ -51,6 +55,15 @@ func getAvailableTopics(allTopics, preferred, avoided []string) []string {
 // isValidTopicName validates topic name format
 func isValidTopicName(name string) bool {
 	return topicNameRegex.MatchString(name)
+}
+
+// getViewMode reads and validates the view mode from request header
+func getViewMode(r *http.Request) string {
+	viewMode := r.Header.Get("X-View-Mode")
+	if viewMode != viewModeCondensed {
+		return viewModeExpanded // default to expanded
+	}
+	return viewModeCondensed
 }
 
 // articlesPageRequest holds data for rendering articles page
@@ -220,48 +233,57 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 
 // handleHTMXArticlesRequest handles HTMX requests for articles page
 func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, r *http.Request, req articlesPageRequest) {
-	// for HTMX requests, return updated count, topic dropdown, feed dropdown, and articles with pagination
-	// first update the count using out-of-band swap
+	// write out-of-band updates for dynamic UI elements
+	s.writeHTMXOutOfBandUpdates(w, req)
+
+	// get view mode from request header
+	viewMode := getViewMode(r)
+
+	// render articles list with container
+	s.writeArticlesList(w, req.articles, viewMode)
+
+	// render pagination controls
+	s.writePaginationControls(w, req)
+}
+
+// writeHTMXOutOfBandUpdates writes all out-of-band swap updates for HTMX
+func (s *Server) writeHTMXOutOfBandUpdates(w http.ResponseWriter, req articlesPageRequest) {
+	// update article count
 	if _, err := fmt.Fprintf(w, `<span id="article-count" class="article-count" hx-swap-oob="true">(%d/%d)</span>`, len(req.articles), req.totalCount); err != nil {
 		log.Printf("[ERROR] failed to write article count: %v", err)
 	}
 
-	// update topic dropdown using out-of-band swap
+	// update topic dropdown
 	s.writeTopicDropdown(w, req.topics, req.selectedTopic)
 
-	// update feed dropdown using out-of-band swap
+	// update feed dropdown
 	s.writeFeedDropdown(w, req.feeds, req.selectedFeed)
 
-	// update liked button state using out-of-band swap
+	// update liked button state
 	s.writeLikedButton(w, req.showLikedOnly)
+}
 
-	// get view mode from request or default to expanded
-	viewMode := r.Header.Get("X-View-Mode")
-	if viewMode == "" {
-		viewMode = "expanded"
-	}
-
+// writeArticlesList renders the articles container with the list of articles
+func (s *Server) writeArticlesList(w http.ResponseWriter, articles []domain.ItemWithClassification, viewMode string) {
 	// render the complete articles-with-pagination wrapper
 	if _, err := fmt.Fprintf(w, `<div id="articles-container" class="view-%s"><div id="articles-list">`, viewMode); err != nil {
 		log.Printf("[ERROR] failed to write articles container start: %v", err)
 	}
 
-	for i := range req.articles {
-		s.renderArticleCard(w, &req.articles[i])
-	}
-
-	if len(req.articles) == 0 {
+	// render articles or no-articles message
+	if len(articles) == 0 {
 		if _, err := w.Write([]byte(`<p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>`)); err != nil {
 			log.Printf("[ERROR] failed to write no articles message: %v", err)
+		}
+	} else {
+		for i := range articles {
+			s.renderArticleCard(w, &articles[i])
 		}
 	}
 
 	if _, err := w.Write([]byte(`</div></div>`)); err != nil {
 		log.Printf("[ERROR] failed to write articles container end: %v", err)
 	}
-
-	// render pagination controls directly (not out-of-band)
-	s.writePaginationControls(w, req)
 }
 
 // feedsHandler displays the feeds management page
