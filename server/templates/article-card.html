@@ -1,7 +1,7 @@
 <article class="article-card" data-score="{{.RelevanceScore}}">
     <!-- Expanded view header -->
     <div class="article-header expanded-only">
-        <h3><a href="{{.Link}}" target="_blank" rel="noopener">{{.Title}}</a></h3>
+        <h3><a href="{{.Link}}" target="_blank" rel="noopener">{{unescapeHTML .Title}}</a></h3>
         <div class="article-meta">
             <a href="#" class="feed-name clickable-feed"
                data-feed="{{.FeedName}}"
@@ -20,7 +20,7 @@
     <!-- Condensed view header -->
     <div class="article-header-condensed condensed-only">
         <div class="condensed-main">
-            <h3><a href="{{.Link}}" target="_blank" rel="noopener">{{.Title}}</a></h3>
+            <h3><a href="{{.Link}}" target="_blank" rel="noopener">{{unescapeHTML .Title}}</a></h3>
             <div class="condensed-meta">
                 <a href="#" class="feed-name clickable-feed"
                    data-feed="{{.FeedName}}"
@@ -59,7 +59,7 @@
     <!-- Expanded view content -->
     <div class="expanded-only">
         {{if .Description}}
-        <p class="article-description">{{.Description}}</p>
+        <p class="article-description">{{unescapeHTML .Description}}</p>
         {{end}}
         
         <div class="classification">

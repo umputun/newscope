@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"html"
 	"html/template"
 	"log"
 	"net/http"
@@ -161,7 +162,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"durationMinutes": func(d time.Duration) int {
 			return int(d.Minutes())
 		},
-		"printf": fmt.Sprintf,
+		"printf":       fmt.Sprintf,
+		"unescapeHTML": html.UnescapeString,
 		"safeHTML": func(s string) template.HTML {
 			// fix common content extraction issues before sanitization
 
