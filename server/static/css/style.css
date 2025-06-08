@@ -1756,3 +1756,12 @@ footer p {
         gap: 1.5rem;
     }
 }
+
+/* Helper text */
+small.text-muted {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    line-height: 1.3;
+}

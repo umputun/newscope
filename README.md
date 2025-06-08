@@ -98,7 +98,7 @@ database:
   dsn: "./var/newscope.db"
 
 schedule:
-  update_interval: 30m              # Feed update interval (duration format: 30m, 1h, etc.)
+  update_interval: 1m               # Scheduler run interval (default: 1m, checks which feeds need updating)
   max_workers: 20                   # Maximum concurrent workers
   cleanup_age: 168h                 # Maximum age for low-score articles (default: 1 week)
   cleanup_min_score: 5.0            # Minimum score to keep articles regardless of age

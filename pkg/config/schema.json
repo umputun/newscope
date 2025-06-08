@@ -125,7 +125,7 @@
           "properties": {
             "update_interval": {
               "type": "integer",
-              "description": "Feed update interval"
+              "description": "Scheduler run interval"
             },
             "max_workers": {
               "type": "integer",
