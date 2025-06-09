@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/newscope/pkg/domain"
+	"github.com/umputun/newscope/pkg/repository"
 	"github.com/umputun/newscope/server/mocks"
 )
 
@@ -673,5 +674,134 @@ func TestRepositoryAdapter_Settings(t *testing.T) {
 		err := adapter.SetSetting(context.Background(), "test_key", "test_value")
 		require.Error(t, err)
 		assert.Equal(t, testError, err)
+	})
+}
+
+func TestRepositoryAdapter_GetClassifiedItems(t *testing.T) {
+	// GetClassifiedItems simply calls GetClassifiedItemsWithFilters, which is already tested
+	// We just need to verify that it creates the correct request structure
+
+	classificationRepo := &mocks.ClassificationRepoMock{
+		GetClassifiedItemsFunc: func(ctx context.Context, filter *domain.ItemFilter) ([]*domain.ClassifiedItem, error) {
+			// verify filter structure created by GetClassifiedItems
+			assert.InDelta(t, 7.5, filter.MinScore, 0.01)
+			assert.Equal(t, "technology", filter.Topic)
+			assert.Empty(t, filter.FeedName)
+			assert.Equal(t, "published", filter.SortBy)
+			assert.Equal(t, 50, filter.Limit)
+			assert.Equal(t, 0, filter.Offset)
+			return []*domain.ClassifiedItem{
+				{
+					Item: &domain.Item{
+						Title: "Test",
+					},
+				},
+			}, nil
+		},
+	}
+
+	adapter := NewRepositoryAdapterWithInterfaces(nil, nil, classificationRepo, nil)
+
+	items, err := adapter.GetClassifiedItems(context.Background(), 7.5, "technology", 50)
+	require.NoError(t, err)
+	assert.Len(t, items, 1)
+	assert.Equal(t, "Test", items[0].Title)
+}
+
+func TestRepositoryAdapter_GetTopTopicsByScore(t *testing.T) {
+	classificationRepo := &mocks.ClassificationRepoMock{}
+	adapter := NewRepositoryAdapterWithInterfaces(nil, nil, classificationRepo, nil)
+
+	t.Run("successful get top topics", func(t *testing.T) {
+		repoTopics := []repository.TopicWithScore{
+			{Topic: "technology", AvgScore: 8.5, ItemCount: 150},
+			{Topic: "science", AvgScore: 8.2, ItemCount: 120},
+			{Topic: "business", AvgScore: 7.8, ItemCount: 90},
+		}
+
+		classificationRepo.GetTopTopicsByScoreFunc = func(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error) {
+			assert.InDelta(t, 5.0, minScore, 0.01)
+			assert.Equal(t, 10, limit)
+			return repoTopics, nil
+		}
+
+		topics, err := adapter.GetTopTopicsByScore(context.Background(), 5.0, 10)
+		require.NoError(t, err)
+		require.Len(t, topics, 3)
+
+		// verify conversion from repository type to domain type
+		assert.Equal(t, "technology", topics[0].Topic)
+		assert.InDelta(t, 8.5, topics[0].AvgScore, 0.01)
+		assert.Equal(t, 150, topics[0].ItemCount)
+
+		assert.Equal(t, "science", topics[1].Topic)
+		assert.InDelta(t, 8.2, topics[1].AvgScore, 0.01)
+		assert.Equal(t, 120, topics[1].ItemCount)
+
+		assert.Equal(t, "business", topics[2].Topic)
+		assert.InDelta(t, 7.8, topics[2].AvgScore, 0.01)
+		assert.Equal(t, 90, topics[2].ItemCount)
+
+		assert.Len(t, classificationRepo.GetTopTopicsByScoreCalls(), 1)
+	})
+
+	t.Run("empty result", func(t *testing.T) {
+		classificationRepo.GetTopTopicsByScoreFunc = func(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error) {
+			return []repository.TopicWithScore{}, nil
+		}
+
+		topics, err := adapter.GetTopTopicsByScore(context.Background(), 8.0, 5)
+		require.NoError(t, err)
+		assert.Empty(t, topics)
+	})
+
+	t.Run("error handling", func(t *testing.T) {
+		testError := errors.New("database error")
+		classificationRepo.GetTopTopicsByScoreFunc = func(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error) {
+			return nil, testError
+		}
+
+		topics, err := adapter.GetTopTopicsByScore(context.Background(), 5.0, 10)
+		require.Error(t, err)
+		assert.Equal(t, testError, err)
+		assert.Nil(t, topics)
+	})
+}
+
+func TestRepositoryAdapter_GetFeedbackCount(t *testing.T) {
+	classificationRepo := &mocks.ClassificationRepoMock{}
+	adapter := NewRepositoryAdapterWithInterfaces(nil, nil, classificationRepo, nil)
+
+	t.Run("successful get feedback count", func(t *testing.T) {
+		classificationRepo.GetFeedbackCountFunc = func(ctx context.Context) (int64, error) {
+			return 42, nil
+		}
+
+		count, err := adapter.GetFeedbackCount(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, int64(42), count)
+		assert.Len(t, classificationRepo.GetFeedbackCountCalls(), 1)
+	})
+
+	t.Run("zero count", func(t *testing.T) {
+		classificationRepo.GetFeedbackCountFunc = func(ctx context.Context) (int64, error) {
+			return 0, nil
+		}
+
+		count, err := adapter.GetFeedbackCount(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), count)
+	})
+
+	t.Run("error handling", func(t *testing.T) {
+		testError := errors.New("database error")
+		classificationRepo.GetFeedbackCountFunc = func(ctx context.Context) (int64, error) {
+			return 0, testError
+		}
+
+		count, err := adapter.GetFeedbackCount(context.Background())
+		require.Error(t, err)
+		assert.Equal(t, testError, err)
+		assert.Equal(t, int64(0), count)
 	})
 }

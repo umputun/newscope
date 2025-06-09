@@ -1068,6 +1068,142 @@ func TestServer_AddTopicHandler(t *testing.T) {
 	})
 }
 
+func TestServer_RssHelpHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{
+					Listen:   ":8080",
+					Timeout:  30 * time.Second,
+					PageSize: 50,
+					BaseURL:  "http://example.com",
+				},
+			}
+		},
+	}
+
+	t.Run("render RSS help page successfully", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetTopTopicsByScoreFunc: func(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error) {
+				assert.InDelta(t, 5.0, minScore, 0.01)
+				assert.Equal(t, 10, limit)
+				return []domain.TopicWithScore{
+					{Topic: "technology", AvgScore: 8.5, ItemCount: 150},
+					{Topic: "science", AvgScore: 8.2, ItemCount: 120},
+					{Topic: "business", AvgScore: 7.8, ItemCount: 90},
+				}, nil
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{"technology", "science", "business", "politics", "health"}, nil
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+		req := httptest.NewRequest("GET", "/rss-help", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.rssHelpHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		body := w.Body.String()
+		assert.Contains(t, body, "RSS Feeds")
+		assert.Contains(t, body, "http://example.com") // base URL
+		assert.Contains(t, body, "technology")
+		assert.Contains(t, body, "science")
+		assert.Contains(t, body, "business")
+		// check that all topics are available in dropdowns
+		assert.Contains(t, body, "politics")
+		assert.Contains(t, body, "health")
+	})
+
+	t.Run("handle GetTopTopicsByScore error gracefully", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetTopTopicsByScoreFunc: func(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error) {
+				return nil, errors.New("database error")
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{"technology", "science"}, nil
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+		req := httptest.NewRequest("GET", "/rss-help", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.rssHelpHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		body := w.Body.String()
+		assert.Contains(t, body, "RSS Feeds")
+		// should still render the page even without top topics
+		assert.Contains(t, body, "http://example.com")
+	})
+
+	t.Run("handle GetTopics error gracefully", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetTopTopicsByScoreFunc: func(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error) {
+				return []domain.TopicWithScore{
+					{Topic: "technology", AvgScore: 8.5, ItemCount: 150},
+				}, nil
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return nil, errors.New("database error")
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+		req := httptest.NewRequest("GET", "/rss-help", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.rssHelpHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		body := w.Body.String()
+		assert.Contains(t, body, "RSS Feeds")
+		assert.Contains(t, body, "technology")
+		// should still render even without all topics list
+	})
+
+	t.Run("template error", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetTopTopicsByScoreFunc: func(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error) {
+				return []domain.TopicWithScore{}, nil
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{}, nil
+			},
+		}
+
+		// create server with broken page templates
+		srv := &Server{
+			config:        cfg,
+			db:            database,
+			scheduler:     &mocks.SchedulerMock{},
+			version:       "test",
+			debug:         false,
+			router:        routegroup.New(http.NewServeMux()),
+			templates:     template.New("test"),
+			pageTemplates: map[string]*template.Template{}, // empty page templates
+		}
+
+		req := httptest.NewRequest("GET", "/rss-help", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.rssHelpHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to render page")
+	})
+}
+
 func TestServer_DeleteTopicHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) {

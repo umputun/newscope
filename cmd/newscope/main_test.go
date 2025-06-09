@@ -120,3 +120,34 @@ func TestRun_ServerStartStop(t *testing.T) {
 		t.Error("Server shutdown timeout")
 	}
 }
+
+func TestSetupLog(t *testing.T) {
+	t.Run("debug mode enabled", func(t *testing.T) {
+		// capture log output to verify debug mode
+		SetupLog(true)
+		// the function should complete without panic
+		// we can't easily test logger configuration directly
+	})
+
+	t.Run("debug mode disabled", func(t *testing.T) {
+		SetupLog(false)
+		// the function should complete without panic
+	})
+
+	t.Run("with secrets", func(t *testing.T) {
+		// test that secrets are passed through to logger
+		SetupLog(true, "secret1", "secret2")
+		// the function should complete without panic
+		// secrets configuration is internal to lgr
+	})
+
+	t.Run("no color mode", func(t *testing.T) {
+		// test that the function works without color
+		oldNoColor := os.Getenv("NO_COLOR")
+		os.Setenv("NO_COLOR", "1")
+		defer os.Setenv("NO_COLOR", oldNoColor)
+
+		SetupLog(false)
+		// the function should complete without panic
+	})
+}
