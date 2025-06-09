@@ -137,78 +137,15 @@ func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, r
 	// convert to ItemWithClassification
 	result := make([]domain.ItemWithClassification, 0, len(items))
 	for _, item := range items {
-		feedDisplayName := getFeedDisplayName(item.FeedName, item.FeedURL)
-
-		itemWithClass := domain.ItemWithClassification{
-			ID:          item.ID,
-			FeedID:      item.FeedID,
-			FeedName:    feedDisplayName,
-			GUID:        item.GUID,
-			Title:       item.Title,
-			Link:        item.Link,
-			Description: item.Description,
-			Content:     item.Content,
-			Author:      item.Author,
-			Published:   item.Published,
-		}
-
-		// handle extraction data if available
-		if item.Extraction != nil {
-			itemWithClass.ExtractedContent = item.Extraction.PlainText
-			itemWithClass.ExtractedRichContent = item.Extraction.RichHTML
-			itemWithClass.ExtractionError = item.Extraction.Error
-		}
-
-		// handle classification data if available
-		if item.Classification != nil {
-			itemWithClass.RelevanceScore = item.Classification.Score
-			itemWithClass.Explanation = item.Classification.Explanation
-			itemWithClass.Topics = item.Classification.Topics
-			itemWithClass.ClassifiedAt = &item.Classification.ClassifiedAt
-		}
-
-		// handle feedback if available
-		if item.UserFeedback != nil {
-			itemWithClass.UserFeedback = string(item.UserFeedback.Type)
-		}
-
-		result = append(result, itemWithClass)
+		result = append(result, r.toItemWithClassification(item))
 	}
 
 	return result, nil
 }
 
-// GetClassifiedItemsCount returns total count of classified items matching filters
-func (r *RepositoryAdapter) GetClassifiedItemsCount(ctx context.Context, req domain.ArticlesRequest) (int, error) {
-	filter := &domain.ItemFilter{
-		MinScore:      req.MinScore,
-		Topic:         req.Topic,
-		FeedName:      req.FeedName,
-		SortBy:        req.SortBy,
-		Limit:         req.Limit,
-		ShowLikedOnly: req.ShowLikedOnly,
-	}
-
-	return r.classificationRepo.GetClassifiedItemsCount(ctx, filter)
-}
-
-// UpdateItemFeedback updates user feedback for an item
-func (r *RepositoryAdapter) UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error {
-	feedbackType := domain.FeedbackType(feedback)
-	domainFeedback := &domain.Feedback{
-		Type: feedbackType,
-	}
-	return r.classificationRepo.UpdateItemFeedback(ctx, itemID, domainFeedback)
-}
-
-// GetClassifiedItem returns a single item with classification data
-func (r *RepositoryAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
-	item, err := r.classificationRepo.GetClassifiedItem(ctx, itemID)
-	if err != nil {
-		return nil, err
-	}
-
-	result := &domain.ItemWithClassification{
+// toItemWithClassification converts a domain.ClassifiedItem to domain.ItemWithClassification
+func (r *RepositoryAdapter) toItemWithClassification(item *domain.ClassifiedItem) domain.ItemWithClassification {
+	result := domain.ItemWithClassification{
 		ID:          item.ID,
 		FeedID:      item.FeedID,
 		FeedName:    getFeedDisplayName(item.FeedName, item.FeedURL),
@@ -241,7 +178,41 @@ func (r *RepositoryAdapter) GetClassifiedItem(ctx context.Context, itemID int64)
 		result.UserFeedback = string(item.UserFeedback.Type)
 	}
 
-	return result, nil
+	return result
+}
+
+// GetClassifiedItemsCount returns total count of classified items matching filters
+func (r *RepositoryAdapter) GetClassifiedItemsCount(ctx context.Context, req domain.ArticlesRequest) (int, error) {
+	filter := &domain.ItemFilter{
+		MinScore:      req.MinScore,
+		Topic:         req.Topic,
+		FeedName:      req.FeedName,
+		SortBy:        req.SortBy,
+		Limit:         req.Limit,
+		ShowLikedOnly: req.ShowLikedOnly,
+	}
+
+	return r.classificationRepo.GetClassifiedItemsCount(ctx, filter)
+}
+
+// UpdateItemFeedback updates user feedback for an item
+func (r *RepositoryAdapter) UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error {
+	feedbackType := domain.FeedbackType(feedback)
+	domainFeedback := &domain.Feedback{
+		Type: feedbackType,
+	}
+	return r.classificationRepo.UpdateItemFeedback(ctx, itemID, domainFeedback)
+}
+
+// GetClassifiedItem returns a single item with classification data
+func (r *RepositoryAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+	item, err := r.classificationRepo.GetClassifiedItem(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := r.toItemWithClassification(item)
+	return &result, nil
 }
 
 // GetTopics returns all unique topics from classified items

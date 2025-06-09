@@ -686,3 +686,99 @@ func TestClassifier_CustomPrompts(t *testing.T) {
 		assert.Contains(t, capturedPrompt, customPrompt)
 	})
 }
+
+func TestClassifier_RuneSafeTruncation(t *testing.T) {
+	// create test server that captures the request
+	var capturedPrompt string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/chat/completions", r.URL.Path)
+
+		// capture the request body
+		var req openai.ChatCompletionRequest
+		err := json.NewDecoder(r.Body).Decode(&req)
+		assert.NoError(t, err)
+
+		// capture the user prompt
+		for _, msg := range req.Messages {
+			if msg.Role == openai.ChatMessageRoleUser {
+				capturedPrompt = msg.Content
+				break
+			}
+		}
+
+		// return mock response
+		resp := openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{
+				{
+					Message: openai.ChatCompletionMessage{
+						Content: `[{"guid": "item1", "score": 5.0, "explanation": "Test", "topics": ["test"], "summary": "Test summary"}]`,
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := config.LLMConfig{
+		Endpoint:    server.URL + "/v1",
+		APIKey:      "test-key",
+		Model:       "gpt-4",
+		Temperature: 0.3,
+		MaxTokens:   500,
+	}
+	classifier := NewClassifier(cfg)
+
+	t.Run("truncate multi-byte characters correctly", func(t *testing.T) {
+		// create article with content that has multi-byte characters after the 500 char boundary
+		content := strings.Repeat("a", 498) + "你好世界" // 498 ASCII + 4 Chinese chars (502 runes total)
+		articles := []domain.Item{
+			{
+				GUID:        "item1",
+				Title:       "Test Article",
+				Description: "Test description",
+				Content:     content,
+			},
+		}
+
+		_, err := classifier.ClassifyItems(context.Background(), ClassifyRequest{
+			Articles: articles,
+		})
+		require.NoError(t, err)
+
+		// verify the content was truncated at a proper boundary
+		assert.Contains(t, capturedPrompt, "Content: ")
+
+		// the content should be truncated to 500 runes + "..."
+		// with 498 'a' + 2 Chinese chars to make exactly 500 runes
+		expectedContent := strings.Repeat("a", 498) + "你好" + "..."
+		assert.Contains(t, capturedPrompt, "Content: "+expectedContent)
+	})
+
+	t.Run("handle emoji truncation correctly", func(t *testing.T) {
+		// create content with emojis after the boundary
+		content := strings.Repeat("x", 499) + "🚀🎉" // 499 chars + 2 emojis (501 runes total)
+		articles := []domain.Item{
+			{
+				GUID:        "item1",
+				Title:       "Test Article",
+				Description: "Test description",
+				Content:     content,
+			},
+		}
+
+		_, err := classifier.ClassifyItems(context.Background(), ClassifyRequest{
+			Articles: articles,
+		})
+		require.NoError(t, err)
+
+		// verify the content was truncated properly
+		assert.Contains(t, capturedPrompt, "Content: ")
+
+		// with 499 'x' + 2 emojis (501 total), it should truncate to 500 runes
+		// only the first emoji should be included
+		expectedContent := strings.Repeat("x", 499) + "🚀" + "..."
+		assert.Contains(t, capturedPrompt, "Content: "+expectedContent)
+	})
+}

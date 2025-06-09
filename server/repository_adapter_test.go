@@ -679,7 +679,7 @@ func TestRepositoryAdapter_Settings(t *testing.T) {
 
 func TestRepositoryAdapter_GetClassifiedItems(t *testing.T) {
 	// GetClassifiedItems simply calls GetClassifiedItemsWithFilters, which is already tested
-	// We just need to verify that it creates the correct request structure
+	// we just need to verify that it creates the correct request structure
 
 	classificationRepo := &mocks.ClassificationRepoMock{
 		GetClassifiedItemsFunc: func(ctx context.Context, filter *domain.ItemFilter) ([]*domain.ClassifiedItem, error) {

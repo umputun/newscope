@@ -52,8 +52,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	SetupLog(opts.Debug)
-
 	// handle termination signals
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
@@ -69,13 +67,16 @@ func main() {
 }
 
 func run(ctx context.Context, opts Opts) error {
-	log.Printf("[INFO] starting newscope version %s", revision)
-
-	// load configuration
+	// load configuration first
 	cfg, err := config.Load(opts.Config)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+
+	// setup logging with secrets for redaction
+	SetupLog(opts.Debug, cfg.LLM.APIKey)
+
+	log.Printf("[INFO] starting newscope version %s", revision)
 
 	// setup database repositories
 	repoCfg := repository.Config{

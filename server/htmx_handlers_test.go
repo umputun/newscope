@@ -1047,6 +1047,86 @@ func TestServer_AddTopicHandler(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "Invalid topic name format")
 	})
 
+	t.Run("add topic with Unicode characters", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				if key == domain.SettingPreferredTopics {
+					return `["golang"]`, nil
+				}
+				return `[]`, nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				assert.Equal(t, domain.SettingPreferredTopics, key)
+				// verify that Unicode topic was added
+				var topics []string
+				err := json.Unmarshal([]byte(value), &topics)
+				require.NoError(t, err)
+				assert.Contains(t, topics, "технологии")
+				return nil
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{"golang", "technology", "science"}, nil
+			},
+		}
+
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		form := url.Values{}
+		form.Add("topic", "технологии") // russian Unicode
+		form.Add("type", "preferred")
+
+		req := httptest.NewRequest("POST", "/api/v1/topics", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.addTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Len(t, database.SetSettingCalls(), 1)
+	})
+
+	t.Run("add topic with Chinese characters", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				if key == domain.SettingAvoidedTopics {
+					return `[]`, nil
+				}
+				return `[]`, nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				assert.Equal(t, domain.SettingAvoidedTopics, key)
+				// verify that Chinese topic was added
+				var topics []string
+				err := json.Unmarshal([]byte(value), &topics)
+				require.NoError(t, err)
+				assert.Contains(t, topics, "科技新闻")
+				return nil
+			},
+			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{"golang", "technology", "science"}, nil
+			},
+		}
+
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{
+			TriggerPreferenceUpdateFunc: func() {},
+		})
+
+		form := url.Values{}
+		form.Add("topic", "科技新闻") // chinese Unicode
+		form.Add("type", "avoided")
+
+		req := httptest.NewRequest("POST", "/api/v1/topics", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.addTopicHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Len(t, database.SetSettingCalls(), 1)
+	})
+
 	t.Run("add topic exceeding max length", func(t *testing.T) {
 		database := &mocks.DatabaseMock{}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{

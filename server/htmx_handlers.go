@@ -29,8 +29,8 @@ const (
 )
 
 var (
-	// topicNameRegex validates topic names: letters, numbers, spaces, dashes, up to 50 chars
-	topicNameRegex = regexp.MustCompile(`^[\w\s-]{1,50}$`)
+	// topicNameRegex validates topic names: Unicode letters, numbers, spaces, dashes, up to 50 chars
+	topicNameRegex = regexp.MustCompile(`^[\p{L}\p{N}\s-]{1,50}$`)
 )
 
 // getAvailableTopics filters out already assigned topics from all topics
@@ -126,16 +126,14 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	articles, err := s.db.GetClassifiedItemsWithFilters(ctx, req)
 	if err != nil {
-		log.Printf("[ERROR] failed to get classified items: %v", err)
-		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to load articles", err)
 		return
 	}
 
 	// get total count for pagination
 	totalCount, err := s.db.GetClassifiedItemsCount(ctx, req)
 	if err != nil {
-		log.Printf("[ERROR] failed to get classified items count: %v", err)
-		http.Error(w, "Failed to load articles count", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to load articles count", err)
 		return
 	}
 
@@ -147,14 +145,14 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	// get topics filtered by current score
 	topics, err := s.db.GetTopicsFiltered(ctx, minScore)
 	if err != nil {
-		log.Printf("[ERROR] failed to get topics: %v", err)
+		log.Printf("[WARN] failed to get topics: %v", err)
 		topics = []string{} // continue with empty topics
 	}
 
 	// get active feed names
 	feeds, err := s.db.GetActiveFeedNames(ctx, minScore)
 	if err != nil {
-		log.Printf("[ERROR] failed to get feed names: %v", err)
+		log.Printf("[WARN] failed to get feed names: %v", err)
 		feeds = []string{} // continue with empty feeds
 	}
 
@@ -226,8 +224,8 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 
 	// render full page with base template and article card component
 	if err := s.renderPage(w, "articles.html", data); err != nil {
-		log.Printf("[ERROR] failed to render articles page: %v", err)
-		http.Error(w, "Failed to render page", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		return
 	}
 }
 
@@ -250,7 +248,7 @@ func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, r *http.Reques
 func (s *Server) writeHTMXOutOfBandUpdates(w http.ResponseWriter, req articlesPageRequest) {
 	// update article count
 	if _, err := fmt.Fprintf(w, `<span id="article-count" class="article-count" hx-swap-oob="true">(%d/%d)</span>`, len(req.articles), req.totalCount); err != nil {
-		log.Printf("[ERROR] failed to write article count: %v", err)
+		log.Printf("[WARN] failed to write article count: %v", err)
 	}
 
 	// update topic dropdown
@@ -267,13 +265,13 @@ func (s *Server) writeHTMXOutOfBandUpdates(w http.ResponseWriter, req articlesPa
 func (s *Server) writeArticlesList(w http.ResponseWriter, articles []domain.ItemWithClassification, viewMode string) {
 	// render the complete articles-with-pagination wrapper
 	if _, err := fmt.Fprintf(w, `<div id="articles-container" class="view-%s"><div id="articles-list">`, viewMode); err != nil {
-		log.Printf("[ERROR] failed to write articles container start: %v", err)
+		log.Printf("[WARN] failed to write articles container start: %v", err)
 	}
 
 	// render articles or no-articles message
 	if len(articles) == 0 {
 		if _, err := w.Write([]byte(`<p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>`)); err != nil {
-			log.Printf("[ERROR] failed to write no articles message: %v", err)
+			log.Printf("[WARN] failed to write no articles message: %v", err)
 		}
 	} else {
 		for i := range articles {
@@ -282,7 +280,7 @@ func (s *Server) writeArticlesList(w http.ResponseWriter, articles []domain.Item
 	}
 
 	if _, err := w.Write([]byte(`</div></div>`)); err != nil {
-		log.Printf("[ERROR] failed to write articles container end: %v", err)
+		log.Printf("[WARN] failed to write articles container end: %v", err)
 	}
 }
 
@@ -293,8 +291,7 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	// get all feeds from database
 	feeds, err := s.db.GetAllFeeds(ctx)
 	if err != nil {
-		log.Printf("[ERROR] failed to get feeds: %v", err)
-		http.Error(w, "Failed to load feeds", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to load feeds", err)
 		return
 	}
 
@@ -309,8 +306,8 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// render page with base template
 	if err := s.renderPage(w, "feeds.html", data); err != nil {
-		log.Printf("[ERROR] failed to render feeds page: %v", err)
-		http.Error(w, "Failed to render page", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		return
 	}
 }
 
@@ -367,8 +364,8 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// render settings page
 	if err := s.renderPage(w, "settings.html", data); err != nil {
-		log.Printf("[ERROR] failed to render settings page: %v", err)
-		http.Error(w, "Failed to render page", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		return
 	}
 }
 
@@ -379,14 +376,14 @@ func (s *Server) rssHelpHandler(w http.ResponseWriter, r *http.Request) {
 	// get top 10 topics sorted by average score for display
 	topTopics, err := s.db.GetTopTopicsByScore(ctx, 5.0, 10) // min score 5.0, top 10
 	if err != nil {
-		log.Printf("[ERROR] failed to get top topics for RSS help: %v", err)
+		log.Printf("[WARN] failed to get top topics for RSS help: %v", err)
 		topTopics = []domain.TopicWithScore{} // continue with empty topics
 	}
 
 	// get all topics for the RSS builder dropdown
 	allTopics, err := s.db.GetTopics(ctx)
 	if err != nil {
-		log.Printf("[ERROR] failed to get all topics for RSS help: %v", err)
+		log.Printf("[WARN] failed to get all topics for RSS help: %v", err)
 		allTopics = []string{} // continue with empty topics
 	}
 
@@ -411,8 +408,8 @@ func (s *Server) rssHelpHandler(w http.ResponseWriter, r *http.Request) {
 
 	// render RSS help page
 	if err := s.renderPage(w, "rss-help.html", data); err != nil {
-		log.Printf("[ERROR] failed to render RSS help page: %v", err)
-		http.Error(w, "Failed to render page", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		return
 	}
 }
 
@@ -423,22 +420,20 @@ func (s *Server) articleContentHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		s.respondWithError(w, http.StatusBadRequest, "Invalid article ID", err)
 		return
 	}
 
 	// get the article with classification
 	article, err := s.db.GetClassifiedItem(ctx, id)
 	if err != nil {
-		log.Printf("[ERROR] failed to get article: %v", err)
-		http.Error(w, "Article not found", http.StatusNotFound)
+		s.respondWithError(w, http.StatusNotFound, "Article not found", err)
 		return
 	}
 
 	// render the content template
 	if err := s.templates.ExecuteTemplate(w, "article-content.html", article); err != nil {
-		log.Printf("[ERROR] failed to render article content: %v", err)
-		http.Error(w, "Failed to render content", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render content", err)
 		return
 	}
 
@@ -458,13 +453,13 @@ func (s *Server) hideContentHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		s.respondWithError(w, http.StatusBadRequest, "Invalid article ID", err)
 		return
 	}
 
 	// clear the content div
 	if _, err := w.Write([]byte("")); err != nil {
-		log.Printf("[ERROR] failed to write response: %v", err)
+		log.Printf("[WARN] failed to write response: %v", err)
 	}
 
 	// also send out-of-band update for the button
@@ -493,16 +488,16 @@ func (s *Server) renderPage(w http.ResponseWriter, templateName string, data int
 // renderArticleCard renders a single article card as HTML
 func (s *Server) renderArticleCard(w http.ResponseWriter, article *domain.ItemWithClassification) {
 	if err := s.templates.ExecuteTemplate(w, "article-card.html", article); err != nil {
-		log.Printf("[ERROR] failed to render article card: %v", err)
-		http.Error(w, "Failed to render article", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render article", err)
+		return
 	}
 }
 
 // renderFeedCard renders a single feed card
 func (s *Server) renderFeedCard(w http.ResponseWriter, feed *domain.Feed) {
 	if err := s.templates.ExecuteTemplate(w, "feed-card.html", feed); err != nil {
-		log.Printf("[ERROR] failed to render feed card: %v", err)
-		http.Error(w, "Failed to render feed", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render feed", err)
+		return
 	}
 }
 
@@ -523,7 +518,7 @@ func (s *Server) writeTopicDropdown(w http.ResponseWriter, topics []string, sele
 	topicHTML.WriteString(`</select>`)
 
 	if _, err := w.Write([]byte(topicHTML.String())); err != nil {
-		log.Printf("[ERROR] failed to write topic dropdown: %v", err)
+		log.Printf("[WARN] failed to write topic dropdown: %v", err)
 	}
 }
 
@@ -544,7 +539,7 @@ func (s *Server) writeFeedDropdown(w http.ResponseWriter, feeds []string, select
 	feedHTML.WriteString(`</select>`)
 
 	if _, err := w.Write([]byte(feedHTML.String())); err != nil {
-		log.Printf("[ERROR] failed to write feed dropdown: %v", err)
+		log.Printf("[WARN] failed to write feed dropdown: %v", err)
 	}
 }
 
@@ -570,7 +565,7 @@ func (s *Server) writeLikedButton(w http.ResponseWriter, showLikedOnly bool) {
             </button>`, activeClass, nextValue)
 
 	if _, err := w.Write([]byte(buttonHTML)); err != nil {
-		log.Printf("[ERROR] failed to write liked button: %v", err)
+		log.Printf("[WARN] failed to write liked button: %v", err)
 	}
 }
 
@@ -609,7 +604,7 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 
 	// execute the pagination template
 	if err := s.templates.ExecuteTemplate(w, "pagination", paginationData); err != nil {
-		log.Printf("[ERROR] failed to render pagination: %v", err)
+		log.Printf("[WARN] failed to render pagination: %v", err)
 	}
 }
 
@@ -618,7 +613,7 @@ func (s *Server) addTopicHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		s.respondWithError(w, http.StatusBadRequest, "Invalid form data", err)
 		return
 	}
 
@@ -626,13 +621,13 @@ func (s *Server) addTopicHandler(w http.ResponseWriter, r *http.Request) {
 	topicType := r.FormValue("type")
 
 	if topic == "" || (topicType != topicTypePreferred && topicType != topicTypeAvoided) {
-		http.Error(w, "Invalid topic or type", http.StatusBadRequest)
+		s.respondWithError(w, http.StatusBadRequest, "Invalid topic or type", nil)
 		return
 	}
 
 	// validate topic name
 	if !isValidTopicName(topic) {
-		http.Error(w, "Invalid topic name format", http.StatusBadRequest)
+		s.respondWithError(w, http.StatusBadRequest, "Invalid topic name format", nil)
 		return
 	}
 
@@ -644,8 +639,7 @@ func (s *Server) addTopicHandler(w http.ResponseWriter, r *http.Request) {
 
 	currentValue, err := s.db.GetSetting(ctx, settingKey)
 	if err != nil {
-		log.Printf("[ERROR] failed to get setting %s: %v", settingKey, err)
-		http.Error(w, "Failed to get topics", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to get topics", err)
 		return
 	}
 
@@ -673,14 +667,12 @@ func (s *Server) addTopicHandler(w http.ResponseWriter, r *http.Request) {
 	// save updated topics
 	updatedValue, err := json.Marshal(topics)
 	if err != nil {
-		log.Printf("[ERROR] failed to marshal topics: %v", err)
-		http.Error(w, "Failed to save topics", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to save topics", err)
 		return
 	}
 
 	if err := s.db.SetSetting(ctx, settingKey, string(updatedValue)); err != nil {
-		log.Printf("[ERROR] failed to save setting %s: %v", settingKey, err)
-		http.Error(w, "Failed to save topics", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to save topics", err)
 		return
 	}
 
@@ -696,7 +688,7 @@ func (s *Server) deleteTopicHandler(w http.ResponseWriter, r *http.Request) {
 	topicType := r.URL.Query().Get("type")
 
 	if topicToDelete == "" || (topicType != topicTypePreferred && topicType != topicTypeAvoided) {
-		http.Error(w, "Invalid topic or type", http.StatusBadRequest)
+		s.respondWithError(w, http.StatusBadRequest, "Invalid topic or type", nil)
 		return
 	}
 
@@ -708,8 +700,7 @@ func (s *Server) deleteTopicHandler(w http.ResponseWriter, r *http.Request) {
 
 	currentValue, err := s.db.GetSetting(ctx, settingKey)
 	if err != nil {
-		log.Printf("[ERROR] failed to get setting %s: %v", settingKey, err)
-		http.Error(w, "Failed to get topics", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to get topics", err)
 		return
 	}
 
@@ -717,8 +708,7 @@ func (s *Server) deleteTopicHandler(w http.ResponseWriter, r *http.Request) {
 	var topics []string
 	if currentValue != "" {
 		if err := json.Unmarshal([]byte(currentValue), &topics); err != nil {
-			log.Printf("[ERROR] failed to parse topics: %v", err)
-			http.Error(w, "Failed to parse topics", http.StatusInternalServerError)
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to parse topics", err)
 			return
 		}
 	}
@@ -734,14 +724,12 @@ func (s *Server) deleteTopicHandler(w http.ResponseWriter, r *http.Request) {
 	// save updated topics
 	updatedValue, err := json.Marshal(updatedTopics)
 	if err != nil {
-		log.Printf("[ERROR] failed to marshal topics: %v", err)
-		http.Error(w, "Failed to save topics", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to save topics", err)
 		return
 	}
 
 	if err := s.db.SetSetting(ctx, settingKey, string(updatedValue)); err != nil {
-		log.Printf("[ERROR] failed to save setting %s: %v", settingKey, err)
-		http.Error(w, "Failed to save topics", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to save topics", err)
 		return
 	}
 
@@ -763,8 +751,7 @@ func (s *Server) renderTopicsList(w http.ResponseWriter, topics []string, topicT
 
 	// use the pre-loaded template
 	if err := s.templates.ExecuteTemplate(w, templateTopicTags, data); err != nil {
-		log.Printf("[ERROR] failed to render topics list: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		s.respondWithError(w, http.StatusInternalServerError, "Internal server error", err)
 		return
 	}
 }

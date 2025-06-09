@@ -2,14 +2,17 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-pkgz/routegroup"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -267,6 +270,59 @@ func TestServer_SafeHTML(t *testing.T) {
 			for _, notExpected := range tt.notContains {
 				assert.NotContains(t, result, notExpected)
 			}
+		})
+	}
+}
+
+func TestServer_respondWithError(t *testing.T) {
+	tests := []struct {
+		name           string
+		code           int
+		message        string
+		err            error
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name:           "with error",
+			code:           http.StatusInternalServerError,
+			message:        "Something went wrong",
+			err:            errors.New("database error"),
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "Something went wrong\n",
+		},
+		{
+			name:           "without error",
+			code:           http.StatusBadRequest,
+			message:        "Invalid request",
+			err:            nil,
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Invalid request\n",
+		},
+		{
+			name:           "not found with error",
+			code:           http.StatusNotFound,
+			message:        "Resource not found",
+			err:            errors.New("item not found"),
+			expectedStatus: http.StatusNotFound,
+			expectedBody:   "Resource not found\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := &Server{
+				config:    &mocks.ConfigProviderMock{},
+				db:        &mocks.DatabaseMock{},
+				scheduler: &mocks.SchedulerMock{},
+				router:    routegroup.New(http.NewServeMux()),
+			}
+
+			w := httptest.NewRecorder()
+			srv.respondWithError(w, tt.code, tt.message, tt.err)
+
+			assert.Equal(t, tt.expectedStatus, w.Code)
+			assert.Equal(t, tt.expectedBody, w.Body.String())
 		})
 	}
 }

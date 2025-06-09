@@ -210,10 +210,11 @@ func (c *Classifier) buildPromptWithSummary(articles []domain.Item, feedbackExam
 			sb.WriteString(fmt.Sprintf("   Description: %s\n", article.Description))
 		}
 		if article.Content != "" {
-			// limit content to first 500 chars
+			// limit content to first 500 chars (rune-safe)
 			content := article.Content
-			if len(content) > 500 {
-				content = content[:500] + "..."
+			runes := []rune(content)
+			if len(runes) > 500 {
+				content = string(runes[:500]) + "..."
 			}
 			sb.WriteString(fmt.Sprintf("   Content: %s\n", content))
 		}

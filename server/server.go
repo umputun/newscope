@@ -208,7 +208,7 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"templates/topic-tags.html",
 		"templates/topic-dropdowns.html")
 	if err != nil {
-		log.Printf("[ERROR] failed to parse templates: %v", err)
+		log.Printf("[WARN] failed to parse templates: %v", err)
 	}
 
 	// parse page templates
@@ -224,7 +224,7 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			"templates/feed-card.html",
 			"templates/pagination.html")
 		if err != nil {
-			log.Printf("[ERROR] failed to parse %s: %v", pageName, err)
+			log.Printf("[WARN] failed to parse %s: %v", pageName, err)
 			continue
 		}
 		pageTemplates[pageName] = tmpl
@@ -289,6 +289,14 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(rest.Recoverer(lgr.Default()))
 	s.router.Use(rest.Throttle(defaultThrottleLimit))
 	s.router.Use(rest.SizeLimit(defaultSizeLimit))
+}
+
+// respondWithError logs an error and sends an HTTP error response
+func (s *Server) respondWithError(w http.ResponseWriter, code int, message string, err error) {
+	if err != nil {
+		log.Printf("[WARN] %s: %v", message, err)
+	}
+	http.Error(w, message, code)
 }
 
 // setupRoutes configures application routes
