@@ -110,8 +110,8 @@ type Config struct {
 	CleanupInterval            time.Duration
 }
 
-// Dependencies groups all dependencies needed by the scheduler
-type Dependencies struct {
+// Params groups all dependencies needed by the scheduler
+type Params struct {
 	FeedManager           FeedManager
 	ItemManager           ItemManager
 	ClassificationManager ClassificationManager
@@ -122,7 +122,7 @@ type Dependencies struct {
 }
 
 // NewScheduler creates a new scheduler instance
-func NewScheduler(deps Dependencies, cfg Config) *Scheduler {
+func NewScheduler(deps Params, cfg Config) *Scheduler {
 	if cfg.UpdateInterval == 0 {
 		cfg.UpdateInterval = 30 * time.Minute
 	}

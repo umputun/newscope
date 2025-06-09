@@ -21,7 +21,7 @@ go.work
 .bin/
 dist/
 bin/
-newscope
+/newscope
 
 # IDE specific files
 .idea/

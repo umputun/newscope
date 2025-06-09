@@ -41,7 +41,7 @@ func main() {
 	parser := flags.NewParser(&opts, flags.Default)
 	if _, err := parser.Parse(); err != nil {
 		var flagsErr *flags.Error
-		if errors.As(err, &flagsErr) && flagsErr.Type == flags.ErrHelp {
+		if errors.As(err, &flagsErr) && errors.Is(flagsErr.Type, flags.ErrHelp) {
 			os.Exit(0)
 		}
 		os.Exit(1)
@@ -52,15 +52,29 @@ func main() {
 		os.Exit(0)
 	}
 
-	setupLog(opts.Debug)
+	SetupLog(opts.Debug)
 
+	// handle termination signals
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
+	err := run(ctx, opts)
+	cancel()
+
+	if err != nil {
+		log.Printf("[ERROR] %v", err)
+		os.Exit(1)
+	}
+
+	log.Print("[INFO] shutdown complete")
+}
+
+func run(ctx context.Context, opts Opts) error {
 	log.Printf("[INFO] starting newscope version %s", revision)
 
 	// load configuration
 	cfg, err := config.Load(opts.Config)
 	if err != nil {
-		log.Printf("[ERROR] failed to load config: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// setup database repositories
@@ -70,31 +84,16 @@ func main() {
 		MaxIdleConns:    cfg.Database.MaxIdleConns,
 		ConnMaxLifetime: time.Duration(cfg.Database.ConnMaxLifetime) * time.Second,
 	}
-	repos, err := repository.NewRepositories(context.Background(), repoCfg)
+	repos, err := repository.NewRepositories(ctx, repoCfg)
 	if err != nil {
-		log.Printf("[ERROR] failed to initialize database: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to initialize database: %w", err)
 	}
+	defer repos.Close()
 
 	// setup LLM classifier - required for system to function
 	if cfg.LLM.Endpoint == "" || cfg.LLM.APIKey == "" {
-		log.Printf("[ERROR] LLM classifier is required - missing endpoint or API key configuration")
-		_ = repos.Close()
-		log.Fatal("LLM configuration required")
+		return fmt.Errorf("LLM classifier is required - missing endpoint or API key configuration")
 	}
-
-	defer repos.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// handle termination signals
-	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-		<-sigChan
-		log.Print("[INFO] termination signal received")
-		cancel()
-	}()
 
 	// setup feed parser and content extractor
 	feedParser := feed.NewParser(cfg.Server.Timeout)
@@ -119,7 +118,7 @@ func main() {
 		CleanupMinScore:            cfg.Schedule.CleanupMinScore,
 		CleanupInterval:            cfg.Schedule.CleanupInterval,
 	}
-	deps := scheduler.Dependencies{
+	deps := scheduler.Params{
 		FeedManager:           repos.Feed,
 		ItemManager:           repos.Item,
 		ClassificationManager: repos.Classification,
@@ -136,14 +135,14 @@ func main() {
 	repoAdapter := server.NewRepositoryAdapter(repos)
 	srv := server.New(cfg, repoAdapter, sched, revision, opts.Debug)
 	if err := srv.Run(ctx); err != nil {
-		log.Printf("[ERROR] server failed: %v", err)
-		return
+		return fmt.Errorf("server failed: %w", err)
 	}
 
-	log.Print("[INFO] shutdown complete")
+	return nil
 }
 
-func setupLog(dbg bool, secs ...string) {
+// SetupLog configures the logger
+func SetupLog(dbg bool, secs ...string) {
 	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
 	if dbg {
 		logOpts = []lgr.Option{lgr.Debug, lgr.CallerFile, lgr.CallerFunc, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}

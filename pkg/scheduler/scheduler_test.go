@@ -29,7 +29,7 @@ func TestNewScheduler(t *testing.T) {
 		MaxWorkers:     3,
 	}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -56,7 +56,7 @@ func TestNewScheduler_DefaultConfig(t *testing.T) {
 
 	cfg := Config{} // empty config
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -89,7 +89,7 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		UpdateInterval: time.Hour, // long interval to prevent auto-updates
 		MaxWorkers:     1,         // single worker for processing
 	}
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -220,7 +220,7 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -336,7 +336,7 @@ func TestScheduler_StartStop(t *testing.T) {
 		MaxWorkers:     1,
 	}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -383,7 +383,7 @@ func TestScheduler_ProcessItem_ExtractionError(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -437,7 +437,7 @@ func TestScheduler_ProcessItem_ClassificationError(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -503,7 +503,7 @@ func TestScheduler_ProcessItem_NoClassificationResults(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -569,7 +569,7 @@ func TestScheduler_UpdateFeed_ParseError(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -621,7 +621,7 @@ func TestScheduler_UpdateFeed_DuplicateItems(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -748,7 +748,7 @@ func TestScheduler_UpdateAllFeeds_GetFeedsError(t *testing.T) {
 		MaxWorkers:     1,
 	}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -829,7 +829,7 @@ func TestScheduler_UpdateAllFeeds_MultipleFeeds(t *testing.T) {
 		MaxWorkers:     2, // multiple workers
 	}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -923,7 +923,7 @@ func TestScheduler_UpdateFeed_ItemCreationError(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -1241,7 +1241,7 @@ func TestScheduler_UpdateFeed_EmptyTitle(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -1429,7 +1429,7 @@ func TestScheduler_ConfigurableThreshold(t *testing.T) {
 		PreferenceSummaryThreshold: 10, // custom threshold
 	}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           &mocks.FeedManagerMock{},
 		ItemManager:           &mocks.ItemManagerMock{},
 		ClassificationManager: &mocks.ClassificationManagerMock{},
@@ -1446,7 +1446,7 @@ func TestScheduler_ConfigurableThreshold(t *testing.T) {
 func TestScheduler_DefaultThreshold(t *testing.T) {
 	cfg := Config{} // no threshold specified
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           &mocks.FeedManagerMock{},
 		ItemManager:           &mocks.ItemManagerMock{},
 		ClassificationManager: &mocks.ClassificationManagerMock{},
@@ -1571,7 +1571,7 @@ func TestScheduler_CleanupWorker(t *testing.T) {
 		CleanupMinScore: 5.0,
 	}
 
-	deps := Dependencies{
+	deps := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -1608,7 +1608,7 @@ func TestScheduler_CleanupConfig(t *testing.T) {
 			CleanupInterval: 12 * time.Hour,
 		}
 
-		deps := Dependencies{
+		deps := Params{
 			FeedManager:           &mocks.FeedManagerMock{},
 			ItemManager:           &mocks.ItemManagerMock{},
 			ClassificationManager: &mocks.ClassificationManagerMock{},

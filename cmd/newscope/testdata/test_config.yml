@@ -1,0 +1,31 @@
+server:
+  listen: "127.0.0.1:18765"
+  timeout: "5s"
+  page_size: 10
+  base_url: "http://localhost:18765"
+
+database:
+  dsn: "file:${DB_PATH}/test.db?cache=shared&mode=rwc"
+
+schedule:
+  update_interval: "1m"
+  max_workers: 2
+  cleanup_age: "168h"
+  cleanup_min_score: 5.0
+  cleanup_interval: "24h"
+
+llm:
+  endpoint: "http://localhost:11434/v1"
+  api_key: "test-key"
+  model: "test-model"
+  temperature: 0.3
+  max_tokens: 100
+  timeout: "5s"
+  
+  classification:
+    feedback_examples: 5
+    preference_summary_threshold: 10
+
+extraction:
+  enabled: false
+  timeout: "5s"
