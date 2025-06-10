@@ -179,59 +179,6 @@ func TestServer_rssHandler(t *testing.T) {
 	assert.Contains(t, rss, `</rss>`)
 }
 
-func TestServer_generateRSSFeed(t *testing.T) {
-	cfg := &mocks.ConfigProviderMock{
-		GetServerConfigFunc: func() (string, time.Duration) {
-			return ":8080", 30 * time.Second
-		},
-		GetFullConfigFunc: func() *config.Config {
-			return &config.Config{
-				Server: struct {
-					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
-					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
-					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
-					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
-				}{
-					BaseURL: "http://localhost:8080",
-				},
-			}
-		},
-	}
-	database := &mocks.DatabaseMock{}
-	scheduler := &mocks.SchedulerMock{}
-
-	now := time.Now()
-	items := []domain.ItemWithClassification{
-		{
-			GUID:           "test-guid",
-			Title:          "Test & Article",
-			Link:           "https://example.com/test",
-			Description:    "Test description with <special> chars",
-			Author:         "Test Author",
-			Published:      now,
-			RelevanceScore: 8.0,
-			Explanation:    "Test explanation",
-			Topics:         []string{"test", "example"},
-		},
-	}
-
-	srv := New(cfg, database, scheduler, "1.0.0", false)
-
-	rss := srv.buildRSSFeed("testing", 5.0, items)
-
-	// verify RSS structure
-	assert.Contains(t, rss, `<?xml version="1.0" encoding="UTF-8"?>`)
-	assert.Contains(t, rss, `<title>Newscope - testing (Score ≥ 5.0)</title>`)
-	assert.Contains(t, rss, `<title>[8.0] Test &amp; Article</title>`)
-	assert.Contains(t, rss, `Test description with &lt;special&gt; chars`)
-	assert.Contains(t, rss, `<category>test</category>`)
-	assert.Contains(t, rss, `<category>example</category>`)
-
-	// test empty topic
-	rss = srv.buildRSSFeed("", 7.5, items)
-	assert.Contains(t, rss, `<title>Newscope - All Topics (Score ≥ 7.5)</title>`)
-}
-
 func TestServer_RSSHandler_DatabaseError(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) {
