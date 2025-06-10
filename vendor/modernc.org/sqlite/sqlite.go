@@ -510,6 +510,9 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (r driver.Res
 	}
 
 	defer func() {
+		if ctx != nil && atomic.LoadInt32(&done) != 0 {
+			r, err = nil, ctx.Err()
+		}
 		if pstmt != 0 {
 			// ensure stmt finalized.
 			e := s.c.finalize(pstmt)
@@ -519,10 +522,6 @@ func (s *stmt) exec(ctx context.Context, args []driver.NamedValue) (r driver.Res
 				// returned error.
 				err = e
 			}
-		}
-
-		if ctx != nil && atomic.LoadInt32(&done) != 0 {
-			r, err = nil, ctx.Err()
 		}
 	}()
 
@@ -625,6 +624,12 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (r driver.Ro
 	var allocs []uintptr
 
 	defer func() {
+		if ctx != nil && atomic.LoadInt32(&done) != 0 {
+			r, err = nil, ctx.Err()
+		} else if r == nil && err == nil {
+			r, err = newRows(s.c, pstmt, allocs, true)
+		}
+
 		if pstmt != 0 {
 			// ensure stmt finalized.
 			e := s.c.finalize(pstmt)
@@ -636,11 +641,6 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue) (r driver.Ro
 			}
 		}
 
-		if ctx != nil && atomic.LoadInt32(&done) != 0 {
-			r, err = nil, ctx.Err()
-		} else if r == nil && err == nil {
-			r, err = newRows(s.c, pstmt, allocs, true)
-		}
 	}()
 
 	for psql := s.psql; *(*byte)(unsafe.Pointer(psql)) != 0 && atomic.LoadInt32(&done) == 0; {
@@ -2228,7 +2228,9 @@ func functionArgs(tls *libc.TLS, argc int32, argv uintptr) []driver.Value {
 			size := sqlite3.Xsqlite3_value_bytes(tls, valPtr)
 			blobPtr := sqlite3.Xsqlite3_value_blob(tls, valPtr)
 			v := make([]byte, size)
-			copy(v, (*libc.RawMem)(unsafe.Pointer(blobPtr))[:size:size])
+			if size != 0 {
+				copy(v, (*libc.RawMem)(unsafe.Pointer(blobPtr))[:size:size])
+			}
 			args[i] = v
 		default:
 			panic(fmt.Sprintf("unexpected argument type %q passed by sqlite", valType))

@@ -6,7 +6,7 @@ toolchain go1.24.3
 
 require (
 	github.com/fatih/color v1.18.0
-	github.com/go-pkgz/lgr v0.12.0
+	github.com/go-pkgz/lgr v0.12.1
 	github.com/go-pkgz/repeater/v2 v2.0.1
 	github.com/go-pkgz/rest v1.20.3
 	github.com/go-pkgz/routegroup v1.4.1
@@ -18,10 +18,10 @@ require (
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/sashabaranov/go-openai v1.40.1
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/net v0.40.0
-	golang.org/x/sync v0.14.0
+	golang.org/x/net v0.41.0
+	golang.org/x/sync v0.15.0
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.37.1
+	modernc.org/sqlite v1.38.0
 )
 
 require (
@@ -63,11 +63,11 @@ require (
 	github.com/wasilibs/wazero-helpers v0.0.0-20250123031827-cd30c44769bb // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yosssi/gohtml v0.0.0-20201013000340-ee4748c638f4 // indirect
-	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/exp v0.0.0-20250531010427-b6e5de432a8b // indirect
+	golang.org/x/crypto v0.39.0 // indirect
+	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/text v0.25.0 // indirect
-	modernc.org/libc v1.65.8 // indirect
+	golang.org/x/text v0.26.0 // indirect
+	modernc.org/libc v1.65.10 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
