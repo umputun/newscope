@@ -13,10 +13,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-pkgz/lgr"
+	"github.com/go-pkgz/repeater/v2"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/umputun/newscope/pkg/content"
@@ -78,6 +80,11 @@ type Scheduler struct {
 	cleanupMinScore            float64
 	cleanupInterval            time.Duration
 	preferenceUpdateCh         chan struct{}
+	// retry configuration
+	retryAttempts     int
+	retryInitialDelay time.Duration
+	retryMaxDelay     time.Duration
+	retryJitter       float64
 
 	wg     sync.WaitGroup
 	cancel context.CancelFunc
@@ -108,6 +115,11 @@ type Config struct {
 	CleanupAge                 time.Duration
 	CleanupMinScore            float64
 	CleanupInterval            time.Duration
+	// retry configuration for database operations
+	RetryAttempts     int           // number of retry attempts (default: 5)
+	RetryInitialDelay time.Duration // initial retry delay (default: 100ms)
+	RetryMaxDelay     time.Duration // max retry delay (default: 5s)
+	RetryJitter       float64       // jitter factor 0-1 (default: 0.3)
 }
 
 // Params groups all dependencies needed by the scheduler
@@ -141,6 +153,19 @@ func NewScheduler(deps Params, cfg Config) *Scheduler {
 	if cfg.CleanupMinScore == 0 {
 		cfg.CleanupMinScore = 5.0
 	}
+	// retry defaults
+	if cfg.RetryAttempts == 0 {
+		cfg.RetryAttempts = 5
+	}
+	if cfg.RetryInitialDelay == 0 {
+		cfg.RetryInitialDelay = 100 * time.Millisecond
+	}
+	if cfg.RetryMaxDelay == 0 {
+		cfg.RetryMaxDelay = 5 * time.Second
+	}
+	if cfg.RetryJitter == 0 {
+		cfg.RetryJitter = 0.3
+	}
 
 	return &Scheduler{
 		feedManager:                deps.FeedManager,
@@ -157,6 +182,10 @@ func NewScheduler(deps Params, cfg Config) *Scheduler {
 		cleanupMinScore:            cfg.CleanupMinScore,
 		cleanupInterval:            cfg.CleanupInterval,
 		preferenceUpdateCh:         make(chan struct{}, 1), // buffered channel to coalesce updates
+		retryAttempts:              cfg.RetryAttempts,
+		retryInitialDelay:          cfg.RetryInitialDelay,
+		retryMaxDelay:              cfg.RetryMaxDelay,
+		retryJitter:                cfg.RetryJitter,
 	}
 }
 
@@ -218,18 +247,22 @@ func (s *Scheduler) processingWorker(ctx context.Context, items <-chan domain.It
 
 // processItem handles extraction and classification for a single item
 func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
-	lgr.Printf("[DEBUG] processing item: %s", item.Link)
+	itemID := s.getItemIdentifier(item)
+	lgr.Printf("[DEBUG] processing item: %s", itemID)
 
 	// 1. Extract content
 	extracted, err := s.extractor.Extract(ctx, item.Link)
 	if err != nil {
-		lgr.Printf("[WARN] failed to extract content from %s: %v", item.Link, err)
+		lgr.Printf("[WARN] failed to extract content for item %d from %s: %v", item.ID, item.Link, err)
 		extraction := &domain.ExtractedContent{
 			Error:       err.Error(),
 			ExtractedAt: time.Now(),
 		}
-		if updateErr := s.itemManager.UpdateItemExtraction(ctx, item.ID, extraction); updateErr != nil {
-			lgr.Printf("[WARN] failed to update extraction error: %v", updateErr)
+		updateErr := s.retryDBOperation(ctx, func() error {
+			return s.itemManager.UpdateItemExtraction(ctx, item.ID, extraction)
+		})
+		if updateErr != nil {
+			lgr.Printf("[WARN] failed to update extraction error for item %d after retries: %v", item.ID, updateErr)
 		}
 		return
 	}
@@ -237,19 +270,19 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 	// 2. Get context for classification
 	feedbacks, err := s.classificationManager.GetRecentFeedback(ctx, "", 50)
 	if err != nil {
-		lgr.Printf("[WARN] failed to get feedback examples: %v", err)
+		lgr.Printf("[WARN] item %d: failed to get feedback examples: %v", item.ID, err)
 		feedbacks = []domain.FeedbackExample{}
 	}
 
 	topics, err := s.classificationManager.GetTopics(ctx)
 	if err != nil {
-		lgr.Printf("[WARN] failed to get canonical topics: %v", err)
+		lgr.Printf("[WARN] item %d: failed to get canonical topics: %v", item.ID, err)
 		topics = []string{}
 	}
 
 	preferenceSummary, err := s.settingManager.GetSetting(ctx, "preference_summary")
 	if err != nil {
-		lgr.Printf("[WARN] failed to get preference summary: %v", err)
+		lgr.Printf("[WARN] item %d: failed to get preference summary: %v", item.ID, err)
 		preferenceSummary = ""
 	}
 
@@ -257,12 +290,12 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 	var preferredTopics, avoidedTopics []string
 	if preferredJSON, err := s.settingManager.GetSetting(ctx, domain.SettingPreferredTopics); err == nil && preferredJSON != "" {
 		if err := json.Unmarshal([]byte(preferredJSON), &preferredTopics); err != nil {
-			lgr.Printf("[WARN] failed to parse preferred topics: %v", err)
+			lgr.Printf("[WARN] failed to parse preferred topics for %s: %v", itemID, err)
 		}
 	}
 	if avoidedJSON, err := s.settingManager.GetSetting(ctx, domain.SettingAvoidedTopics); err == nil && avoidedJSON != "" {
 		if err := json.Unmarshal([]byte(avoidedJSON), &avoidedTopics); err != nil {
-			lgr.Printf("[WARN] failed to parse avoided topics: %v", err)
+			lgr.Printf("[WARN] failed to parse avoided topics for %s: %v", itemID, err)
 		}
 	}
 
@@ -299,12 +332,15 @@ func (s *Scheduler) processItem(ctx context.Context, item *domain.Item) {
 	classification := classifications[0]
 	classification.ClassifiedAt = time.Now()
 
-	if err := s.itemManager.UpdateItemProcessed(ctx, item.ID, extraction, &classification); err != nil {
-		lgr.Printf("[WARN] failed to update item processing: %v", err)
+	err = s.retryDBOperation(ctx, func() error {
+		return s.itemManager.UpdateItemProcessed(ctx, item.ID, extraction, &classification)
+	})
+	if err != nil {
+		lgr.Printf("[WARN] failed to update item %d processing after retries: %v", item.ID, err)
 		return
 	}
 
-	lgr.Printf("[DEBUG] processed item: %s (score: %.1f)", item.Title, classification.Score)
+	lgr.Printf("[DEBUG] processed item %d: %s (score: %.1f, topics: %s)", item.ID, item.Title, classification.Score, strings.Join(classification.Topics, ", "))
 }
 
 // feedUpdateWorker periodically updates all enabled feeds
@@ -357,17 +393,14 @@ func (s *Scheduler) updateAllFeeds(ctx context.Context, processCh chan<- domain.
 
 // updateFeed fetches and stores new items for a single feed
 func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh chan<- domain.Item) {
-	feedName := f.Title
-	if feedName == "" {
-		feedName = f.URL
-	}
-	lgr.Printf("[DEBUG] updating feed: %s", feedName)
+	feedID := s.getFeedIdentifier(f)
+	lgr.Printf("[DEBUG] updating feed: %s", feedID)
 
 	parsedFeed, err := s.parser.Parse(ctx, f.URL)
 	if err != nil {
-		lgr.Printf("[WARN] failed to parse feed %s: %v", f.URL, err)
+		lgr.Printf("[WARN] failed to parse feed %s: %v", feedID, err)
 		if err := s.feedManager.UpdateFeedError(ctx, f.ID, err.Error()); err != nil {
-			lgr.Printf("[WARN] failed to update feed error: %v", err)
+			lgr.Printf("[WARN] failed to update error status for feed %s: %v", feedID, err)
 		}
 		return
 	}
@@ -378,7 +411,7 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 		// check if item exists
 		exists, err := s.itemManager.ItemExists(ctx, f.ID, item.GUID)
 		if err != nil {
-			lgr.Printf("[WARN] failed to check item existence: %v", err)
+			lgr.Printf("[WARN] failed to check item existence in feed %s (GUID %s): %v", feedID, item.GUID, err)
 			continue
 		}
 		if exists {
@@ -388,11 +421,11 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 		// check for duplicates
 		duplicateExists, err := s.itemManager.ItemExistsByTitleOrURL(ctx, item.Title, item.Link)
 		if err != nil {
-			lgr.Printf("[WARN] failed to check duplicate item: %v", err)
+			lgr.Printf("[WARN] failed to check duplicate item in feed %s (title: %s): %v", feedID, item.Title, err)
 			continue
 		}
 		if duplicateExists {
-			lgr.Printf("[DEBUG] skipping duplicate item: %s", item.Title)
+			lgr.Printf("[DEBUG] skipping duplicate item in feed %s: %s", feedID, item.Title)
 			continue
 		}
 
@@ -407,8 +440,12 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 			Published:   item.Published,
 		}
 
-		if err := s.itemManager.CreateItem(ctx, &domainItem); err != nil {
-			lgr.Printf("[WARN] failed to create item: %v", err)
+		// retry on SQLite lock errors
+		createErr := s.retryDBOperation(ctx, func() error {
+			return s.itemManager.CreateItem(ctx, &domainItem)
+		})
+		if createErr != nil {
+			lgr.Printf("[WARN] failed to create item in feed %s after retries (title: %s): %v", feedID, item.Title, createErr)
 			continue
 		}
 
@@ -424,20 +461,24 @@ func (s *Scheduler) updateFeed(ctx context.Context, f *domain.Feed, processCh ch
 
 	// update last fetched timestamp
 	nextFetch := time.Now().Add(f.FetchInterval)
-	if err := s.feedManager.UpdateFeedFetched(ctx, f.ID, nextFetch); err != nil {
-		lgr.Printf("[WARN] failed to update last fetched: %v", err)
+	err = s.retryDBOperation(ctx, func() error {
+		return s.feedManager.UpdateFeedFetched(ctx, f.ID, nextFetch)
+	})
+	if err != nil {
+		lgr.Printf("[WARN] failed to update last fetched for feed %s after retries: %v", feedID, err)
 	}
 
 	if newCount > 0 {
-		lgr.Printf("[INFO] added %d new items from feed: %s", newCount, feedName)
+		lgr.Printf("[INFO] added %d new items from feed %s", newCount, feedID)
 	}
 }
 
 // UpdateFeedNow triggers immediate update of a specific feed
 func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
+	lgr.Printf("[DEBUG] triggering immediate update for feed %d", feedID)
 	feed, err := s.feedManager.GetFeed(ctx, feedID)
 	if err != nil {
-		return fmt.Errorf("get feed: %w", err)
+		return fmt.Errorf("get feed %d: %w", feedID, err)
 	}
 
 	processCh := make(chan domain.Item, defaultUpdateFeedBuffer)
@@ -455,9 +496,10 @@ func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
 
 // ExtractContentNow triggers immediate content extraction for an item
 func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
+	lgr.Printf("[DEBUG] triggering immediate content extraction for item %d", itemID)
 	item, err := s.itemManager.GetItem(ctx, itemID)
 	if err != nil {
-		return fmt.Errorf("get item: %w", err)
+		return fmt.Errorf("get item %d: %w", itemID, err)
 	}
 
 	s.processItem(ctx, item)
@@ -494,30 +536,7 @@ func (s *Scheduler) UpdatePreferenceSummary(ctx context.Context) error {
 	// get current preference summary
 	currentSummary, err := s.settingManager.GetSetting(ctx, "preference_summary")
 	if err != nil || currentSummary == "" {
-		// if no summary exists yet, generate initial one
-		lgr.Printf("[INFO] generating initial preference summary from %d feedback examples", len(feedbacks))
-		newSummary, err := s.classifier.GeneratePreferenceSummary(ctx, feedbacks)
-		if err != nil {
-			return fmt.Errorf("generate initial preference summary: %w", err)
-		}
-
-		if err := s.settingManager.SetSetting(ctx, "preference_summary", newSummary); err != nil {
-			return fmt.Errorf("save initial preference summary: %w", err)
-		}
-
-		// get current feedback count
-		currentCount, err := s.classificationManager.GetFeedbackCount(ctx)
-		if err != nil {
-			return fmt.Errorf("get feedback count: %w", err)
-		}
-
-		// save initial feedback count
-		if err := s.settingManager.SetSetting(ctx, "last_summary_feedback_count", strconv.FormatInt(currentCount, 10)); err != nil {
-			return fmt.Errorf("save initial feedback count: %w", err)
-		}
-
-		lgr.Printf("[INFO] initial preference summary generated successfully")
-		return nil
+		return s.generateInitialPreferenceSummary(ctx, feedbacks)
 	}
 
 	// get last feedback count from settings
@@ -558,11 +577,17 @@ func (s *Scheduler) UpdatePreferenceSummary(ctx context.Context) error {
 	}
 
 	// save updated summary and count
-	if err := s.settingManager.SetSetting(ctx, "preference_summary", newSummary); err != nil {
+	err = s.retryDBOperation(ctx, func() error {
+		return s.settingManager.SetSetting(ctx, "preference_summary", newSummary)
+	})
+	if err != nil {
 		return fmt.Errorf("save preference summary: %w", err)
 	}
 
-	if err := s.settingManager.SetSetting(ctx, "last_summary_feedback_count", strconv.FormatInt(currentCount, 10)); err != nil {
+	err = s.retryDBOperation(ctx, func() error {
+		return s.settingManager.SetSetting(ctx, "last_summary_feedback_count", strconv.FormatInt(currentCount, 10))
+	})
+	if err != nil {
 		return fmt.Errorf("save feedback count: %w", err)
 	}
 
@@ -635,4 +660,101 @@ func (s *Scheduler) performCleanup(ctx context.Context) {
 	} else {
 		lgr.Printf("[DEBUG] cleanup completed: no articles to remove")
 	}
+}
+
+// generateInitialPreferenceSummary creates the first preference summary from feedback
+func (s *Scheduler) generateInitialPreferenceSummary(ctx context.Context, feedbacks []domain.FeedbackExample) error {
+	lgr.Printf("[INFO] generating initial preference summary from %d feedback examples", len(feedbacks))
+	newSummary, err := s.classifier.GeneratePreferenceSummary(ctx, feedbacks)
+	if err != nil {
+		return fmt.Errorf("generate initial preference summary: %w", err)
+	}
+
+	err = s.retryDBOperation(ctx, func() error {
+		return s.settingManager.SetSetting(ctx, "preference_summary", newSummary)
+	})
+	if err != nil {
+		return fmt.Errorf("save initial preference summary: %w", err)
+	}
+
+	// get current feedback count
+	currentCount, err := s.classificationManager.GetFeedbackCount(ctx)
+	if err != nil {
+		return fmt.Errorf("get feedback count: %w", err)
+	}
+
+	// save initial feedback count
+	err = s.retryDBOperation(ctx, func() error {
+		return s.settingManager.SetSetting(ctx, "last_summary_feedback_count", strconv.FormatInt(currentCount, 10))
+	})
+	if err != nil {
+		return fmt.Errorf("save initial feedback count: %w", err)
+	}
+
+	lgr.Printf("[INFO] initial preference summary generated successfully")
+	return nil
+}
+
+// retryDBOperation executes a database operation with retry logic for lock errors
+func (s *Scheduler) retryDBOperation(ctx context.Context, operation func() error) error {
+	attempt := 0
+	// use exponential backoff with jitter to avoid thundering herd
+	return repeater.NewBackoff(s.retryAttempts, s.retryInitialDelay,
+		repeater.WithMaxDelay(s.retryMaxDelay),
+		repeater.WithJitter(s.retryJitter),
+	).Do(ctx, func() error {
+		attempt++
+		if err := operation(); err != nil {
+			if isLockError(err) {
+				if attempt < s.retryAttempts {
+					lgr.Printf("[DEBUG] retrying database operation (attempt %d/%d): %v", attempt, s.retryAttempts, err)
+				}
+				return err // retry on lock errors
+			}
+			return &criticalError{err: err} // stop retrying for other errors
+		}
+		if attempt > 1 {
+			lgr.Printf("[DEBUG] database operation succeeded after %d attempts", attempt)
+		}
+		return nil
+	})
+}
+
+// criticalError wraps an error to signal repeater to stop retrying
+type criticalError struct {
+	err error
+}
+
+func (e *criticalError) Error() string {
+	return e.err.Error()
+}
+
+// isLockError checks if an error is a SQLite lock/busy error
+func isLockError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// check the entire error chain for lock-related messages
+	errStr := err.Error()
+	return strings.Contains(errStr, "SQLITE_BUSY") ||
+		strings.Contains(errStr, "database is locked") ||
+		strings.Contains(errStr, "database table is locked") ||
+		strings.Contains(errStr, "locked")
+}
+
+// getFeedIdentifier returns a human-readable identifier for a feed
+func (s *Scheduler) getFeedIdentifier(f *domain.Feed) string {
+	if f.Title != "" {
+		return f.Title
+	}
+	return f.URL
+}
+
+// getItemIdentifier returns a human-readable identifier for an item
+func (s *Scheduler) getItemIdentifier(item *domain.Item) string {
+	if item.Title != "" {
+		return item.Title
+	}
+	return item.Link
 }

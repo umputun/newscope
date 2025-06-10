@@ -103,6 +103,12 @@ schedule:
   cleanup_age: 168h                 # Maximum age for low-score articles (default: 1 week)
   cleanup_min_score: 5.0            # Minimum score to keep articles regardless of age
   cleanup_interval: 24h             # How often to run cleanup (default: daily)
+  
+  # Retry configuration for database operations (SQLite lock handling)
+  retry_attempts: 5                 # Number of retry attempts (default: 5)
+  retry_initial_delay: 100ms        # Initial retry delay (default: 100ms)
+  retry_max_delay: 5s               # Maximum retry delay (default: 5s)
+  retry_jitter: 0.3                 # Jitter factor 0-1 to avoid thundering herd (default: 0.3)
 
 llm:
   endpoint: "https://api.openai.com/v1"

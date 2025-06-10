@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -1011,7 +1012,7 @@ func TestScheduler_UpdateFeed_ItemCreationError(t *testing.T) {
 
 	// verify - should not return error but should still update feed
 	require.NoError(t, err)
-	assert.Len(t, itemManager.CreateItemCalls(), 1)
+	assert.Len(t, itemManager.CreateItemCalls(), 5)        // 5 attempts due to retry logic (default)
 	assert.Len(t, feedManager.UpdateFeedFetchedCalls(), 1) // should still update feed timestamp
 }
 
@@ -1624,4 +1625,171 @@ func TestScheduler_CleanupConfig(t *testing.T) {
 		assert.InEpsilon(t, 7.5, scheduler.cleanupMinScore, 0.001)
 		assert.Equal(t, 12*time.Hour, scheduler.cleanupInterval)
 	})
+}
+
+func TestScheduler_UpdateFeed_ItemCreationWithLockError(t *testing.T) {
+	// setup dependencies
+	feedManager := &mocks.FeedManagerMock{}
+	itemManager := &mocks.ItemManagerMock{}
+	classificationManager := &mocks.ClassificationManagerMock{}
+	settingManager := &mocks.SettingManagerMock{}
+	parser := &mocks.ParserMock{}
+	extractor := &mocks.ExtractorMock{}
+	classifier := &mocks.ClassifierMock{}
+
+	cfg := Config{
+		UpdateInterval:             100 * time.Millisecond,
+		MaxWorkers:                 1,
+		CleanupInterval:            24 * time.Hour,
+		CleanupAge:                 7 * 24 * time.Hour,
+		CleanupMinScore:            5.0,
+		PreferenceSummaryThreshold: 25,
+	}
+
+	deps := Params{
+		FeedManager:           feedManager,
+		ItemManager:           itemManager,
+		ClassificationManager: classificationManager,
+		SettingManager:        settingManager,
+		Parser:                parser,
+		Extractor:             extractor,
+		Classifier:            classifier,
+	}
+
+	scheduler := NewScheduler(deps, cfg)
+
+	// setup test data
+	testFeed := &domain.Feed{
+		ID:            1,
+		URL:           "https://example.com/feed.xml",
+		FetchInterval: 3600,
+	}
+
+	testParsedFeed := &domain.ParsedFeed{
+		Items: []domain.ParsedItem{
+			{GUID: "item1", Title: "Item 1", Link: "https://example.com/item1"},
+		},
+	}
+
+	// setup feed and parser
+	feedManager.GetFeedFunc = func(ctx context.Context, id int64) (*domain.Feed, error) {
+		return testFeed, nil
+	}
+
+	parser.ParseFunc = func(ctx context.Context, url string) (*domain.ParsedFeed, error) {
+		return testParsedFeed, nil
+	}
+
+	// setup item checks to pass
+	itemManager.ItemExistsFunc = func(ctx context.Context, feedID int64, guid string) (bool, error) {
+		return false, nil
+	}
+
+	itemManager.ItemExistsByTitleOrURLFunc = func(ctx context.Context, title, url string) (bool, error) {
+		return false, nil
+	}
+
+	// setup item creation to fail with lock error initially, then succeed
+	callCount := 0
+	itemManager.CreateItemFunc = func(ctx context.Context, item *domain.Item) error {
+		callCount++
+		if callCount < 5 { // fail first 4 attempts
+			return fmt.Errorf("SQLITE_BUSY: database is locked")
+		}
+		return nil
+	}
+
+	// setup feed update to succeed
+	feedManager.UpdateFeedFetchedFunc = func(ctx context.Context, feedID int64, nextFetch time.Time) error {
+		return nil
+	}
+
+	// setup mocks for background processing
+	extractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
+		return &content.ExtractResult{
+			Content:     "extracted content",
+			RichContent: "<p>rich content</p>",
+		}, nil
+	}
+
+	classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+		return []domain.FeedbackExample{}, nil
+	}
+
+	classificationManager.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
+		return []string{"tech"}, nil
+	}
+
+	settingManager.GetSettingFunc = func(ctx context.Context, key string) (string, error) {
+		return "", nil
+	}
+
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+		return []domain.Classification{
+			{GUID: "item1", Score: 8, Explanation: "Good", Topics: []string{"tech"}},
+		}, nil
+	}
+
+	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
+		return nil
+	}
+
+	// execute
+	err := scheduler.UpdateFeedNow(context.Background(), 1)
+
+	// verify - should succeed after retries
+	require.NoError(t, err)
+	assert.Equal(t, 5, callCount) // should be called 5 times (initial + 4 retries)
+	assert.Len(t, feedManager.UpdateFeedFetchedCalls(), 1)
+}
+
+func TestIsLockError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil error",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "SQLITE_BUSY error",
+			err:  fmt.Errorf("SQLITE_BUSY: database is busy"),
+			want: true,
+		},
+		{
+			name: "database is locked error",
+			err:  fmt.Errorf("database is locked"),
+			want: true,
+		},
+		{
+			name: "database table is locked error",
+			err:  fmt.Errorf("database table is locked"),
+			want: true,
+		},
+		{
+			name: "regular error",
+			err:  fmt.Errorf("some other error"),
+			want: false,
+		},
+		{
+			name: "wrapped SQLITE_BUSY error",
+			err:  fmt.Errorf("failed to update: %w", fmt.Errorf("SQLITE_BUSY")),
+			want: true,
+		},
+		{
+			name: "generic locked error",
+			err:  fmt.Errorf("database operation failed: locked"),
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isLockError(tt.err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

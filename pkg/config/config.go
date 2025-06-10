@@ -27,11 +27,15 @@ type Config struct {
 	} `yaml:"database" json:"database" jsonschema:"description=Database configuration"`
 
 	Schedule struct {
-		UpdateInterval  time.Duration `yaml:"update_interval" json:"update_interval" jsonschema:"default=1m,description=Scheduler run interval"`
-		MaxWorkers      int           `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
-		CleanupAge      time.Duration `yaml:"cleanup_age" json:"cleanup_age" jsonschema:"default=168h,description=Maximum age for articles with low scores (default 1 week)"`
-		CleanupMinScore float64       `yaml:"cleanup_min_score" json:"cleanup_min_score" jsonschema:"default=5.0,description=Minimum score to keep articles regardless of age"`
-		CleanupInterval time.Duration `yaml:"cleanup_interval" json:"cleanup_interval" jsonschema:"default=24h,description=How often to run cleanup"`
+		UpdateInterval    time.Duration `yaml:"update_interval" json:"update_interval" jsonschema:"default=1m,description=Scheduler run interval"`
+		MaxWorkers        int           `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
+		CleanupAge        time.Duration `yaml:"cleanup_age" json:"cleanup_age" jsonschema:"default=168h,description=Maximum age for articles with low scores (default 1 week)"`
+		CleanupMinScore   float64       `yaml:"cleanup_min_score" json:"cleanup_min_score" jsonschema:"default=5.0,description=Minimum score to keep articles regardless of age"`
+		CleanupInterval   time.Duration `yaml:"cleanup_interval" json:"cleanup_interval" jsonschema:"default=24h,description=How often to run cleanup"`
+		RetryAttempts     int           `yaml:"retry_attempts" json:"retry_attempts" jsonschema:"default=5,description=Number of retry attempts for database operations"`
+		RetryInitialDelay time.Duration `yaml:"retry_initial_delay" json:"retry_initial_delay" jsonschema:"default=100ms,description=Initial retry delay for database operations"`
+		RetryMaxDelay     time.Duration `yaml:"retry_max_delay" json:"retry_max_delay" jsonschema:"default=5s,description=Maximum retry delay for database operations"`
+		RetryJitter       float64       `yaml:"retry_jitter" json:"retry_jitter" jsonschema:"default=0.3,minimum=0,maximum=1,description=Jitter factor 0-1 to avoid thundering herd"`
 	} `yaml:"schedule" json:"schedule" jsonschema:"description=Scheduler configuration"`
 
 	LLM LLMConfig `yaml:"llm" json:"llm" jsonschema:"description=LLM configuration for article classification"`
@@ -136,6 +140,18 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Schedule.CleanupInterval == 0 {
 		cfg.Schedule.CleanupInterval = 24 * time.Hour // daily cleanup
+	}
+	if cfg.Schedule.RetryAttempts == 0 {
+		cfg.Schedule.RetryAttempts = 5
+	}
+	if cfg.Schedule.RetryInitialDelay == 0 {
+		cfg.Schedule.RetryInitialDelay = 100 * time.Millisecond
+	}
+	if cfg.Schedule.RetryMaxDelay == 0 {
+		cfg.Schedule.RetryMaxDelay = 5 * time.Second
+	}
+	if cfg.Schedule.RetryJitter == 0 {
+		cfg.Schedule.RetryJitter = 0.3
 	}
 
 	// set defaults for LLM

@@ -144,6 +144,26 @@
             "cleanup_interval": {
               "type": "integer",
               "description": "How often to run cleanup"
+            },
+            "retry_attempts": {
+              "type": "integer",
+              "description": "Number of retry attempts for database operations",
+              "default": 5
+            },
+            "retry_initial_delay": {
+              "type": "integer",
+              "description": "Initial retry delay for database operations"
+            },
+            "retry_max_delay": {
+              "type": "integer",
+              "description": "Maximum retry delay for database operations"
+            },
+            "retry_jitter": {
+              "type": "number",
+              "maximum": 1,
+              "minimum": 0,
+              "description": "Jitter factor 0-1 to avoid thundering herd",
+              "default": 0.3
             }
           },
           "additionalProperties": false,
@@ -153,7 +173,11 @@
             "max_workers",
             "cleanup_age",
             "cleanup_min_score",
-            "cleanup_interval"
+            "cleanup_interval",
+            "retry_attempts",
+            "retry_initial_delay",
+            "retry_max_delay",
+            "retry_jitter"
           ],
           "description": "Scheduler configuration"
         },
