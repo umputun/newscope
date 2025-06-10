@@ -1765,3 +1765,117 @@ small.text-muted {
     font-size: 0.8rem;
     line-height: 1.3;
 }
+
+/* Tab Navigation */
+.settings-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid var(--border-primary);
+}
+
+.settings-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: none;
+    color: var(--text-secondary);
+    border: none;
+    border-bottom: 2px solid transparent;
+    text-decoration: none;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: -2px;
+}
+
+.settings-tab:hover {
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+}
+
+.settings-tab.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+.settings-tab i {
+    font-size: 1.1rem;
+}
+
+/* Tab Content */
+.settings-tab-content {
+    display: none;
+}
+
+/* Show tab based on URL hash */
+.settings-tab-content:target {
+    display: block;
+}
+
+/* Show config tab by default when no hash or when it's targeted */
+#config-tab {
+    display: block;
+}
+
+/* Hide config tab when preferences tab is targeted */
+#preferences-tab:target ~ #config-tab {
+    display: none;
+}
+
+/* Active tab styling - default state */
+.settings-tab[href="#config-tab"] {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+/* Active tab styling when preferences is selected */
+.settings-page:has(#preferences-tab:target) .settings-tab[href="#preferences-tab"] {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+.settings-page:has(#preferences-tab:target) .settings-tab[href="#config-tab"] {
+    color: var(--text-secondary);
+    border-bottom-color: transparent;
+}
+
+/* Responsive tab design for mobile */
+@media (max-width: 768px) {
+    .settings-tabs {
+        flex-direction: column;
+        gap: 0.25rem;
+        border-bottom: none;
+        margin-bottom: 1rem;
+    }
+    
+    .settings-tab {
+        width: 100%;
+        justify-content: center;
+        border-bottom: none;
+        border-left: 3px solid transparent;
+        padding: 1rem;
+        margin-bottom: 0;
+    }
+    
+    .settings-tab:hover {
+        border-left-color: var(--border-secondary);
+    }
+    
+    .settings-tab.active,
+    .settings-tab[href="#config-tab"] {
+        border-left-color: var(--primary-color);
+    }
+    
+    .settings-page:has(#preferences-tab:target) .settings-tab[href="#preferences-tab"] {
+        border-left-color: var(--primary-color);
+    }
+    
+    .settings-page:has(#preferences-tab:target) .settings-tab[href="#config-tab"] {
+        border-left-color: transparent;
+    }
+}
+
+

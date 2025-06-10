@@ -123,7 +123,7 @@ func run(ctx context.Context, opts Opts) error {
 		RetryMaxDelay:              cfg.Schedule.RetryMaxDelay,
 		RetryJitter:                cfg.Schedule.RetryJitter,
 	}
-	
+
 	// warn if jitter is disabled
 	if cfg.Schedule.RetryJitter == 0 {
 		log.Printf("[WARN] retry jitter is set to 0, this may cause thundering herd problems under high database contention")
