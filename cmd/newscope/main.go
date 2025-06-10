@@ -111,7 +111,20 @@ func run(ctx context.Context, opts Opts) error {
 	log.Printf("[INFO] LLM classifier enabled with model: %s", cfg.LLM.Model)
 
 	// setup and start scheduler
-	schedulerCfg := scheduler.Config{
+	// warn if jitter is disabled
+	if cfg.Schedule.RetryJitter == 0 {
+		log.Printf("[WARN] retry jitter is set to 0, this may cause thundering herd problems under high database contention")
+	}
+	params := scheduler.Params{
+		// dependencies
+		FeedManager:           repos.Feed,
+		ItemManager:           repos.Item,
+		ClassificationManager: repos.Classification,
+		SettingManager:        repos.Setting,
+		Parser:                feedParser,
+		Extractor:             contentExtractor,
+		Classifier:            classifier,
+		// configuration
 		UpdateInterval:             cfg.Schedule.UpdateInterval,
 		MaxWorkers:                 cfg.Schedule.MaxWorkers,
 		PreferenceSummaryThreshold: cfg.LLM.Classification.PreferenceSummaryThreshold,
@@ -123,21 +136,7 @@ func run(ctx context.Context, opts Opts) error {
 		RetryMaxDelay:              cfg.Schedule.RetryMaxDelay,
 		RetryJitter:                cfg.Schedule.RetryJitter,
 	}
-
-	// warn if jitter is disabled
-	if cfg.Schedule.RetryJitter == 0 {
-		log.Printf("[WARN] retry jitter is set to 0, this may cause thundering herd problems under high database contention")
-	}
-	deps := scheduler.Params{
-		FeedManager:           repos.Feed,
-		ItemManager:           repos.Item,
-		ClassificationManager: repos.Classification,
-		SettingManager:        repos.Setting,
-		Parser:                feedParser,
-		Extractor:             contentExtractor,
-		Classifier:            classifier,
-	}
-	sched := scheduler.NewScheduler(deps, schedulerCfg)
+	sched := scheduler.NewScheduler(params)
 	sched.Start(ctx)
 	defer sched.Stop()
 

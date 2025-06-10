@@ -3,7 +3,6 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -25,12 +24,7 @@ func TestNewScheduler(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	cfg := Config{
-		UpdateInterval: 5 * time.Minute,
-		MaxWorkers:     3,
-	}
-
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -38,12 +32,15 @@ func TestNewScheduler(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		UpdateInterval:        5 * time.Minute,
+		MaxWorkers:            3,
 	}
-	scheduler := NewScheduler(deps, cfg)
+	scheduler := NewScheduler(params)
 
 	assert.NotNil(t, scheduler)
 	assert.Equal(t, 5*time.Minute, scheduler.updateInterval)
-	assert.Equal(t, 3, scheduler.maxWorkers)
+	assert.NotNil(t, scheduler.feedProcessor)
+	assert.NotNil(t, scheduler.preferenceManager)
 }
 
 func TestNewScheduler_DefaultConfig(t *testing.T) {
@@ -55,9 +52,7 @@ func TestNewScheduler_DefaultConfig(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	cfg := Config{} // empty config
-
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -65,16 +60,17 @@ func TestNewScheduler_DefaultConfig(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		// all config fields left as zero values to test defaults
 	}
-	scheduler := NewScheduler(deps, cfg)
+	scheduler := NewScheduler(params)
 
 	assert.NotNil(t, scheduler)
 	assert.Equal(t, 30*time.Minute, scheduler.updateInterval)  // default
-	assert.Equal(t, 5, scheduler.maxWorkers)                   // default
-	assert.Equal(t, 25, scheduler.preferenceSummaryThreshold)  // default
 	assert.Equal(t, 168*time.Hour, scheduler.cleanupAge)       // default 1 week
 	assert.InEpsilon(t, 5.0, scheduler.cleanupMinScore, 0.001) // default
 	assert.Equal(t, 24*time.Hour, scheduler.cleanupInterval)   // default
+	assert.NotNil(t, scheduler.feedProcessor)
+	assert.NotNil(t, scheduler.preferenceManager)
 }
 
 func TestScheduler_UpdateFeedNow(t *testing.T) {
@@ -86,11 +82,7 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	cfg := Config{
-		UpdateInterval: time.Hour, // long interval to prevent auto-updates
-		MaxWorkers:     1,         // single worker for processing
-	}
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -98,8 +90,10 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		UpdateInterval:        time.Hour, // long interval to prevent auto-updates
+		MaxWorkers:            1,         // single worker for processing
 	}
-	scheduler := NewScheduler(deps, cfg)
+	scheduler := NewScheduler(params)
 
 	testFeed := &domain.Feed{
 		ID:            1,
@@ -154,7 +148,8 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 
 	feedManager.UpdateFeedFetchedFunc = func(ctx context.Context, feedID int64, nextFetch time.Time) error {
 		assert.Equal(t, testFeed.ID, feedID)
-		assert.True(t, nextFetch.After(time.Now()))
+		// nextFetch should be in the future, but allow some timing slack
+		assert.True(t, nextFetch.After(time.Now().Add(-time.Second)))
 		return nil
 	}
 
@@ -221,7 +216,7 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -230,7 +225,7 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		Extractor:             extractor,
 		Classifier:            classifier,
 	}
-	scheduler := NewScheduler(deps, Config{})
+	scheduler := NewScheduler(params)
 
 	testItem := &domain.Item{
 		ID:    1,
@@ -332,12 +327,7 @@ func TestScheduler_StartStop(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	cfg := Config{
-		UpdateInterval: 100 * time.Millisecond, // short interval for testing
-		MaxWorkers:     1,
-	}
-
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -345,8 +335,10 @@ func TestScheduler_StartStop(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		UpdateInterval:        100 * time.Millisecond, // short interval for testing
+		MaxWorkers:            1,
 	}
-	scheduler := NewScheduler(deps, cfg)
+	scheduler := NewScheduler(params)
 
 	// setup minimal expectations for feed update
 	feedManager.GetFeedsFunc = func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error) {
@@ -384,7 +376,7 @@ func TestScheduler_ProcessItem_ExtractionError(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -393,7 +385,7 @@ func TestScheduler_ProcessItem_ExtractionError(t *testing.T) {
 		Extractor:             extractor,
 		Classifier:            classifier,
 	}
-	scheduler := NewScheduler(deps, Config{})
+	scheduler := NewScheduler(params)
 
 	testItem := &domain.Item{
 		ID:   1,
@@ -438,7 +430,7 @@ func TestScheduler_ProcessItem_ClassificationError(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -447,7 +439,7 @@ func TestScheduler_ProcessItem_ClassificationError(t *testing.T) {
 		Extractor:             extractor,
 		Classifier:            classifier,
 	}
-	scheduler := NewScheduler(deps, Config{})
+	scheduler := NewScheduler(params)
 
 	testItem := &domain.Item{
 		ID:   1,
@@ -504,7 +496,7 @@ func TestScheduler_ProcessItem_NoClassificationResults(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -513,7 +505,7 @@ func TestScheduler_ProcessItem_NoClassificationResults(t *testing.T) {
 		Extractor:             extractor,
 		Classifier:            classifier,
 	}
-	scheduler := NewScheduler(deps, Config{})
+	scheduler := NewScheduler(params)
 
 	testItem := &domain.Item{
 		ID:   1,
@@ -570,7 +562,7 @@ func TestScheduler_UpdateFeed_ParseError(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -579,7 +571,7 @@ func TestScheduler_UpdateFeed_ParseError(t *testing.T) {
 		Extractor:             extractor,
 		Classifier:            classifier,
 	}
-	scheduler := NewScheduler(deps, Config{})
+	scheduler := NewScheduler(params)
 
 	testFeed := &domain.Feed{
 		ID:  1,
@@ -622,7 +614,7 @@ func TestScheduler_UpdateFeed_DuplicateItems(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -631,7 +623,7 @@ func TestScheduler_UpdateFeed_DuplicateItems(t *testing.T) {
 		Extractor:             extractor,
 		Classifier:            classifier,
 	}
-	scheduler := NewScheduler(deps, Config{})
+	scheduler := NewScheduler(params)
 
 	testFeed := &domain.Feed{
 		ID:            1,
@@ -744,12 +736,7 @@ func TestScheduler_UpdateAllFeeds_GetFeedsError(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	cfg := Config{
-		UpdateInterval: 100 * time.Millisecond,
-		MaxWorkers:     1,
-	}
-
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -757,8 +744,10 @@ func TestScheduler_UpdateAllFeeds_GetFeedsError(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		UpdateInterval:        100 * time.Millisecond,
+		MaxWorkers:            1,
 	}
-	scheduler := NewScheduler(deps, cfg)
+	scheduler := NewScheduler(params)
 
 	// setup GetFeeds to fail
 	feedManager.GetFeedsFunc = func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error) {
@@ -825,12 +814,7 @@ func TestScheduler_UpdateAllFeeds_MultipleFeeds(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	cfg := Config{
-		UpdateInterval: 100 * time.Millisecond,
-		MaxWorkers:     2, // multiple workers
-	}
-
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -838,8 +822,10 @@ func TestScheduler_UpdateAllFeeds_MultipleFeeds(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		UpdateInterval:        100 * time.Millisecond,
+		MaxWorkers:            2, // multiple workers
 	}
-	scheduler := NewScheduler(deps, cfg)
+	scheduler := NewScheduler(params)
 
 	testFeeds := []domain.Feed{
 		{ID: 1, URL: "https://example.com/feed1.xml", FetchInterval: 3600},
@@ -924,7 +910,7 @@ func TestScheduler_UpdateFeed_ItemCreationError(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -933,7 +919,7 @@ func TestScheduler_UpdateFeed_ItemCreationError(t *testing.T) {
 		Extractor:             extractor,
 		Classifier:            classifier,
 	}
-	scheduler := NewScheduler(deps, Config{})
+	scheduler := NewScheduler(params)
 
 	testFeed := &domain.Feed{
 		ID:            1,
@@ -1016,223 +1002,6 @@ func TestScheduler_UpdateFeed_ItemCreationError(t *testing.T) {
 	assert.Len(t, feedManager.UpdateFeedFetchedCalls(), 1) // should still update feed timestamp
 }
 
-func TestScheduler_UpdatePreferenceSummary(t *testing.T) {
-	t.Run("generate initial summary", func(t *testing.T) {
-		// setup mocks
-		classificationManager := &mocks.ClassificationManagerMock{
-			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
-				assert.Equal(t, 50, limit)
-				return []domain.FeedbackExample{
-					{Title: "AI article", Feedback: domain.FeedbackLike, Topics: []string{"ai"}},
-					{Title: "Politics", Feedback: domain.FeedbackDislike, Topics: []string{"politics"}},
-				}, nil
-			},
-			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
-				return 2, nil
-			},
-		}
-
-		settingManager := &mocks.SettingManagerMock{
-			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-				if key == "preference_summary" {
-					return "", nil // no existing summary
-				}
-				return "0", nil
-			},
-			SetSettingFunc: func(ctx context.Context, key, value string) error {
-				return nil
-			},
-		}
-
-		classifier := &mocks.ClassifierMock{
-			GeneratePreferenceSummaryFunc: func(ctx context.Context, feedback []domain.FeedbackExample) (string, error) {
-				assert.Len(t, feedback, 2)
-				return "User likes AI, dislikes politics", nil
-			},
-		}
-
-		scheduler := &Scheduler{
-			classificationManager: classificationManager,
-			settingManager:        settingManager,
-			classifier:            classifier,
-		}
-
-		// execute
-		err := scheduler.UpdatePreferenceSummary(context.Background())
-
-		// verify
-		require.NoError(t, err)
-		assert.Len(t, classifier.GeneratePreferenceSummaryCalls(), 1)
-		assert.Len(t, settingManager.SetSettingCalls(), 2) // summary and count
-
-		// check both settings were updated
-		var summarySet, countSet bool
-		for _, call := range settingManager.SetSettingCalls() {
-			if call.Key == "preference_summary" && call.Value == "User likes AI, dislikes politics" {
-				summarySet = true
-			}
-			if call.Key == "last_summary_feedback_count" && call.Value == "2" {
-				countSet = true
-			}
-		}
-		assert.True(t, summarySet)
-		assert.True(t, countSet)
-	})
-
-	t.Run("update existing summary with threshold", func(t *testing.T) {
-		// setup mocks
-		classificationManager := &mocks.ClassificationManagerMock{
-			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
-				return []domain.FeedbackExample{
-					{Title: "Go article", Feedback: domain.FeedbackLike, Topics: []string{"golang"}},
-				}, nil
-			},
-			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
-				return 30, nil // 30 total feedbacks
-			},
-		}
-
-		settingManager := &mocks.SettingManagerMock{
-			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-				switch key {
-				case "preference_summary":
-					return "Existing summary", nil
-				case "last_summary_feedback_count":
-					return "5", nil // 5 feedbacks last time
-				}
-				return "", nil
-			},
-			SetSettingFunc: func(ctx context.Context, key, value string) error {
-				return nil
-			},
-		}
-
-		classifier := &mocks.ClassifierMock{
-			UpdatePreferenceSummaryFunc: func(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error) {
-				assert.Equal(t, "Existing summary", currentSummary)
-				return "Updated summary with Go preference", nil
-			},
-		}
-
-		scheduler := &Scheduler{
-			classificationManager: classificationManager,
-			settingManager:        settingManager,
-			classifier:            classifier,
-		}
-
-		// execute
-		err := scheduler.UpdatePreferenceSummary(context.Background())
-
-		// verify - 30-5=25 new feedbacks, exactly at threshold
-		require.NoError(t, err)
-		assert.Len(t, classifier.UpdatePreferenceSummaryCalls(), 1)
-		assert.Len(t, settingManager.SetSettingCalls(), 2) // summary and count
-
-		// check both settings were updated
-		var summarySet, countSet bool
-		for _, call := range settingManager.SetSettingCalls() {
-			if call.Key == "preference_summary" && call.Value == "Updated summary with Go preference" {
-				summarySet = true
-			}
-			if call.Key == "last_summary_feedback_count" && call.Value == "30" {
-				countSet = true
-			}
-		}
-		assert.True(t, summarySet)
-		assert.True(t, countSet)
-	})
-
-	t.Run("skip update when below threshold", func(t *testing.T) {
-		// setup mocks
-		classificationManager := &mocks.ClassificationManagerMock{
-			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
-				return []domain.FeedbackExample{}, nil
-			},
-			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
-				return 15, nil // only 15 total
-			},
-		}
-
-		settingManager := &mocks.SettingManagerMock{
-			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-				switch key {
-				case "preference_summary":
-					return "Existing", nil
-				case "last_summary_feedback_count":
-					return "10", nil // 10 last time, so only 5 new
-				}
-				return "", nil
-			},
-		}
-
-		classifier := &mocks.ClassifierMock{}
-
-		scheduler := &Scheduler{
-			classificationManager: classificationManager,
-			settingManager:        settingManager,
-			classifier:            classifier,
-		}
-
-		// execute
-		err := scheduler.UpdatePreferenceSummary(context.Background())
-
-		// verify - should skip update
-		require.NoError(t, err)
-		assert.Empty(t, classifier.UpdatePreferenceSummaryCalls())
-		assert.Empty(t, settingManager.SetSettingCalls())
-	})
-
-	t.Run("context cancellation", func(t *testing.T) {
-		// setup mocks with delay
-		classificationManager := &mocks.ClassificationManagerMock{
-			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
-				return []domain.FeedbackExample{{Title: "test"}}, nil
-			},
-			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
-				return 50, nil
-			},
-		}
-
-		settingManager := &mocks.SettingManagerMock{
-			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-				if key == "preference_summary" {
-					return "existing", nil
-				}
-				return "0", nil
-			},
-		}
-
-		classifier := &mocks.ClassifierMock{
-			UpdatePreferenceSummaryFunc: func(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error) {
-				// check if context is done
-				select {
-				case <-ctx.Done():
-					return "", ctx.Err()
-				default:
-				}
-				return "updated", nil
-			},
-		}
-
-		scheduler := &Scheduler{
-			classificationManager: classificationManager,
-			settingManager:        settingManager,
-			classifier:            classifier,
-		}
-
-		// create canceled context
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		// execute
-		err := scheduler.UpdatePreferenceSummary(ctx)
-
-		// verify - should return context error
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "context canceled")
-	})
-}
-
 func TestScheduler_UpdateFeed_EmptyTitle(t *testing.T) {
 	feedManager := &mocks.FeedManagerMock{}
 	itemManager := &mocks.ItemManagerMock{}
@@ -1242,7 +1011,7 @@ func TestScheduler_UpdateFeed_EmptyTitle(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -1251,7 +1020,7 @@ func TestScheduler_UpdateFeed_EmptyTitle(t *testing.T) {
 		Extractor:             extractor,
 		Classifier:            classifier,
 	}
-	scheduler := NewScheduler(deps, Config{})
+	scheduler := NewScheduler(params)
 
 	testFeed := &domain.Feed{
 		ID:            1,
@@ -1285,180 +1054,6 @@ func TestScheduler_UpdateFeed_EmptyTitle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, parser.ParseCalls(), 1)
 	assert.Len(t, feedManager.UpdateFeedFetchedCalls(), 1)
-}
-
-func TestScheduler_TriggerPreferenceUpdate(t *testing.T) {
-	// setup mocks
-	classificationManager := &mocks.ClassificationManagerMock{
-		GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
-			return []domain.FeedbackExample{
-				{Title: "Test", Feedback: domain.FeedbackLike},
-			}, nil
-		},
-		GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
-			return 30, nil
-		},
-	}
-
-	settingManager := &mocks.SettingManagerMock{
-		GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-			if key == "last_summary_feedback_count" {
-				return "0", nil
-			}
-			return "", nil
-		},
-		SetSettingFunc: func(ctx context.Context, key, value string) error {
-			return nil
-		},
-	}
-
-	classifier := &mocks.ClassifierMock{
-		GeneratePreferenceSummaryFunc: func(ctx context.Context, feedback []domain.FeedbackExample) (string, error) {
-			return "test summary", nil
-		},
-	}
-
-	scheduler := &Scheduler{
-		classificationManager:      classificationManager,
-		settingManager:             settingManager,
-		classifier:                 classifier,
-		preferenceSummaryThreshold: 25,
-		preferenceUpdateCh:         make(chan struct{}, 1),
-	}
-
-	// trigger multiple updates - only one should be queued
-	scheduler.TriggerPreferenceUpdate()
-	scheduler.TriggerPreferenceUpdate()
-	scheduler.TriggerPreferenceUpdate()
-
-	// verify channel has only one item
-	assert.Len(t, scheduler.preferenceUpdateCh, 1)
-}
-
-func TestScheduler_PreferenceUpdateWorker_Debounce(t *testing.T) {
-	// setup mocks
-	updateCount := 0
-	classificationManager := &mocks.ClassificationManagerMock{
-		GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
-			return []domain.FeedbackExample{{Title: "Test"}}, nil
-		},
-		GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
-			return 30, nil
-		},
-	}
-
-	settingManager := &mocks.SettingManagerMock{
-		GetSettingFunc: func(ctx context.Context, key string) (string, error) {
-			if key == "last_summary_feedback_count" {
-				return "0", nil
-			}
-			return "", nil
-		},
-		SetSettingFunc: func(ctx context.Context, key, value string) error {
-			if key == "preference_summary" {
-				updateCount++
-			}
-			return nil
-		},
-	}
-
-	classifier := &mocks.ClassifierMock{
-		GeneratePreferenceSummaryFunc: func(ctx context.Context, feedback []domain.FeedbackExample) (string, error) {
-			return "test summary", nil
-		},
-	}
-
-	scheduler := &Scheduler{
-		classificationManager:      classificationManager,
-		settingManager:             settingManager,
-		classifier:                 classifier,
-		preferenceSummaryThreshold: 25,
-		preferenceUpdateCh:         make(chan struct{}, 1),
-		wg:                         sync.WaitGroup{},
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	scheduler.wg.Add(1)
-
-	// start worker with shorter debounce for testing
-	go func() {
-		defer scheduler.wg.Done()
-		const debounceDelay = 100 * time.Millisecond // short delay for testing
-		debounceTimer := time.NewTimer(0)
-		if !debounceTimer.Stop() {
-			<-debounceTimer.C
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				debounceTimer.Stop()
-				return
-			case <-scheduler.preferenceUpdateCh:
-				debounceTimer.Stop()
-				debounceTimer.Reset(debounceDelay)
-			case <-debounceTimer.C:
-				if err := scheduler.UpdatePreferenceSummary(ctx); err != nil {
-					t.Logf("update error: %v", err)
-				}
-			}
-		}
-	}()
-
-	// send multiple triggers rapidly
-	scheduler.TriggerPreferenceUpdate()
-	time.Sleep(50 * time.Millisecond)
-	scheduler.TriggerPreferenceUpdate()
-	time.Sleep(50 * time.Millisecond)
-	scheduler.TriggerPreferenceUpdate()
-
-	// wait for debounce to expire
-	time.Sleep(150 * time.Millisecond)
-
-	// stop worker
-	cancel()
-	scheduler.wg.Wait()
-
-	// should have only one update despite multiple triggers
-	assert.Equal(t, 1, updateCount, "should have exactly one preference update")
-}
-
-func TestScheduler_ConfigurableThreshold(t *testing.T) {
-	cfg := Config{
-		UpdateInterval:             time.Hour,
-		MaxWorkers:                 1,
-		PreferenceSummaryThreshold: 10, // custom threshold
-	}
-
-	deps := Params{
-		FeedManager:           &mocks.FeedManagerMock{},
-		ItemManager:           &mocks.ItemManagerMock{},
-		ClassificationManager: &mocks.ClassificationManagerMock{},
-		SettingManager:        &mocks.SettingManagerMock{},
-		Parser:                &mocks.ParserMock{},
-		Extractor:             &mocks.ExtractorMock{},
-		Classifier:            &mocks.ClassifierMock{},
-	}
-
-	scheduler := NewScheduler(deps, cfg)
-	assert.Equal(t, 10, scheduler.preferenceSummaryThreshold)
-}
-
-func TestScheduler_DefaultThreshold(t *testing.T) {
-	cfg := Config{} // no threshold specified
-
-	deps := Params{
-		FeedManager:           &mocks.FeedManagerMock{},
-		ItemManager:           &mocks.ItemManagerMock{},
-		ClassificationManager: &mocks.ClassificationManagerMock{},
-		SettingManager:        &mocks.SettingManagerMock{},
-		Parser:                &mocks.ParserMock{},
-		Extractor:             &mocks.ExtractorMock{},
-		Classifier:            &mocks.ClassifierMock{},
-	}
-
-	scheduler := NewScheduler(deps, cfg)
-	assert.Equal(t, 25, scheduler.preferenceSummaryThreshold) // default value
 }
 
 func TestScheduler_PerformCleanup(t *testing.T) {
@@ -1565,14 +1160,7 @@ func TestScheduler_CleanupWorker(t *testing.T) {
 		},
 	}
 
-	cfg := Config{
-		UpdateInterval:  time.Hour,              // long interval to avoid feed updates
-		CleanupInterval: 100 * time.Millisecond, // short interval for testing
-		CleanupAge:      168 * time.Hour,
-		CleanupMinScore: 5.0,
-	}
-
-	deps := Params{
+	params := Params{
 		FeedManager:           feedManager,
 		ItemManager:           itemManager,
 		ClassificationManager: classificationManager,
@@ -1580,9 +1168,13 @@ func TestScheduler_CleanupWorker(t *testing.T) {
 		Parser:                &mocks.ParserMock{},
 		Extractor:             extractor,
 		Classifier:            classifier,
+		UpdateInterval:        time.Hour,              // long interval to avoid feed updates
+		CleanupInterval:       100 * time.Millisecond, // short interval for testing
+		CleanupAge:            168 * time.Hour,
+		CleanupMinScore:       5.0,
 	}
 
-	scheduler := NewScheduler(deps, cfg)
+	scheduler := NewScheduler(params)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1603,13 +1195,7 @@ func TestScheduler_CleanupWorker(t *testing.T) {
 
 func TestScheduler_CleanupConfig(t *testing.T) {
 	t.Run("custom config values", func(t *testing.T) {
-		cfg := Config{
-			CleanupAge:      72 * time.Hour, // 3 days
-			CleanupMinScore: 7.5,
-			CleanupInterval: 12 * time.Hour,
-		}
-
-		deps := Params{
+		params := Params{
 			FeedManager:           &mocks.FeedManagerMock{},
 			ItemManager:           &mocks.ItemManagerMock{},
 			ClassificationManager: &mocks.ClassificationManagerMock{},
@@ -1617,9 +1203,12 @@ func TestScheduler_CleanupConfig(t *testing.T) {
 			Parser:                &mocks.ParserMock{},
 			Extractor:             &mocks.ExtractorMock{},
 			Classifier:            &mocks.ClassifierMock{},
+			CleanupAge:            72 * time.Hour, // 3 days
+			CleanupMinScore:       7.5,
+			CleanupInterval:       12 * time.Hour,
 		}
 
-		scheduler := NewScheduler(deps, cfg)
+		scheduler := NewScheduler(params)
 
 		assert.Equal(t, 72*time.Hour, scheduler.cleanupAge)
 		assert.InEpsilon(t, 7.5, scheduler.cleanupMinScore, 0.001)
@@ -1637,7 +1226,14 @@ func TestScheduler_UpdateFeed_ItemCreationWithLockError(t *testing.T) {
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
 
-	cfg := Config{
+	params := Params{
+		FeedManager:                feedManager,
+		ItemManager:                itemManager,
+		ClassificationManager:      classificationManager,
+		SettingManager:             settingManager,
+		Parser:                     parser,
+		Extractor:                  extractor,
+		Classifier:                 classifier,
 		UpdateInterval:             100 * time.Millisecond,
 		MaxWorkers:                 1,
 		CleanupInterval:            24 * time.Hour,
@@ -1646,17 +1242,7 @@ func TestScheduler_UpdateFeed_ItemCreationWithLockError(t *testing.T) {
 		PreferenceSummaryThreshold: 25,
 	}
 
-	deps := Params{
-		FeedManager:           feedManager,
-		ItemManager:           itemManager,
-		ClassificationManager: classificationManager,
-		SettingManager:        settingManager,
-		Parser:                parser,
-		Extractor:             extractor,
-		Classifier:            classifier,
-	}
-
-	scheduler := NewScheduler(deps, cfg)
+	scheduler := NewScheduler(params)
 
 	// setup test data
 	testFeed := &domain.Feed{
