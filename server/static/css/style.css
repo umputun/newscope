@@ -60,6 +60,7 @@
         --success-color: #10b981;
         --danger-color: #f87171;
         --warning-color: #fbbf24;
+        --score-bar-bg: #3b82f6;
         
         /* Background colors - dark variants */
         --bg-primary: #0f172a;
@@ -483,49 +484,41 @@ main {
 /* Classification Section */
 .classification {
     margin: 1rem 0;
-    padding: 1rem;
-    background-color: var(--bg-tertiary);
-    border-radius: 0.25rem;
-    transition: background-color 0.3s ease;
+    background-color: var(--bg-secondary);
+    border-radius: 0.5rem;
+    overflow: hidden;
 }
 
 .score-bar {
     position: relative;
-    height: 24px;
-    background-color: var(--border-primary);
-    border-radius: 0.25rem;
-    overflow: hidden;
-    margin-bottom: 0.5rem;
-}
-
-.score-fill {
-    height: 100%;
-    background: linear-gradient(to right, var(--danger-color), var(--warning-color), var(--success-color));
+    height: 32px;
+    background-color: #3b82f6;
+    display: flex;
+    align-items: center;
     transition: width 0.3s ease;
 }
 
 .score-text {
-    position: absolute;
-    top: 50%;
-    left: 0.5rem;
-    transform: translateY(-50%);
-    font-size: 0.875rem;
+    padding-left: 1rem;
+    font-size: 1rem;
     font-weight: 600;
     color: white;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    white-space: nowrap;
 }
 
 .explanation {
     font-size: 0.875rem;
     color: var(--text-secondary);
     font-style: italic;
-    margin-bottom: 0.5rem;
+    margin: 1rem 0 0.5rem 0;
 }
 
 .topics {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
+    margin: 0.5rem 0 1rem 0;
 }
 
 .topics .topic-tag {

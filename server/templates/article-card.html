@@ -63,30 +63,29 @@
         {{end}}
         
         <div class="classification">
-            <div class="score-bar">
-                <div class="score-fill" style="width: {{printf "%.0f" (mul .RelevanceScore 10)}}%"></div>
+            <div class="score-bar" style="width: {{printf "%.0f" (mul .RelevanceScore 10)}}%">
                 <span class="score-text">Score: {{printf "%.1f" .RelevanceScore}}/10</span>
             </div>
-            
-            {{if .Explanation}}
-            <p class="explanation">{{.Explanation}}</p>
-            {{end}}
-            
-            {{if .Topics}}
-            <div class="topics">
-                {{range .Topics}}
-                <a href="#" class="topic-tag clickable-topic" 
-                   data-topic="{{.}}"
-                   hx-get="/articles"
-                   hx-vals='{"topic":"{{.}}"}'
-                   hx-trigger="click"
-                   hx-target="#articles-with-pagination"
-                   hx-swap="innerHTML show:top"
-                   hx-include="#score-filter, #feed-filter, #sort-filter">{{.}}</a>
-                {{end}}
-            </div>
+        </div>
+        
+        {{if .Explanation}}
+        <p class="explanation">{{.Explanation}}</p>
+        {{end}}
+        
+        {{if .Topics}}
+        <div class="topics">
+            {{range .Topics}}
+            <a href="#" class="topic-tag clickable-topic" 
+               data-topic="{{.}}"
+               hx-get="/articles"
+               hx-vals='{"topic":"{{.}}"}'
+               hx-trigger="click"
+               hx-target="#articles-with-pagination"
+               hx-swap="innerHTML show:top"
+               hx-include="#score-filter, #feed-filter, #sort-filter">{{.}}</a>
             {{end}}
         </div>
+        {{end}}
         
         <div class="article-actions">
             <button class="btn-feedback btn-like {{if eq .UserFeedback "like"}}active{{end}}"
