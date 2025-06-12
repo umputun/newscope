@@ -9,7 +9,7 @@
                hx-vals='{"feed":"{{.FeedName}}"}'
                hx-trigger="click"
                hx-target="#articles-with-pagination"
-               hx-swap="innerHTML show:top"
+               hx-swap="innerHTML show:body:top"
                hx-include="#score-filter, #topic-filter, #sort-filter">{{.FeedName}}</a>
             <time datetime="{{.Published.Format "2006-01-02T15:04:05Z07:00"}}">
                 {{.Published.Local.Format "Jan 2, 2006 15:04 MST"}}
@@ -28,7 +28,7 @@
                    hx-vals='{"feed":"{{.FeedName}}"}'
                    hx-trigger="click"
                    hx-target="#articles-with-pagination"
-                   hx-swap="innerHTML show:top"
+                   hx-swap="innerHTML show:body:top"
                    hx-include="#score-filter, #topic-filter, #sort-filter">{{.FeedName}}</a>
                 <time datetime="{{.Published.Format "2006-01-02T15:04:05Z07:00"}}">
                     {{.Published.Local.Format "Jan 2, 15:04"}}
@@ -81,7 +81,7 @@
                hx-vals='{"topic":"{{.}}"}'
                hx-trigger="click"
                hx-target="#articles-with-pagination"
-               hx-swap="innerHTML show:top"
+               hx-swap="innerHTML show:body:top"
                hx-include="#score-filter, #feed-filter, #sort-filter">{{.}}</a>
             {{end}}
         </div>
@@ -109,7 +109,7 @@
                 <button class="btn-content"
                         hx-get="/api/v1/articles/{{.ID}}/content"
                         hx-target="#content-{{.ID}}"
-                        hx-swap="innerHTML">
+                        hx-swap="innerHTML show:body:top">
                     Show Content
                 </button>
             </span>

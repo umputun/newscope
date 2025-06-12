@@ -13,7 +13,7 @@
                hx-get="/articles"
                hx-trigger="change"
                hx-target="#articles-with-pagination"
-               hx-swap="innerHTML show:top"
+               hx-swap="innerHTML show:body:top"
                hx-include="#topic-filter, #feed-filter, #sort-filter, #liked-toggle">
         <span id="score-value">{{.MinScore}}</span>
         
@@ -23,7 +23,7 @@
                 hx-get="/articles"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
-                hx-swap="innerHTML show:top"
+                hx-swap="innerHTML show:body:top"
                 hx-include="#score-filter, #feed-filter, #sort-filter, #liked-toggle">
             <option value="">All Topics</option>
             {{range .Topics}}
@@ -37,7 +37,7 @@
                 hx-get="/articles"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
-                hx-swap="innerHTML show:top"
+                hx-swap="innerHTML show:body:top"
                 hx-include="#score-filter, #topic-filter, #sort-filter, #liked-toggle">
             <option value="">All Feeds</option>
             {{range .Feeds}}
@@ -51,7 +51,7 @@
                 hx-get="/articles"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
-                hx-swap="innerHTML show:top"
+                hx-swap="innerHTML show:body:top"
                 hx-include="#score-filter, #topic-filter, #feed-filter, #liked-toggle">
             <option value="published" {{if eq .SelectedSort "published"}}selected{{end}}>Date</option>
             <option value="score" {{if eq .SelectedSort "score"}}selected{{end}}>Score</option>
@@ -66,7 +66,7 @@
                     hx-get="/articles"
                     hx-trigger="click"
                     hx-target="#articles-with-pagination"
-                    hx-swap="innerHTML show:top"
+                    hx-swap="innerHTML show:body:top"
                     hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter"
                     hx-vals='{"liked": "{{if .ShowLikedOnly}}false{{else}}true{{end}}"}'>
                 ★ Liked
@@ -211,5 +211,6 @@ document.addEventListener('click', function(event) {
         event.preventDefault();
     }
 });
+
 </script>
 {{end}}

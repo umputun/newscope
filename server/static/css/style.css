@@ -309,22 +309,6 @@ main {
     border-color: var(--danger-color);
 }
 
-/* Buttons */
-.btn-refresh {
-    padding: 0.5rem 1rem;
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: 0.25rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.btn-refresh:hover {
-    background-color: var(--primary-hover);
-}
-
 /* Article Cards */
 .article-card {
     background-color: var(--bg-primary);
@@ -1736,11 +1720,6 @@ footer p {
     font-size: 0.75rem;
 }
 
-.settings-description {
-    margin: 0 1.5rem 1rem 1.5rem;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-}
 
 /* Responsive topic preferences */
 @media (max-width: 768px) {
