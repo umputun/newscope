@@ -98,18 +98,49 @@
 <script>
 // Load saved preferences from localStorage
 document.addEventListener('DOMContentLoaded', function() {
-    // Simply update the score display from the current value
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasUrlParams = urlParams.has('sort') || urlParams.has('score') || urlParams.has('topic') || urlParams.has('feed') || urlParams.has('liked');
+    
+    // If no URL parameters, apply saved preferences
+    if (!hasUrlParams) {
+        const savedSort = localStorage.getItem('newscopeSortBy');
+        const savedScore = localStorage.getItem('newscopeMinScore');
+        const savedLiked = localStorage.getItem('newscopeLikedOnly');
+        
+        let needsUpdate = false;
+        
+        if (savedSort && savedSort !== '{{.SelectedSort}}') {
+            document.getElementById('sort-filter').value = savedSort;
+            needsUpdate = true;
+        }
+        if (savedScore && savedScore !== '{{.MinScore}}') {
+            document.getElementById('score-filter').value = savedScore;
+            document.getElementById('score-value').textContent = savedScore;
+            needsUpdate = true;
+        }
+        if (savedLiked !== null && savedLiked !== '{{.ShowLikedOnly}}') {
+            needsUpdate = true;
+        }
+        
+        // Trigger HTMX update if preferences differ from defaults
+        if (needsUpdate) {
+            htmx.trigger('#sort-filter', 'change');
+            return;
+        }
+    } else {
+        // Only save to localStorage when there are URL parameters (explicit user choice)
+        localStorage.setItem('newscopeMinScore', '{{.MinScore}}');
+        localStorage.setItem('newscopeSortBy', '{{.SelectedSort}}');
+        localStorage.setItem('newscopeLikedOnly', '{{.ShowLikedOnly}}');
+    }
+    
+    // Update score display
     const scoreFilter = document.getElementById('score-filter');
     document.getElementById('score-value').textContent = scoreFilter.value;
     
     // Load saved view mode (this is client-side only)
     const savedView = localStorage.getItem('newscopeViewMode') || 'expanded';
     setViewMode(savedView);
-    
-    // Save current state to localStorage to keep it in sync
-    localStorage.setItem('newscopeMinScore', '{{.MinScore}}');
-    localStorage.setItem('newscopeSortBy', '{{.SelectedSort}}');
-    localStorage.setItem('newscopeLikedOnly', '{{.ShowLikedOnly}}');
 });
 
 // Update score display and save to localStorage

@@ -33,7 +33,7 @@
                 <time datetime="{{.Published.Format "2006-01-02T15:04:05Z07:00"}}">
                     {{.Published.Local.Format "Jan 2, 15:04"}}
                 </time>
-                <span class="score-badge">{{printf "%.1f" .RelevanceScore}}</span>
+                <span class="score-badge {{if le .RelevanceScore 5.0}}score-low{{else if le .RelevanceScore 7.0}}score-medium{{else}}score-high{{end}}">{{printf "%.1f" .RelevanceScore}}</span>
             </div>
         </div>
         <div class="condensed-actions">
@@ -63,7 +63,7 @@
         {{end}}
         
         <div class="classification">
-            <div class="score-bar" style="width: {{printf "%.0f" (mul .RelevanceScore 10)}}%">
+            <div class="score-bar {{if le .RelevanceScore 5.0}}score-low{{else if le .RelevanceScore 7.0}}score-medium{{else}}score-high{{end}}" style="width: {{printf "%.0f" (mul .RelevanceScore 10)}}%">
                 <span class="score-text">Score: {{printf "%.1f" .RelevanceScore}}/10</span>
             </div>
         </div>
@@ -109,7 +109,7 @@
                 <button class="btn-content"
                         hx-get="/api/v1/articles/{{.ID}}/content"
                         hx-target="#content-{{.ID}}"
-                        hx-swap="innerHTML show:body:top">
+                        hx-swap="innerHTML">
                     Show Content
                 </button>
             </span>

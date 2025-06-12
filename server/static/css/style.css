@@ -387,6 +387,19 @@ main {
     border-radius: 0.25rem;
     font-size: 0.75rem;
     font-weight: 600;
+    transition: background-color 0.3s ease;
+}
+
+.score-badge.score-low {
+    background-color: #6b7280; /* gray */
+}
+
+.score-badge.score-medium {
+    background-color: #eab308; /* yellow */
+}
+
+.score-badge.score-high {
+    background-color: #22c55e; /* green */
 }
 
 .condensed-actions {
@@ -479,7 +492,20 @@ main {
     background-color: #3b82f6;
     display: flex;
     align-items: center;
-    transition: width 0.3s ease;
+    transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+/* Score-based colors */
+.score-bar.score-low {
+    background-color: #6b7280; /* gray */
+}
+
+.score-bar.score-medium {
+    background-color: #eab308; /* yellow */
+}
+
+.score-bar.score-high {
+    background-color: #22c55e; /* green */
 }
 
 .score-text {
