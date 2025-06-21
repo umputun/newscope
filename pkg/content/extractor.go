@@ -81,6 +81,9 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (*ExtractRes
 	// set user agent
 	req.Header.Set("User-Agent", e.userAgent)
 
+	// add browser-like headers with randomization
+	addBrowserHeaders(req)
+
 	// fetch content
 	resp, err := e.client.Do(req)
 	if err != nil {

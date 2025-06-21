@@ -14,11 +14,12 @@ import (
 
 // Parser parses RSS/Atom feeds
 type Parser struct {
-	client *http.Client
+	client    *http.Client
+	userAgent string
 }
 
 // NewParser creates a new feed parser
-func NewParser(timeout time.Duration) *Parser {
+func NewParser(timeout time.Duration, userAgent string) *Parser {
 	return &Parser{
 		client: &http.Client{
 			Timeout: timeout,
@@ -28,6 +29,7 @@ func NewParser(timeout time.Duration) *Parser {
 				IdleConnTimeout:     90 * time.Second,
 			},
 		},
+		userAgent: userAgent,
 	}
 }
 
@@ -97,7 +99,10 @@ func (p *Parser) fetch(ctx context.Context, url string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", "Newscope/1.0")
+	req.Header.Set("User-Agent", p.userAgent)
+
+	// add browser-like headers
+	addBrowserHeaders(req)
 
 	resp, err := p.client.Do(req)
 	if err != nil {

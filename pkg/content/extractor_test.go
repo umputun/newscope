@@ -529,3 +529,44 @@ func TestHTTPExtractor_SetOptions(t *testing.T) {
 	extractor.SetOptions(50, false, true)
 	assert.NotNil(t, extractor)
 }
+
+func TestHTTPExtractor_UserAgent(t *testing.T) {
+	var capturedUserAgent string
+	var capturedHeaders http.Header
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedUserAgent = r.Header.Get("User-Agent")
+		capturedHeaders = r.Header.Clone()
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(`<!DOCTYPE html>
+<html>
+<head><title>Test Article</title></head>
+<body>
+<article>
+<h1>Test Article</h1>
+<p>This is a test article with enough content to pass the minimum length requirement. We need to make sure it has enough text so the extraction doesn't fail due to content being too short.</p>
+</article>
+</body>
+</html>`))
+	}))
+	defer server.Close()
+
+	expectedUA := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+	extractor := NewHTTPExtractor(5*time.Second, expectedUA)
+	extractor.SetOptions(50, false, false) // lower min length for test
+
+	_, err := extractor.Extract(context.Background(), server.URL)
+	require.NoError(t, err)
+
+	assert.Equal(t, expectedUA, capturedUserAgent, "Extractor should send the configured user agent")
+
+	// verify browser headers are present
+	assert.NotEmpty(t, capturedHeaders.Get("Accept"))
+	assert.Contains(t, capturedHeaders.Get("Accept"), "text/html")
+	assert.NotEmpty(t, capturedHeaders.Get("Accept-Language"))
+	assert.NotEmpty(t, capturedHeaders.Get("Accept-Encoding"))
+	assert.Contains(t, capturedHeaders.Get("Accept-Encoding"), "gzip")
+	assert.Equal(t, "1", capturedHeaders.Get("Upgrade-Insecure-Requests"))
+	assert.NotEmpty(t, capturedHeaders.Get("Sec-Fetch-Dest"))
+	assert.NotEmpty(t, capturedHeaders.Get("Sec-Fetch-Mode"))
+}

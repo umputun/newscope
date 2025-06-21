@@ -69,13 +69,16 @@ type LLMConfig struct {
 	Classification ClassificationConfig `yaml:"classification" json:"classification" jsonschema:"description=Classification-specific settings"`
 }
 
+// DefaultUserAgent is the default browser user agent used for HTTP requests
+const DefaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 // ExtractionConfig holds content extraction settings
 type ExtractionConfig struct {
 	Enabled       bool          `yaml:"enabled" json:"enabled" jsonschema:"default=false,description=Enable content extraction"`
 	Timeout       time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=Extraction timeout per article"`
 	MaxConcurrent int           `yaml:"max_concurrent" json:"max_concurrent" jsonschema:"default=5,description=Maximum concurrent extractions"`
 	RateLimit     time.Duration `yaml:"rate_limit" json:"rate_limit" jsonschema:"default=1s,description=Rate limit between extractions"`
-	UserAgent     string        `yaml:"user_agent" json:"user_agent" jsonschema:"default=Newscope/1.0,description=User agent for HTTP requests"`
+	UserAgent     string        `yaml:"user_agent" json:"user_agent" jsonschema:"default=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36,description=User agent for HTTP requests"`
 	FallbackURL   string        `yaml:"fallback_url" json:"fallback_url" jsonschema:"description=Fallback trafilatura API URL"`
 	MinTextLength int           `yaml:"min_text_length" json:"min_text_length" jsonschema:"default=100,description=Minimum text length to consider valid"`
 	IncludeImages bool          `yaml:"include_images" json:"include_images" jsonschema:"default=false,description=Include images in extraction"`
@@ -179,7 +182,7 @@ func Load(path string) (*Config, error) {
 		cfg.Extraction.RateLimit = 1 * time.Second
 	}
 	if cfg.Extraction.UserAgent == "" {
-		cfg.Extraction.UserAgent = "Newscope/1.0"
+		cfg.Extraction.UserAgent = DefaultUserAgent
 	}
 	if cfg.Extraction.MinTextLength == 0 {
 		cfg.Extraction.MinTextLength = 100
