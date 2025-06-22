@@ -41,6 +41,7 @@ type itemWithFeedSQL struct {
 	RelevanceScore float64           `db:"relevance_score"`
 	Explanation    string            `db:"explanation"`
 	Topics         classificationSQL `db:"topics"`
+	Summary        string            `db:"summary"`
 	ClassifiedAt   *time.Time        `db:"classified_at"`
 
 	// user feedback
@@ -422,6 +423,7 @@ func (r *ClassificationRepository) toDomainClassifiedItem(sqlItem *itemWithFeedS
 			Score:        sqlItem.RelevanceScore,
 			Explanation:  sqlItem.Explanation,
 			Topics:       []string(sqlItem.Topics),
+			Summary:      sqlItem.Summary,
 			ClassifiedAt: *sqlItem.ClassifiedAt,
 		}
 	}

@@ -344,6 +344,17 @@ func TestItemRepository_UpdateItemProcessed(t *testing.T) {
 
 		// verify the update by getting the item and checking fields were set
 		// UpdateItemProcessed updates multiple fields atomically
+		var result struct {
+			Summary          string  `db:"summary"`
+			RelevanceScore   float64 `db:"relevance_score"`
+			ExtractedContent string  `db:"extracted_content"`
+		}
+		err = repos.DB.GetContext(context.Background(), &result,
+			"SELECT summary, relevance_score, extracted_content FROM items WHERE id = ?", testItem.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "Updated summary from processing", result.Summary)
+		assert.InDelta(t, 8.5, result.RelevanceScore, 0.001)
+		assert.Equal(t, extraction.PlainText, result.ExtractedContent)
 	})
 
 	t.Run("update item without summary", func(t *testing.T) {
@@ -375,6 +386,13 @@ func TestItemRepository_UpdateItemProcessed(t *testing.T) {
 
 		err := repos.Item.UpdateItemProcessed(context.Background(), anotherItem.ID, extraction, classification)
 		require.NoError(t, err)
+
+		// verify empty summary is stored correctly
+		var summary string
+		err = repos.DB.GetContext(context.Background(), &summary,
+			"SELECT summary FROM items WHERE id = ?", anotherItem.ID)
+		require.NoError(t, err)
+		assert.Empty(t, summary)
 	})
 
 	t.Run("update non-existent item", func(t *testing.T) {

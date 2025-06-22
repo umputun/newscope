@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS items (
     relevance_score REAL DEFAULT 0,     -- 0-10 score from LLM
     explanation TEXT DEFAULT '',         -- Why this score
     topics JSON DEFAULT '[]',             -- Detected topics/tags
+    summary TEXT DEFAULT '',             -- Article summary
     classified_at DATETIME,
     
     -- User feedback
@@ -63,6 +64,13 @@ CREATE INDEX IF NOT EXISTS idx_items_published ON items(published DESC);
 CREATE INDEX IF NOT EXISTS idx_items_score ON items(relevance_score DESC);
 CREATE INDEX IF NOT EXISTS idx_items_feedback ON items(user_feedback, feedback_at DESC);
 CREATE INDEX IF NOT EXISTS idx_feeds_next ON feeds(next_fetch);
+
+-- Additional performance indexes
+CREATE INDEX IF NOT EXISTS idx_items_feed_published ON items(feed_id, published DESC);
+CREATE INDEX IF NOT EXISTS idx_items_classification ON items(classified_at, relevance_score DESC);
+CREATE INDEX IF NOT EXISTS idx_items_extraction ON items(extracted_at);
+CREATE INDEX IF NOT EXISTS idx_items_score_feedback ON items(relevance_score DESC) WHERE user_feedback = '';
+CREATE INDEX IF NOT EXISTS idx_feeds_enabled_next ON feeds(enabled, next_fetch) WHERE enabled = 1;
 
 -- Update timestamp trigger
 CREATE TRIGGER IF NOT EXISTS items_updated_at AFTER UPDATE ON items BEGIN

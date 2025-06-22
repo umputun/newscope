@@ -478,6 +478,12 @@ main {
     margin-bottom: 1rem;
 }
 
+.article-summary {
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+    line-height: 1.6;
+}
+
 /* Classification Section */
 .classification {
     margin: 1rem 0;

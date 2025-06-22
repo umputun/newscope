@@ -40,6 +40,7 @@ type itemSQL struct {
 	RelevanceScore float64    `db:"relevance_score"`
 	Explanation    string     `db:"explanation"`
 	Topics         topicsSQL  `db:"topics"`
+	Summary        string     `db:"summary"`
 	ClassifiedAt   *time.Time `db:"classified_at"`
 
 	// user feedback
@@ -238,10 +239,11 @@ func (r *ItemRepository) UpdateItemClassification(ctx context.Context, itemID in
 		SET relevance_score = ?, 
 		    explanation = ?,
 		    topics = ?,
+		    summary = ?,
 		    classified_at = datetime('now')
 		WHERE id = ?
 	`
-	_, err := r.db.ExecContext(ctx, query, classification.Score, classification.Explanation, topicsSQL(classification.Topics), itemID)
+	_, err := r.db.ExecContext(ctx, query, classification.Score, classification.Explanation, topicsSQL(classification.Topics), classification.Summary, itemID)
 	if err != nil {
 		return fmt.Errorf("update item classification: %w", err)
 	}
@@ -256,36 +258,20 @@ func (r *ItemRepository) UpdateItemProcessed(ctx context.Context, itemID int64, 
 		var query string
 		var args []interface{}
 
-		if classification.Summary != "" {
-			query = `
-				UPDATE items 
-				SET extracted_content = ?, 
-				    extracted_rich_content = ?, 
-				    extracted_at = datetime('now'),
-				    relevance_score = ?, 
-				    explanation = ?,
-				    topics = ?,
-				    classified_at = datetime('now'),
-				    description = ?
-				WHERE id = ?
-			`
-			args = []interface{}{extraction.PlainText, extraction.RichHTML, classification.Score,
-				classification.Explanation, topicsSQL(classification.Topics), classification.Summary, itemID}
-		} else {
-			query = `
-				UPDATE items 
-				SET extracted_content = ?, 
-				    extracted_rich_content = ?, 
-				    extracted_at = datetime('now'),
-				    relevance_score = ?, 
-				    explanation = ?,
-				    topics = ?,
-				    classified_at = datetime('now')
-				WHERE id = ?
-			`
-			args = []interface{}{extraction.PlainText, extraction.RichHTML, classification.Score,
-				classification.Explanation, topicsSQL(classification.Topics), itemID}
-		}
+		query = `
+			UPDATE items 
+			SET extracted_content = ?, 
+			    extracted_rich_content = ?, 
+			    extracted_at = datetime('now'),
+			    relevance_score = ?, 
+			    explanation = ?,
+			    topics = ?,
+			    summary = ?,
+			    classified_at = datetime('now')
+			WHERE id = ?
+		`
+		args = []interface{}{extraction.PlainText, extraction.RichHTML, classification.Score,
+			classification.Explanation, topicsSQL(classification.Topics), classification.Summary, itemID}
 
 		_, err := r.db.ExecContext(ctx, query, args...)
 		if err != nil {

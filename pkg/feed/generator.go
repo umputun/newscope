@@ -75,7 +75,11 @@ func (g *Generator) convertToRSSItem(item domain.ItemWithClassification) *RSSIte
 	if len(item.Topics) > 0 {
 		desc += fmt.Sprintf("\nTopics: %s", strings.Join(item.Topics, ", "))
 	}
-	if item.Description != "" {
+
+	// add summary if available, otherwise use original description
+	if item.Summary != "" {
+		desc += "\n\n" + item.Summary
+	} else if item.Description != "" {
 		desc += "\n\n" + item.Description
 	}
 

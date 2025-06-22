@@ -170,6 +170,7 @@ func (r *RepositoryAdapter) toItemWithClassification(item *domain.ClassifiedItem
 		result.RelevanceScore = item.Classification.Score
 		result.Explanation = item.Classification.Explanation
 		result.Topics = item.Classification.Topics
+		result.Summary = item.Classification.Summary
 		result.ClassifiedAt = &item.Classification.ClassifiedAt
 	}
 

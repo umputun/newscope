@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite" // pure Go SQLite driver
 )
 
-//go:embed schema.sql
+//go:embed schema.sql migrations.sql
 var schemaFS embed.FS
 
 // Config represents database configuration
@@ -78,6 +78,11 @@ func NewRepositories(ctx context.Context, cfg Config) (*Repositories, error) {
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
 
+	// run migrations
+	if err := runMigrations(ctx, db); err != nil {
+		return nil, fmt.Errorf("run migrations: %w", err)
+	}
+
 	// create repositories
 	repos := &Repositories{
 		Feed:           NewFeedRepository(db),
@@ -132,4 +137,35 @@ func isLockError(err error) bool {
 	return strings.Contains(errStr, "SQLITE_BUSY") ||
 		strings.Contains(errStr, "database is locked") ||
 		strings.Contains(errStr, "database table is locked")
+}
+
+// runMigrations runs database migrations to update schema
+func runMigrations(ctx context.Context, db *sqlx.DB) error {
+	// check if summary column exists
+	var count int
+	err := db.GetContext(ctx, &count,
+		`SELECT COUNT(*) FROM pragma_table_info('items') WHERE name = 'summary'`)
+	if err != nil {
+		return fmt.Errorf("check summary column: %w", err)
+	}
+
+	// add summary column if it doesn't exist
+	if count == 0 {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE items ADD COLUMN summary TEXT DEFAULT ''`); err != nil {
+			return fmt.Errorf("add summary column: %w", err)
+		}
+	}
+
+	// read and execute migrations.sql
+	migrations, err := schemaFS.ReadFile("migrations.sql")
+	if err != nil {
+		return fmt.Errorf("read migrations: %w", err)
+	}
+
+	// execute migrations (indexes are idempotent with IF NOT EXISTS)
+	if _, err := db.ExecContext(ctx, string(migrations)); err != nil {
+		return fmt.Errorf("execute migrations: %w", err)
+	}
+
+	return nil
 }

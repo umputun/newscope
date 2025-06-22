@@ -61,18 +61,21 @@ func TestClassificationRepository_GetClassifiedItems_Sorting(t *testing.T) {
 			Score:       9.0, // highest score
 			Explanation: "High relevance",
 			Topics:      []string{"important"},
+			Summary:     "Summary for high score item",
 		},
 		{
 			GUID:        "item-2",
 			Score:       5.0, // lowest score
 			Explanation: "Low relevance",
 			Topics:      []string{"general"},
+			Summary:     "Summary for low score item",
 		},
 		{
 			GUID:        "item-3",
 			Score:       7.0, // medium score
 			Explanation: "Medium relevance",
 			Topics:      []string{"moderate"},
+			Summary:     "Summary for medium score item",
 		},
 	}
 
@@ -100,6 +103,11 @@ func TestClassificationRepository_GetClassifiedItems_Sorting(t *testing.T) {
 		assert.InDelta(t, 9.0, items[0].Classification.Score, 0.001)
 		assert.InDelta(t, 7.0, items[1].Classification.Score, 0.001)
 		assert.InDelta(t, 5.0, items[2].Classification.Score, 0.001)
+
+		// verify summaries are returned correctly
+		assert.Equal(t, "Summary for high score item", items[0].Classification.Summary)
+		assert.Equal(t, "Summary for medium score item", items[1].Classification.Summary)
+		assert.Equal(t, "Summary for low score item", items[2].Classification.Summary)
 	})
 
 	t.Run("sort by published date descending", func(t *testing.T) {
