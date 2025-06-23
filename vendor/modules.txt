@@ -192,7 +192,7 @@ github.com/rivo/uniseg
 github.com/rs/zerolog
 github.com/rs/zerolog/internal/cbor
 github.com/rs/zerolog/internal/json
-# github.com/sashabaranov/go-openai v1.40.1
+# github.com/sashabaranov/go-openai v1.40.2
 ## explicit; go 1.18
 github.com/sashabaranov/go-openai
 github.com/sashabaranov/go-openai/internal
@@ -258,7 +258,7 @@ golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/blowfish
-# golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476
+# golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
 ## explicit; go 1.23.0
 golang.org/x/exp/constraints
 # golang.org/x/net v0.41.0
@@ -300,7 +300,7 @@ golang.org/x/text/unicode/rangetable
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# modernc.org/libc v1.65.10
+# modernc.org/libc v1.66.0
 ## explicit; go 1.23.0
 modernc.org/libc
 modernc.org/libc/errno

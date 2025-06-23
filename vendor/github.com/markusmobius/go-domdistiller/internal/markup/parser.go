@@ -47,10 +47,10 @@ import (
 // or the properties retrieved are null or empty, we try with SchemaOrg then IEReadingView.
 //
 // The properties that matter to distilled content are:
-//   - individual properties: title, page type, page url, description, publisher, author, copyright
-//   - dominant and inline images and their properties: url, secure_url, type, caption, width, height
-//   - article and its properties: section name, published time, modified time, expiration time,
-//     authors.
+// - individual properties: title, page type, page url, description, publisher, author, copyright
+// - dominant and inline images and their properties: url, secure_url, type, caption, width, height
+// - article and its properties: section name, published time, modified time, expiration time,
+//   authors.
 //
 // TODO: for some properties, e.g. dominant and inline images, we might want to retrieve from
 // multiple parsers; IEReadingViewParser provides more information as it scans all images in the
