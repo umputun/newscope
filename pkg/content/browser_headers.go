@@ -55,4 +55,3 @@ func addBrowserHeaders(req *http.Request) {
 		req.Header.Set("Connection", "keep-alive")
 	}
 }
-

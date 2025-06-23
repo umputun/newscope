@@ -84,7 +84,7 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (*ExtractRes
 
 	var result *ExtractResult
 	termErr := &clientError{} // terminal error for client errors
-	
+
 	// retry with exponential backoff for network/server errors
 	err = repeater.NewBackoff(3, time.Second, repeater.WithMaxDelay(10*time.Second)).
 		Do(ctx, func() error {

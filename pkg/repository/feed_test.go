@@ -162,7 +162,7 @@ func TestFeedRepository_UpdateFeedError(t *testing.T) {
 		assert.Equal(t, errorMsg, updatedFeed.LastError)
 		assert.Equal(t, 1, updatedFeed.ErrorCount)
 		assert.NotNil(t, updatedFeed.NextFetch)
-		
+
 		// next_fetch should be ~10 minutes from now (error_count=0 -> 10 min)
 		expectedDelay := 10 * time.Minute
 		actualDelay := updatedFeed.NextFetch.Sub(beforeUpdate)
@@ -177,7 +177,7 @@ func TestFeedRepository_UpdateFeedError(t *testing.T) {
 		updatedFeed, err = repos.Feed.GetFeed(context.Background(), testFeed.ID)
 		require.NoError(t, err)
 		assert.Equal(t, 2, updatedFeed.ErrorCount)
-		
+
 		// next_fetch should be ~20 minutes from now (error_count=1 -> 20 min)
 		expectedDelay = 20 * time.Minute
 		actualDelay = updatedFeed.NextFetch.Sub(beforeSecond)
@@ -192,7 +192,7 @@ func TestFeedRepository_UpdateFeedError(t *testing.T) {
 		updatedFeed, err = repos.Feed.GetFeed(context.Background(), testFeed.ID)
 		require.NoError(t, err)
 		assert.Equal(t, 3, updatedFeed.ErrorCount)
-		
+
 		// next_fetch should be ~40 minutes from now (error_count=2 -> 40 min)
 		expectedDelay = 40 * time.Minute
 		actualDelay = updatedFeed.NextFetch.Sub(beforeThird)
@@ -209,7 +209,7 @@ func TestFeedRepository_UpdateFeedError(t *testing.T) {
 		// verify error count was reset
 		updatedFeed, err := repos.Feed.GetFeed(context.Background(), testFeed.ID)
 		require.NoError(t, err)
-		
+
 		assert.Equal(t, 0, updatedFeed.ErrorCount)
 		assert.Empty(t, updatedFeed.LastError)
 	})
