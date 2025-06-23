@@ -131,3 +131,55 @@ func TestRunMigrations_IdempotentIndexes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, indexCount, 5, "should have created performance indexes")
 }
+
+func TestTopicJSONIndex(t *testing.T) {
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+
+	// initialize schema with indexes
+	err = initSchema(ctx, db)
+	require.NoError(t, err)
+	err = runMigrations(ctx, db)
+	require.NoError(t, err)
+
+	// verify JSON index exists
+	var indexExists bool
+	err = db.GetContext(ctx, &indexExists,
+		`SELECT COUNT(*) > 0 FROM sqlite_master 
+		WHERE type = 'index' AND name = 'idx_items_topics_json'`)
+	require.NoError(t, err)
+	assert.True(t, indexExists, "JSON topic index should exist")
+
+	// test that index can be used for topic queries
+	// create a test feed first
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO feeds (url, title, enabled) 
+		VALUES ('http://example.com/feed', 'Test Feed', 1)
+	`)
+	require.NoError(t, err)
+
+	// insert test data
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO items (feed_id, guid, title, link, topics, relevance_score, classified_at)
+		VALUES 
+			(1, 'test-1', 'Article 1', 'http://example.com/1', '["tech", "ai"]', 8.0, datetime('now')),
+			(1, 'test-2', 'Article 2', 'http://example.com/2', '["science", "ai"]', 7.5, datetime('now')),
+			(1, 'test-3', 'Article 3', 'http://example.com/3', '["tech", "web"]', 9.0, datetime('now'))
+	`)
+	require.NoError(t, err)
+
+	// test optimized topic query
+	var count int
+	err = db.GetContext(ctx, &count, `
+		SELECT COUNT(*) FROM items
+		WHERE EXISTS (
+			SELECT 1 FROM json_each(items.topics)
+			WHERE json_each.value = 'tech'
+		)
+	`)
+	require.NoError(t, err)
+	assert.Equal(t, 2, count, "should find 2 items with 'tech' topic")
+}

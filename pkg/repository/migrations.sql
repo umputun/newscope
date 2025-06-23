@@ -12,3 +12,13 @@ CREATE INDEX IF NOT EXISTS idx_items_classification ON items(classified_at, rele
 CREATE INDEX IF NOT EXISTS idx_items_extraction ON items(extracted_at);
 CREATE INDEX IF NOT EXISTS idx_items_score_feedback ON items(relevance_score DESC) WHERE user_feedback = '';
 CREATE INDEX IF NOT EXISTS idx_feeds_enabled_next ON feeds(enabled, next_fetch) WHERE enabled = 1;
+
+-- Migration 3: Add topic-related performance improvements
+-- Add indexes for JSON topic queries
+CREATE INDEX IF NOT EXISTS idx_items_topics_json ON items(json_extract(topics, '$'));
+
+-- Add index for efficient topic statistics
+CREATE INDEX IF NOT EXISTS idx_items_score_classified ON items(relevance_score DESC, classified_at) WHERE classified_at IS NOT NULL;
+
+-- Add composite index for topic filtering with score
+CREATE INDEX IF NOT EXISTS idx_items_classified_score ON items(classified_at, relevance_score DESC) WHERE classified_at IS NOT NULL;

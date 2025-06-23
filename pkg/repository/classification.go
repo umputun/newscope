@@ -109,8 +109,11 @@ func (r *ClassificationRepository) GetClassifiedItems(ctx context.Context, filte
 
 	// add topic filter if specified
 	if filter.Topic != "" {
-		query += ` AND JSON_EXTRACT(i.topics, '$') LIKE ?`
-		args = append(args, "%\""+filter.Topic+"\"%")
+		query += ` AND EXISTS (
+			SELECT 1 FROM json_each(i.topics) 
+			WHERE json_each.value = ?
+		)`
+		args = append(args, filter.Topic)
 	}
 
 	// add feed filter if specified
@@ -186,14 +189,17 @@ func (r *ClassificationRepository) GetTopics(ctx context.Context) ([]string, err
 
 // GetTopicsFiltered returns unique topics from items with score >= minScore
 func (r *ClassificationRepository) GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error) {
+	// optimized query that can use the JSON index
 	query := `
-		SELECT DISTINCT value 
-		FROM (
-			SELECT json_each.value 
-			FROM items, json_each(items.topics)
-			WHERE items.classified_at IS NOT NULL
-			AND items.relevance_score >= ?
+		WITH filtered_items AS (
+			SELECT topics
+			FROM items
+			WHERE classified_at IS NOT NULL
+			AND relevance_score >= ?
+			AND topics != '[]'
 		)
+		SELECT DISTINCT value 
+		FROM filtered_items, json_each(filtered_items.topics)
 		ORDER BY value
 	`
 
@@ -213,19 +219,26 @@ type TopicWithScore struct {
 
 // GetTopTopicsByScore returns topics ordered by average relevance score (highest first)
 func (r *ClassificationRepository) GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]TopicWithScore, error) {
+	// optimized query using CTE for better performance
 	query := `
+		WITH filtered_items AS (
+			SELECT topics, relevance_score
+			FROM items
+			WHERE classified_at IS NOT NULL
+			AND relevance_score >= ?
+			AND topics != '[]'
+		),
+		topic_scores AS (
+			SELECT 
+				json_each.value as topic,
+				filtered_items.relevance_score
+			FROM filtered_items, json_each(filtered_items.topics)
+		)
 		SELECT 
 			topic,
 			AVG(relevance_score) as avg_score,
 			COUNT(*) as item_count
-		FROM (
-			SELECT 
-				json_each.value as topic,
-				items.relevance_score
-			FROM items, json_each(items.topics)
-			WHERE items.classified_at IS NOT NULL
-			AND items.relevance_score >= ?
-		)
+		FROM topic_scores
 		GROUP BY topic
 		ORDER BY avg_score DESC, item_count DESC
 		LIMIT ?
@@ -452,8 +465,11 @@ func (r *ClassificationRepository) GetClassifiedItemsCount(ctx context.Context, 
 
 	// add topic filter if specified
 	if filter.Topic != "" {
-		query += ` AND JSON_EXTRACT(i.topics, '$') LIKE ?`
-		args = append(args, "%\""+filter.Topic+"\"%")
+		query += ` AND EXISTS (
+			SELECT 1 FROM json_each(i.topics) 
+			WHERE json_each.value = ?
+		)`
+		args = append(args, filter.Topic)
 	}
 
 	// add feed filter if specified
