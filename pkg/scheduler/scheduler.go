@@ -124,37 +124,7 @@ type Params struct {
 
 // NewScheduler creates a new scheduler instance
 func NewScheduler(params Params) *Scheduler {
-	if params.UpdateInterval == 0 {
-		params.UpdateInterval = 30 * time.Minute
-	}
-	if params.MaxWorkers == 0 {
-		params.MaxWorkers = 5
-	}
-	if params.PreferenceSummaryThreshold == 0 {
-		params.PreferenceSummaryThreshold = 25
-	}
-	if params.CleanupInterval == 0 {
-		params.CleanupInterval = 24 * time.Hour
-	}
-	if params.CleanupAge == 0 {
-		params.CleanupAge = 168 * time.Hour // 1 week
-	}
-	if params.CleanupMinScore == 0 {
-		params.CleanupMinScore = 5.0
-	}
-	// retry defaults
-	if params.RetryAttempts == 0 {
-		params.RetryAttempts = 5
-	}
-	if params.RetryInitialDelay == 0 {
-		params.RetryInitialDelay = 100 * time.Millisecond
-	}
-	if params.RetryMaxDelay == 0 {
-		params.RetryMaxDelay = 5 * time.Second
-	}
-	if params.RetryJitter == 0 {
-		params.RetryJitter = 0.3
-	}
+	// all defaults are set in config.Load(), not here
 
 	s := &Scheduler{
 		itemManager:        params.ItemManager,
@@ -224,12 +194,19 @@ func (s *Scheduler) Start(ctx context.Context) {
 		s.preferenceManager.PreferenceUpdateWorker(ctx, s.preferenceUpdateCh)
 	}()
 
-	// start cleanup worker
-	s.wg.Add(1)
-	go s.cleanupWorker(ctx)
+	// start cleanup worker if cleanup is enabled
+	if s.cleanupInterval > 0 {
+		s.wg.Add(1)
+		go s.cleanupWorker(ctx)
+	}
 
-	lgr.Printf("[INFO] scheduler started with update interval %v, cleanup interval %v",
-		s.updateInterval, s.cleanupInterval)
+	if s.cleanupInterval > 0 {
+		lgr.Printf("[INFO] scheduler started with update interval %v, cleanup interval %v",
+			s.updateInterval, s.cleanupInterval)
+	} else {
+		lgr.Printf("[INFO] scheduler started with update interval %v, cleanup disabled",
+			s.updateInterval)
+	}
 }
 
 // Stop gracefully stops the scheduler
