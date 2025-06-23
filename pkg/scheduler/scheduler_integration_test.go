@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,6 +24,9 @@ func TestScheduler_Integration_FullWorkflow(t *testing.T) {
 	parser := &mocks.ParserMock{}
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
+
+	// mutex for protecting shared state
+	var mu sync.Mutex
 
 	// test data
 	testFeeds := []domain.Feed{
@@ -85,6 +89,8 @@ func TestScheduler_Integration_FullWorkflow(t *testing.T) {
 
 	itemManager.ItemExistsFunc = func(ctx context.Context, feedID int64, guid string) (bool, error) {
 		// check if item already created
+		mu.Lock()
+		defer mu.Unlock()
 		for _, item := range createdItems {
 			if item.FeedID == feedID && item.GUID == guid {
 				return true, nil
@@ -94,6 +100,8 @@ func TestScheduler_Integration_FullWorkflow(t *testing.T) {
 	}
 
 	itemManager.ItemExistsByTitleOrURLFunc = func(ctx context.Context, title, url string) (bool, error) {
+		mu.Lock()
+		defer mu.Unlock()
 		for _, item := range createdItems {
 			if item.Title == title || item.Link == url {
 				return true, nil
@@ -103,6 +111,8 @@ func TestScheduler_Integration_FullWorkflow(t *testing.T) {
 	}
 
 	itemManager.CreateItemFunc = func(ctx context.Context, item *domain.Item) error {
+		mu.Lock()
+		defer mu.Unlock()
 		item.ID = nextItemID
 		nextItemID++
 		createdItems = append(createdItems, *item)
@@ -110,6 +120,8 @@ func TestScheduler_Integration_FullWorkflow(t *testing.T) {
 	}
 
 	itemManager.GetItemFunc = func(ctx context.Context, id int64) (*domain.Item, error) {
+		mu.Lock()
+		defer mu.Unlock()
 		for _, item := range createdItems {
 			if item.ID == id {
 				return &item, nil

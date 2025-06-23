@@ -61,18 +61,21 @@ func TestClassificationRepository_GetClassifiedItems_Sorting(t *testing.T) {
 			Score:       9.0, // highest score
 			Explanation: "High relevance",
 			Topics:      []string{"important"},
+			Summary:     "Summary for high score item",
 		},
 		{
 			GUID:        "item-2",
 			Score:       5.0, // lowest score
 			Explanation: "Low relevance",
 			Topics:      []string{"general"},
+			Summary:     "Summary for low score item",
 		},
 		{
 			GUID:        "item-3",
 			Score:       7.0, // medium score
 			Explanation: "Medium relevance",
 			Topics:      []string{"moderate"},
+			Summary:     "Summary for medium score item",
 		},
 	}
 
@@ -100,6 +103,11 @@ func TestClassificationRepository_GetClassifiedItems_Sorting(t *testing.T) {
 		assert.InDelta(t, 9.0, items[0].Classification.Score, 0.001)
 		assert.InDelta(t, 7.0, items[1].Classification.Score, 0.001)
 		assert.InDelta(t, 5.0, items[2].Classification.Score, 0.001)
+
+		// verify summaries are returned correctly
+		assert.Equal(t, "Summary for high score item", items[0].Classification.Summary)
+		assert.Equal(t, "Summary for medium score item", items[1].Classification.Summary)
+		assert.Equal(t, "Summary for low score item", items[2].Classification.Summary)
 	})
 
 	t.Run("sort by published date descending", func(t *testing.T) {
@@ -780,6 +788,17 @@ func TestClassificationRepository_GetRecentFeedback(t *testing.T) {
 		}
 		err = repos.Item.UpdateItemExtraction(context.Background(), testItems[i].ID, extraction)
 		require.NoError(t, err)
+
+		// add classification with summary
+		classification := &domain.Classification{
+			GUID:        testItems[i].GUID,
+			Score:       8.0,
+			Explanation: "Test classification",
+			Topics:      []string{"test"},
+			Summary:     fmt.Sprintf("AI summary for %s", testItems[i].Title),
+		}
+		err = repos.Item.UpdateItemClassification(context.Background(), testItems[i].ID, classification)
+		require.NoError(t, err)
 	}
 
 	// add feedback to items
@@ -806,6 +825,9 @@ func TestClassificationRepository_GetRecentFeedback(t *testing.T) {
 		feedbackTypes := make(map[domain.FeedbackType]int)
 		for _, example := range examples {
 			feedbackTypes[example.Feedback]++
+			// verify summary is included
+			assert.NotEmpty(t, example.Summary)
+			assert.Contains(t, example.Summary, "AI summary for")
 		}
 		assert.Equal(t, 2, feedbackTypes[domain.FeedbackLike])
 		assert.Equal(t, 1, feedbackTypes[domain.FeedbackDislike])
@@ -819,6 +841,9 @@ func TestClassificationRepository_GetRecentFeedback(t *testing.T) {
 		assert.Len(t, examples, 2)
 		for _, example := range examples {
 			assert.Equal(t, domain.FeedbackLike, example.Feedback)
+			// verify summary is included
+			assert.NotEmpty(t, example.Summary)
+			assert.Contains(t, example.Summary, "AI summary for")
 		}
 	})
 
@@ -1227,4 +1252,175 @@ func TestClassificationRepository_GetClassifiedItems_LikedFilter(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 4, count) // all 4 items
 	})
+}
+
+func TestClassificationRepository_SearchItems(t *testing.T) {
+	// setup test database
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// create test feed
+	testFeed := createTestFeed(t, repos, "Tech News")
+
+	// create test items with content for FTS
+	items := []struct {
+		title       string
+		description string
+		content     string
+		summary     string
+		score       float64
+		topics      []string
+		feedback    string
+	}{
+		{
+			title:       "Golang Best Practices",
+			description: "Learn about best practices in Go programming",
+			content:     "This article covers testing, error handling, and concurrency patterns in Go",
+			summary:     "A comprehensive guide to Go best practices",
+			score:       8.5,
+			topics:      []string{"golang", "programming"},
+			feedback:    "like",
+		},
+		{
+			title:       "Python Machine Learning",
+			description: "Introduction to ML with Python",
+			content:     "Python provides excellent libraries for machine learning and data science",
+			summary:     "Getting started with ML in Python",
+			score:       7.0,
+			topics:      []string{"python", "ml"},
+			feedback:    "",
+		},
+		{
+			title:       "JavaScript Frameworks",
+			description: "Comparing modern JS frameworks",
+			content:     "React, Vue, and Angular are popular choices for web development",
+			summary:     "Overview of JavaScript frameworks",
+			score:       6.0,
+			topics:      []string{"javascript", "web"},
+			feedback:    "dislike",
+		},
+	}
+
+	// insert items
+	for i, item := range items {
+		testItem := &domain.Item{
+			FeedID:      testFeed.ID,
+			GUID:        fmt.Sprintf("guid-%d", i),
+			Title:       item.title,
+			Link:        fmt.Sprintf("https://example.com/%d", i),
+			Description: item.description,
+			Content:     item.content,
+			Published:   time.Now().Add(time.Duration(-i) * time.Hour),
+		}
+		err := repos.Item.CreateItem(ctx, testItem)
+		require.NoError(t, err)
+
+		// add classification
+		classification := &domain.Classification{
+			GUID:         testItem.GUID,
+			Score:        item.score,
+			Topics:       item.topics,
+			Summary:      item.summary,
+			ClassifiedAt: time.Now(),
+		}
+		err = repos.Item.UpdateItemClassification(ctx, testItem.ID, classification)
+		require.NoError(t, err)
+
+		// add extracted content
+		err = repos.Item.UpdateItemExtraction(ctx, testItem.ID, &domain.ExtractedContent{
+			PlainText:   item.content,
+			ExtractedAt: time.Now(),
+		})
+		require.NoError(t, err)
+
+		// add feedback if any
+		if item.feedback != "" {
+			feedback := &domain.Feedback{
+				Type: domain.FeedbackType(item.feedback),
+			}
+			err = repos.Classification.UpdateItemFeedback(ctx, testItem.ID, feedback)
+			require.NoError(t, err)
+		}
+	}
+
+	tests := []struct {
+		name        string
+		searchQuery string
+		filter      *domain.ItemFilter
+		wantCount   int
+		wantTitles  []string
+	}{
+		{
+			name:        "search for golang",
+			searchQuery: "golang",
+			filter:      &domain.ItemFilter{Limit: 10},
+			wantCount:   1,
+			wantTitles:  []string{"Golang Best Practices"},
+		},
+		{
+			name:        "search for programming",
+			searchQuery: "programming",
+			filter:      &domain.ItemFilter{Limit: 10},
+			wantCount:   1,
+			wantTitles:  []string{"Golang Best Practices"},
+		},
+		{
+			name:        "search for python",
+			searchQuery: "python",
+			filter:      &domain.ItemFilter{Limit: 10},
+			wantCount:   1,
+			wantTitles:  []string{"Python Machine Learning"},
+		},
+		{
+			name:        "search with min score filter",
+			searchQuery: "programming OR python",
+			filter:      &domain.ItemFilter{MinScore: 7.5, Limit: 10},
+			wantCount:   1,
+			wantTitles:  []string{"Golang Best Practices"},
+		},
+		{
+			name:        "search with topic filter",
+			searchQuery: "web",
+			filter:      &domain.ItemFilter{Topic: "javascript", Limit: 10},
+			wantCount:   1,
+			wantTitles:  []string{"JavaScript Frameworks"},
+		},
+		{
+			name:        "search liked only",
+			searchQuery: "programming OR python",
+			filter:      &domain.ItemFilter{ShowLikedOnly: true, Limit: 10},
+			wantCount:   1,
+			wantTitles:  []string{"Golang Best Practices"},
+		},
+		{
+			name:        "no results",
+			searchQuery: "rust",
+			filter:      &domain.ItemFilter{Limit: 10},
+			wantCount:   0,
+			wantTitles:  []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// search items
+			items, err := repos.Classification.SearchItems(ctx, tt.searchQuery, tt.filter)
+			require.NoError(t, err)
+			assert.Len(t, items, tt.wantCount)
+
+			// verify titles
+			titles := make([]string, 0, len(items))
+			for _, item := range items {
+				titles = append(titles, item.Title)
+			}
+			assert.Equal(t, tt.wantTitles, titles)
+
+			// verify count
+			count, err := repos.Classification.GetSearchItemsCount(ctx, tt.searchQuery, tt.filter)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCount, count)
+		})
+	}
 }

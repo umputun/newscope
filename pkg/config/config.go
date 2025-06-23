@@ -47,7 +47,7 @@ type Config struct {
 type ClassificationConfig struct {
 	FeedbackExamples           int                   `yaml:"feedback_examples" json:"feedback_examples" jsonschema:"default=10,description=Number of recent feedback examples to include in prompt"`
 	UseJSONMode                bool                  `yaml:"use_json_mode" json:"use_json_mode" jsonschema:"default=false,description=Use JSON response format (not all models support this)"`
-	PreferenceSummaryThreshold int                   `yaml:"preference_summary_threshold" json:"preference_summary_threshold" jsonschema:"default=25,minimum=5,description=Number of new feedbacks required before updating preference summary"`
+	PreferenceSummaryThreshold int                   `yaml:"preference_summary_threshold" json:"preference_summary_threshold" jsonschema:"default=10,minimum=5,description=Number of new feedbacks required before updating preference summary"`
 	Prompts                    ClassificationPrompts `yaml:"prompts" json:"prompts" jsonschema:"description=Custom prompts for classification and preference summaries"`
 }
 
@@ -169,6 +169,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.LLM.Classification.FeedbackExamples == 0 {
 		cfg.LLM.Classification.FeedbackExamples = 10
+	}
+	if cfg.LLM.Classification.PreferenceSummaryThreshold == 0 {
+		cfg.LLM.Classification.PreferenceSummaryThreshold = 10
 	}
 
 	// set defaults for extraction

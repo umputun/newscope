@@ -164,6 +164,7 @@ nav h1 a {
 
 .nav-links {
     display: flex;
+    align-items: center;
     gap: 2rem;
 }
 
@@ -198,6 +199,7 @@ main {
     display: flex;
     align-items: baseline;
 }
+
 
 /* View Toggle in Filters */
 .view-toggle-buttons {
@@ -476,6 +478,12 @@ main {
 .article-description {
     color: var(--text-secondary);
     margin-bottom: 1rem;
+}
+
+.article-summary {
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+    line-height: 1.6;
 }
 
 /* Classification Section */
@@ -1873,6 +1881,105 @@ small.text-muted {
     
     .settings-page:has(#preferences-tab:target) .settings-tab[href="#config-tab"] {
         border-left-color: transparent;
+    }
+}
+
+/* Navbar Search */
+.nav-search {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+}
+
+.search-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    margin-left: 2rem;
+    transition: color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+    font-weight: 500;
+}
+
+.search-toggle:hover {
+    color: var(--primary-color);
+}
+
+.nav-search-form {
+    position: absolute;
+    right: -10px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    box-shadow: var(--shadow-md);
+    opacity: 0;
+    visibility: hidden;
+    width: 0;
+    transition: all 0.3s ease;
+    overflow: hidden;
+    z-index: 10;
+}
+
+.nav-search-form.active {
+    opacity: 1;
+    visibility: visible;
+    width: 300px;
+}
+
+.nav-search-input {
+    flex: 1;
+    border: none;
+    background: none;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    outline: none;
+}
+
+.nav-search-input::placeholder {
+    color: var(--text-muted);
+}
+
+.search-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.5rem;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+}
+
+.search-close:hover {
+    color: var(--text-primary);
+}
+
+/* Mobile navbar search */
+@media (max-width: 768px) {
+    .nav-search-form.active {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        right: 0;
+        width: 100%;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+    }
+    
+    .nav-search-input {
+        padding: 1rem;
+        font-size: 1rem;
     }
 }
 

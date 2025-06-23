@@ -84,6 +84,16 @@ type articlesPageRequest struct {
 	hasNext     bool
 	hasPrev     bool
 	minScore    float64
+	// search
+	isSearch    bool
+	searchQuery string
+}
+
+// commonPageData contains fields common to all pages
+type commonPageData struct {
+	ActivePage  string
+	IsSearch    bool
+	SearchQuery string
 }
 
 // articlesHandler displays the main articles page
@@ -175,13 +185,16 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 			hasNext:     hasNext,
 			hasPrev:     hasPrev,
 			minScore:    minScore,
+			// search
+			isSearch:    false,
+			searchQuery: "",
 		})
 		return
 	}
 
 	// prepare template data for full page render
 	data := struct {
-		ActivePage    string
+		commonPageData
 		Articles      []domain.ItemWithClassification
 		ArticleCount  int
 		TotalCount    int
@@ -201,7 +214,11 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		HasPrev     bool
 		IsHTMX      bool
 	}{
-		ActivePage:    "home",
+		commonPageData: commonPageData{
+			ActivePage:  "home",
+			IsSearch:    false,
+			SearchQuery: "",
+		},
 		Articles:      articles,
 		ArticleCount:  len(articles),
 		TotalCount:    totalCount,
@@ -297,11 +314,15 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// prepare template data
 	data := struct {
-		ActivePage string
-		Feeds      []domain.Feed
+		commonPageData
+		Feeds []domain.Feed
 	}{
-		ActivePage: "feeds",
-		Feeds:      feeds,
+		commonPageData: commonPageData{
+			ActivePage:  "feeds",
+			IsSearch:    false,
+			SearchQuery: "",
+		},
+		Feeds: feeds,
 	}
 
 	// render page with base template
@@ -352,6 +373,8 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 		PreferredTopics []string
 		AvoidedTopics   []string
 		AvailableTopics []string
+		IsSearch        bool
+		SearchQuery     string
 	}{
 		ActivePage:      "settings",
 		Config:          cfg,
@@ -360,6 +383,8 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 		PreferredTopics: preferredTopics,
 		AvoidedTopics:   avoidedTopics,
 		AvailableTopics: availableTopics,
+		IsSearch:        false,
+		SearchQuery:     "",
 	}
 
 	// render settings page
@@ -393,17 +418,21 @@ func (s *Server) rssHelpHandler(w http.ResponseWriter, r *http.Request) {
 
 	// prepare template data
 	data := struct {
-		ActivePage string
-		TopTopics  []domain.TopicWithScore
-		AllTopics  []string
-		BaseURL    string
-		Version    string
+		ActivePage  string
+		TopTopics   []domain.TopicWithScore
+		AllTopics   []string
+		BaseURL     string
+		Version     string
+		IsSearch    bool
+		SearchQuery string
 	}{
-		ActivePage: "rss-help",
-		TopTopics:  topTopics,
-		AllTopics:  allTopics,
-		BaseURL:    baseURL,
-		Version:    s.version,
+		ActivePage:  "rss-help",
+		TopTopics:   topTopics,
+		AllTopics:   allTopics,
+		BaseURL:     baseURL,
+		Version:     s.version,
+		IsSearch:    false,
+		SearchQuery: "",
 	}
 
 	// render RSS help page
@@ -586,6 +615,8 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		HasNext       bool
 		HasPrev       bool
 		IsHTMX        bool
+		IsSearch      bool
+		SearchQuery   string
 	}{
 		Articles:      req.articles,
 		TotalCount:    req.totalCount,
@@ -600,6 +631,8 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		HasNext:       req.hasNext,
 		HasPrev:       req.hasPrev,
 		IsHTMX:        true,
+		IsSearch:      req.isSearch,
+		SearchQuery:   req.searchQuery,
 	}
 
 	// execute the pagination template
@@ -799,5 +832,163 @@ func (s *Server) renderTopicsListWithDropdowns(ctx context.Context, w http.Respo
 	if err := s.templates.ExecuteTemplate(w, templateTopicDropdowns, dropdownData); err != nil {
 		log.Printf("[WARN] failed to render topic dropdowns: %v", err)
 		// not returning error since topic list was already rendered
+	}
+}
+
+// searchHandler handles search requests
+func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// get search query
+	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
+	if searchQuery == "" {
+		// redirect to articles page if no query
+		http.Redirect(w, r, "/articles", http.StatusSeeOther)
+		return
+	}
+
+	// get query parameters (same as articles handler)
+	minScore := 0.0
+	if scoreStr := r.URL.Query().Get("score"); scoreStr != "" {
+		if score, err := strconv.ParseFloat(scoreStr, 64); err == nil {
+			minScore = score
+		}
+	}
+	topic := r.URL.Query().Get("topic")
+	feedName := r.URL.Query().Get("feed")
+	sortBy := r.URL.Query().Get("sort")
+	if sortBy == "" {
+		sortBy = "relevance" // default to relevance for search
+	}
+	showLikedOnly := r.URL.Query().Get("liked") == "true" || r.URL.Query().Get("liked") == "on"
+
+	// get page parameter
+	page := 1
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	// search articles
+	pageSize := s.GetPageSize()
+	req := domain.ArticlesRequest{
+		MinScore:      minScore,
+		Topic:         topic,
+		FeedName:      feedName,
+		SortBy:        sortBy,
+		Limit:         pageSize,
+		Page:          page,
+		ShowLikedOnly: showLikedOnly,
+	}
+	articles, err := s.db.SearchItems(ctx, searchQuery, req)
+	if err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to search articles", err)
+		return
+	}
+
+	// get total count for pagination
+	totalCount, err := s.db.GetSearchItemsCount(ctx, searchQuery, req)
+	if err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to get search count", err)
+		return
+	}
+
+	// calculate pagination info
+	totalPages := (totalCount + pageSize - 1) / pageSize
+	hasNext := page < totalPages
+	hasPrev := page > 1
+
+	// get topics filtered by current score
+	topics, err := s.db.GetTopicsFiltered(ctx, minScore)
+	if err != nil {
+		log.Printf("[WARN] failed to get topics: %v", err)
+		topics = []string{} // continue with empty topics
+	}
+
+	// get active feed names
+	feeds, err := s.db.GetActiveFeedNames(ctx, minScore)
+	if err != nil {
+		log.Printf("[WARN] failed to get feed names: %v", err)
+		feeds = []string{} // continue with empty feeds
+	}
+
+	// check if this is an HTMX request for partial update
+	if r.Header.Get("HX-Request") == "true" {
+		s.handleHTMXArticlesRequest(w, r, articlesPageRequest{
+			articles:      articles,
+			topics:        topics,
+			feeds:         feeds,
+			selectedTopic: topic,
+			selectedFeed:  feedName,
+			selectedSort:  sortBy,
+			showLikedOnly: showLikedOnly,
+			// pagination
+			currentPage: page,
+			totalPages:  totalPages,
+			totalCount:  totalCount,
+			pageSize:    pageSize,
+			pageNumbers: generatePageNumbers(page, totalPages),
+			hasNext:     hasNext,
+			hasPrev:     hasPrev,
+			minScore:    minScore,
+			// search
+			isSearch:    true,
+			searchQuery: searchQuery,
+		})
+		return
+	}
+
+	// prepare template data for full page render
+	data := struct {
+		ActivePage    string
+		Articles      []domain.ItemWithClassification
+		ArticleCount  int
+		TotalCount    int
+		Topics        []string
+		Feeds         []string
+		MinScore      float64
+		SelectedTopic string
+		SelectedFeed  string
+		SelectedSort  string
+		ShowLikedOnly bool
+		SearchQuery   string
+		// pagination
+		CurrentPage int
+		TotalPages  int
+		PageSize    int
+		PageNumbers []int
+		HasNext     bool
+		HasPrev     bool
+		IsHTMX      bool
+		IsSearch    bool
+	}{
+		ActivePage:    "search",
+		Articles:      articles,
+		ArticleCount:  len(articles),
+		TotalCount:    totalCount,
+		Topics:        topics,
+		Feeds:         feeds,
+		MinScore:      minScore,
+		SelectedTopic: topic,
+		SelectedFeed:  feedName,
+		SelectedSort:  sortBy,
+		ShowLikedOnly: showLikedOnly,
+		SearchQuery:   searchQuery,
+		// pagination
+		CurrentPage: page,
+		TotalPages:  totalPages,
+		PageSize:    pageSize,
+		PageNumbers: generatePageNumbers(page, totalPages),
+		HasNext:     hasNext,
+		HasPrev:     hasPrev,
+		IsHTMX:      false,
+		IsSearch:    true,
+	}
+
+	// render full page with search results
+	if err := s.renderPage(w, "articles.html", data); err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		return
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -41,6 +42,7 @@ type itemWithFeedSQL struct {
 	RelevanceScore float64           `db:"relevance_score"`
 	Explanation    string            `db:"explanation"`
 	Topics         classificationSQL `db:"topics"`
+	Summary        string            `db:"summary"`
 	ClassifiedAt   *time.Time        `db:"classified_at"`
 
 	// user feedback
@@ -108,8 +110,11 @@ func (r *ClassificationRepository) GetClassifiedItems(ctx context.Context, filte
 
 	// add topic filter if specified
 	if filter.Topic != "" {
-		query += ` AND JSON_EXTRACT(i.topics, '$') LIKE ?`
-		args = append(args, "%\""+filter.Topic+"\"%")
+		query += ` AND EXISTS (
+			SELECT 1 FROM json_each(i.topics) 
+			WHERE json_each.value = ?
+		)`
+		args = append(args, filter.Topic)
 	}
 
 	// add feed filter if specified
@@ -185,14 +190,17 @@ func (r *ClassificationRepository) GetTopics(ctx context.Context) ([]string, err
 
 // GetTopicsFiltered returns unique topics from items with score >= minScore
 func (r *ClassificationRepository) GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error) {
+	// optimized query that can use the JSON index
 	query := `
-		SELECT DISTINCT value 
-		FROM (
-			SELECT json_each.value 
-			FROM items, json_each(items.topics)
-			WHERE items.classified_at IS NOT NULL
-			AND items.relevance_score >= ?
+		WITH filtered_items AS (
+			SELECT topics
+			FROM items
+			WHERE classified_at IS NOT NULL
+			AND relevance_score >= ?
+			AND topics != '[]'
 		)
+		SELECT DISTINCT value 
+		FROM filtered_items, json_each(filtered_items.topics)
 		ORDER BY value
 	`
 
@@ -212,19 +220,26 @@ type TopicWithScore struct {
 
 // GetTopTopicsByScore returns topics ordered by average relevance score (highest first)
 func (r *ClassificationRepository) GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]TopicWithScore, error) {
+	// optimized query using CTE for better performance
 	query := `
+		WITH filtered_items AS (
+			SELECT topics, relevance_score
+			FROM items
+			WHERE classified_at IS NOT NULL
+			AND relevance_score >= ?
+			AND topics != '[]'
+		),
+		topic_scores AS (
+			SELECT 
+				json_each.value as topic,
+				filtered_items.relevance_score
+			FROM filtered_items, json_each(filtered_items.topics)
+		)
 		SELECT 
 			topic,
 			AVG(relevance_score) as avg_score,
 			COUNT(*) as item_count
-		FROM (
-			SELECT 
-				json_each.value as topic,
-				items.relevance_score
-			FROM items, json_each(items.topics)
-			WHERE items.classified_at IS NOT NULL
-			AND items.relevance_score >= ?
-		)
+		FROM topic_scores
 		GROUP BY topic
 		ORDER BY avg_score DESC, item_count DESC
 		LIMIT ?
@@ -290,6 +305,7 @@ func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedba
 		query = `
 			SELECT title, description, 
 			       SUBSTR(extracted_content, 1, 500) as content,
+			       summary,
 			       user_feedback as feedback, 
 			       topics
 			FROM items 
@@ -304,6 +320,7 @@ func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedba
 		query = `
 			SELECT title, description, 
 			       SUBSTR(extracted_content, 1, 500) as content,
+			       summary,
 			       user_feedback as feedback, 
 			       topics
 			FROM items 
@@ -326,7 +343,7 @@ func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedba
 		var example domain.FeedbackExample
 		var topics classificationSQL
 		var feedbackStr string
-		err := rows.Scan(&example.Title, &example.Description, &example.Content, &feedbackStr, &topics)
+		err := rows.Scan(&example.Title, &example.Description, &example.Content, &example.Summary, &feedbackStr, &topics)
 		if err != nil {
 			return nil, fmt.Errorf("scan feedback row: %w", err)
 		}
@@ -354,6 +371,7 @@ func (r *ClassificationRepository) GetFeedbackSince(ctx context.Context, offset 
 	query := `
 		SELECT title, description, 
 		       SUBSTR(extracted_content, 1, 500) as content,
+		       summary,
 		       user_feedback as feedback, 
 		       topics
 		FROM items 
@@ -374,7 +392,7 @@ func (r *ClassificationRepository) GetFeedbackSince(ctx context.Context, offset 
 		var example domain.FeedbackExample
 		var topics classificationSQL
 		var feedbackStr string
-		err := rows.Scan(&example.Title, &example.Description, &example.Content, &feedbackStr, &topics)
+		err := rows.Scan(&example.Title, &example.Description, &example.Content, &example.Summary, &feedbackStr, &topics)
 		if err != nil {
 			return nil, fmt.Errorf("scan feedback row: %w", err)
 		}
@@ -422,6 +440,7 @@ func (r *ClassificationRepository) toDomainClassifiedItem(sqlItem *itemWithFeedS
 			Score:        sqlItem.RelevanceScore,
 			Explanation:  sqlItem.Explanation,
 			Topics:       []string(sqlItem.Topics),
+			Summary:      sqlItem.Summary,
 			ClassifiedAt: *sqlItem.ClassifiedAt,
 		}
 	}
@@ -450,8 +469,11 @@ func (r *ClassificationRepository) GetClassifiedItemsCount(ctx context.Context, 
 
 	// add topic filter if specified
 	if filter.Topic != "" {
-		query += ` AND JSON_EXTRACT(i.topics, '$') LIKE ?`
-		args = append(args, "%\""+filter.Topic+"\"%")
+		query += ` AND EXISTS (
+			SELECT 1 FROM json_each(i.topics) 
+			WHERE json_each.value = ?
+		)`
+		args = append(args, filter.Topic)
 	}
 
 	// add feed filter if specified
@@ -468,6 +490,112 @@ func (r *ClassificationRepository) GetClassifiedItemsCount(ctx context.Context, 
 	var count int
 	if err := r.db.GetContext(ctx, &count, query, args...); err != nil {
 		return 0, fmt.Errorf("get classified items count: %w", err)
+	}
+
+	return count, nil
+}
+
+// buildSearchWhereClause builds the common WHERE clause for search queries
+func (r *ClassificationRepository) buildSearchWhereClause(searchQuery string, filter *domain.ItemFilter) (whereClause string, args []interface{}) {
+	// sanitize search query for FTS5 - escape double quotes but allow other operators
+	// this allows OR, AND, NOT operators while preventing injection via quotes
+	sanitizedQuery := strings.ReplaceAll(searchQuery, `"`, `""`)
+
+	whereClause = `
+		FROM items i
+		JOIN feeds f ON i.feed_id = f.id
+		JOIN items_fts ON items_fts.rowid = i.id
+		WHERE items_fts MATCH ?
+		AND i.classified_at IS NOT NULL`
+
+	args = []interface{}{sanitizedQuery}
+
+	// add score filter
+	if filter.MinScore > 0 {
+		whereClause += ` AND i.relevance_score >= ?`
+		args = append(args, filter.MinScore)
+	}
+
+	// add topic filter if specified
+	if filter.Topic != "" {
+		whereClause += ` AND EXISTS (
+			SELECT 1 FROM json_each(i.topics) 
+			WHERE json_each.value = ?
+		)`
+		args = append(args, filter.Topic)
+	}
+
+	// add feed filter if specified
+	if filter.FeedName != "" {
+		whereClause += ` AND (f.title = ? OR f.title = '' AND ? LIKE '%' || REPLACE(REPLACE(SUBSTR(f.url, INSTR(f.url, '://') + 3), 'www.', ''), '/', '') || '%')`
+		args = append(args, filter.FeedName, filter.FeedName)
+	}
+
+	// add liked only filter if specified
+	if filter.ShowLikedOnly {
+		whereClause += ` AND i.user_feedback = 'like'`
+	}
+
+	return whereClause, args
+}
+
+// SearchItems searches for items using full-text search
+func (r *ClassificationRepository) SearchItems(ctx context.Context, searchQuery string, filter *domain.ItemFilter) ([]*domain.ClassifiedItem, error) {
+	// build the common WHERE clause
+	where, args := r.buildSearchWhereClause(searchQuery, filter)
+
+	// build the full query
+	query := `
+		SELECT 
+			i.*,
+			f.title as feed_title,
+			f.url as feed_url` + where
+
+	// add sorting
+	switch filter.SortBy {
+	case "score":
+		query += ` ORDER BY i.relevance_score DESC, i.published DESC`
+	case "source+date":
+		query += ` ORDER BY f.title ASC, i.published DESC`
+	case "source+score":
+		query += ` ORDER BY f.title ASC, i.relevance_score DESC, i.published DESC`
+	default:
+		// for search, default to relevance first (FTS5 bm25 score), then date
+		query += ` ORDER BY bm25(items_fts), i.published DESC`
+	}
+
+	// add pagination
+	if filter.Offset > 0 {
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, filter.Limit, filter.Offset)
+	} else {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+
+	var sqlItems []itemWithFeedSQL
+	if err := r.db.SelectContext(ctx, &sqlItems, query, args...); err != nil {
+		return nil, fmt.Errorf("search items: %w", err)
+	}
+
+	items := make([]*domain.ClassifiedItem, len(sqlItems))
+	for i, sqlItem := range sqlItems {
+		items[i] = r.toDomainClassifiedItem(&sqlItem)
+	}
+	return items, nil
+}
+
+// GetSearchItemsCount returns the total count of items matching the search query
+func (r *ClassificationRepository) GetSearchItemsCount(ctx context.Context, searchQuery string, filter *domain.ItemFilter) (int, error) {
+	// build the common WHERE clause
+	where, args := r.buildSearchWhereClause(searchQuery, filter)
+
+	// build the count query
+	query := "SELECT COUNT(*)" + where
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, query, args...); err != nil {
+		return 0, fmt.Errorf("get search items count: %w", err)
 	}
 
 	return count, nil

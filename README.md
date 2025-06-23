@@ -20,6 +20,7 @@ In addition to intelligent feed curation, newscope provides:
 - Custom RSS feed generation with filters
 - Modern web UI with multiple view modes
 - Real-time feed updates
+- Full-text search across all articles with relevance scoring
 
 ## Basic Usage
 
@@ -118,7 +119,7 @@ llm:
   
   classification:
     feedback_examples: 50
-    preference_summary_threshold: 25  # Number of new feedbacks before updating preference summary
+    preference_summary_threshold: 10  # Number of new feedbacks before updating preference summary
 
 extraction:
   enabled: true
@@ -208,7 +209,7 @@ llm:
 - Preferred topics boost scores by 1-2 points
 - Avoided topics reduce scores by 1-2 points
 - Feedback is used to generate preference summaries that adapt to your reading habits
-- Preference summaries update after configurable number of new feedbacks (default: 25)
+- Preference summaries update after configurable number of new feedbacks (default: 10)
 - Updates are debounced to prevent excessive API calls
 - Content extraction respects rate limits and robots.txt
 - Database is SQLite, stored in `var/` directory

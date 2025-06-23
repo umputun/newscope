@@ -58,7 +58,9 @@
     
     <!-- Expanded view content -->
     <div class="expanded-only">
-        {{if .Description}}
+        {{if .Summary}}
+        <p class="article-summary">{{.Summary}}</p>
+        {{else if .Description}}
         <p class="article-description">{{unescapeHTML .Description}}</p>
         {{end}}
         

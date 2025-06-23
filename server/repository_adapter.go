@@ -48,6 +48,8 @@ type ClassificationRepo interface {
 	GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error)
 	GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error)
 	GetFeedbackCount(ctx context.Context) (int64, error)
+	SearchItems(ctx context.Context, searchQuery string, filter *domain.ItemFilter) ([]*domain.ClassifiedItem, error)
+	GetSearchItemsCount(ctx context.Context, searchQuery string, filter *domain.ItemFilter) (int, error)
 }
 
 // SettingRepo defines the setting repository interface used by the adapter
@@ -170,6 +172,7 @@ func (r *RepositoryAdapter) toItemWithClassification(item *domain.ClassifiedItem
 		result.RelevanceScore = item.Classification.Score
 		result.Explanation = item.Classification.Explanation
 		result.Topics = item.Classification.Topics
+		result.Summary = item.Classification.Summary
 		result.ClassifiedAt = &item.Classification.ClassifiedAt
 	}
 
@@ -292,6 +295,53 @@ func (r *RepositoryAdapter) GetSetting(ctx context.Context, key string) (string,
 // SetSetting stores a setting value
 func (r *RepositoryAdapter) SetSetting(ctx context.Context, key, value string) error {
 	return r.settingRepo.SetSetting(ctx, key, value)
+}
+
+// SearchItems searches for items using full-text search
+func (r *RepositoryAdapter) SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+	// calculate offset from page number
+	offset := 0
+	if req.Page > 1 {
+		offset = (req.Page - 1) * req.Limit
+	}
+
+	filter := &domain.ItemFilter{
+		MinScore:      req.MinScore,
+		Topic:         req.Topic,
+		FeedName:      req.FeedName,
+		SortBy:        req.SortBy,
+		Limit:         req.Limit,
+		Offset:        offset,
+		ShowLikedOnly: req.ShowLikedOnly,
+	}
+
+	// get items from repository
+	items, err := r.classificationRepo.SearchItems(ctx, searchQuery, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	// convert to ItemWithClassification
+	result := make([]domain.ItemWithClassification, 0, len(items))
+	for _, item := range items {
+		result = append(result, r.toItemWithClassification(item))
+	}
+
+	return result, nil
+}
+
+// GetSearchItemsCount returns the total count of items matching the search query
+func (r *RepositoryAdapter) GetSearchItemsCount(ctx context.Context, searchQuery string, req domain.ArticlesRequest) (int, error) {
+	filter := &domain.ItemFilter{
+		MinScore:      req.MinScore,
+		Topic:         req.Topic,
+		FeedName:      req.FeedName,
+		SortBy:        req.SortBy,
+		Limit:         req.Limit,
+		ShowLikedOnly: req.ShowLikedOnly,
+	}
+
+	return r.classificationRepo.GetSearchItemsCount(ctx, searchQuery, filter)
 }
 
 // getFeedDisplayName returns the feed title if available, otherwise extracts hostname from URL

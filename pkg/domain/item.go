@@ -106,6 +106,7 @@ type FeedbackExample struct {
 	Title       string
 	Description string
 	Content     string
+	Summary     string
 	Feedback    FeedbackType
 	Topics      []string
 }
@@ -148,6 +149,7 @@ type ItemWithClassification struct {
 	RelevanceScore       float64    // LLM classification score (0-10)
 	Explanation          string     // LLM explanation for the score
 	Topics               []string   // topics identified by LLM
+	Summary              string     // AI-generated summary
 	ClassifiedAt         *time.Time // when classified
 	UserFeedback         string     // user feedback: like, dislike
 }

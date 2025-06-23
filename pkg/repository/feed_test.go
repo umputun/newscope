@@ -147,14 +147,11 @@ func TestFeedRepository_UpdateFeedError(t *testing.T) {
 	err := repos.Feed.CreateFeed(context.Background(), testFeed)
 	require.NoError(t, err)
 
-	t.Run("update feed error", func(t *testing.T) {
+	t.Run("update feed error with exponential backoff", func(t *testing.T) {
 		errorMsg := "Failed to fetch feed: connection timeout"
+		beforeUpdate := time.Now()
 
-		// get initial error count
-		initialFeed, err := repos.Feed.GetFeed(context.Background(), testFeed.ID)
-		require.NoError(t, err)
-		initialErrorCount := initialFeed.ErrorCount
-
+		// first error - should set next_fetch to 5 minutes from now
 		err = repos.Feed.UpdateFeedError(context.Background(), testFeed.ID, errorMsg)
 		require.NoError(t, err)
 
@@ -163,17 +160,57 @@ func TestFeedRepository_UpdateFeedError(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, errorMsg, updatedFeed.LastError)
-		assert.Equal(t, initialErrorCount+1, updatedFeed.ErrorCount)
-	})
+		assert.Equal(t, 1, updatedFeed.ErrorCount)
+		assert.NotNil(t, updatedFeed.NextFetch)
 
-	t.Run("clear feed error", func(t *testing.T) {
-		err := repos.Feed.UpdateFeedError(context.Background(), testFeed.ID, "")
+		// next_fetch should be ~10 minutes from now (error_count=0 -> 10 min)
+		expectedDelay := 10 * time.Minute
+		actualDelay := updatedFeed.NextFetch.Sub(beforeUpdate)
+		assert.True(t, actualDelay >= expectedDelay-time.Minute && actualDelay <= expectedDelay+time.Minute,
+			"NextFetch should be around 10 minutes from now, got %v", actualDelay)
+
+		// second error - should set next_fetch to 20 minutes from now
+		beforeSecond := time.Now()
+		err = repos.Feed.UpdateFeedError(context.Background(), testFeed.ID, errorMsg)
 		require.NoError(t, err)
 
-		// verify the error was cleared
+		updatedFeed, err = repos.Feed.GetFeed(context.Background(), testFeed.ID)
+		require.NoError(t, err)
+		assert.Equal(t, 2, updatedFeed.ErrorCount)
+
+		// next_fetch should be ~20 minutes from now (error_count=1 -> 20 min)
+		expectedDelay = 20 * time.Minute
+		actualDelay = updatedFeed.NextFetch.Sub(beforeSecond)
+		assert.True(t, actualDelay >= expectedDelay-time.Minute && actualDelay <= expectedDelay+time.Minute,
+			"NextFetch should be around 20 minutes from now, got %v", actualDelay)
+
+		// third error - should set next_fetch to 40 minutes from now
+		beforeThird := time.Now()
+		err = repos.Feed.UpdateFeedError(context.Background(), testFeed.ID, errorMsg)
+		require.NoError(t, err)
+
+		updatedFeed, err = repos.Feed.GetFeed(context.Background(), testFeed.ID)
+		require.NoError(t, err)
+		assert.Equal(t, 3, updatedFeed.ErrorCount)
+
+		// next_fetch should be ~40 minutes from now (error_count=2 -> 40 min)
+		expectedDelay = 40 * time.Minute
+		actualDelay = updatedFeed.NextFetch.Sub(beforeThird)
+		assert.True(t, actualDelay >= expectedDelay-time.Minute && actualDelay <= expectedDelay+time.Minute,
+			"NextFetch should be around 40 minutes from now, got %v", actualDelay)
+	})
+
+	t.Run("reset error count on successful fetch", func(t *testing.T) {
+		// simulate successful fetch - should reset error count
+		nextFetch := time.Now().Add(30 * time.Minute)
+		err := repos.Feed.UpdateFeedFetched(context.Background(), testFeed.ID, nextFetch)
+		require.NoError(t, err)
+
+		// verify error count was reset
 		updatedFeed, err := repos.Feed.GetFeed(context.Background(), testFeed.ID)
 		require.NoError(t, err)
 
+		assert.Equal(t, 0, updatedFeed.ErrorCount)
 		assert.Empty(t, updatedFeed.LastError)
 	})
 }

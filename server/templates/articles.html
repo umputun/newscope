@@ -4,27 +4,32 @@
 
 {{define "content"}}
 <div class="articles-header">
-    <h2>Articles <span id="article-count" class="article-count">({{.ArticleCount}}/{{.TotalCount}})</span></h2>
+    <h2>{{if .IsSearch}}Search Results{{else}}Articles{{end}} <span id="article-count" class="article-count">({{.ArticleCount}}/{{.TotalCount}})</span></h2>
+    
+    {{if .IsSearch}}
+    <!-- Hidden search query input to maintain search state -->
+    <input type="hidden" id="search-query" name="q" value="{{.SearchQuery}}">
+    {{end}}
     
     <!-- Score filter -->
     <div class="filters">
         <label for="score-filter">Min Score:</label>
         <input type="range" id="score-filter" name="score" min="0" max="10" value="{{.MinScore}}" step="0.5"
-               hx-get="/articles"
+               hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                hx-trigger="change"
                hx-target="#articles-with-pagination"
                hx-swap="innerHTML show:body:top"
-               hx-include="#topic-filter, #feed-filter, #sort-filter, #liked-toggle">
+               hx-include="#topic-filter, #feed-filter, #sort-filter, #liked-toggle{{if .IsSearch}}, #search-query{{end}}">
         <span id="score-value">{{.MinScore}}</span>
         
         <!-- Topic filter -->
         <label for="topic-filter">Topic:</label>
         <select id="topic-filter" name="topic"
-                hx-get="/articles"
+                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
                 hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #feed-filter, #sort-filter, #liked-toggle">
+                hx-include="#score-filter, #feed-filter, #sort-filter, #liked-toggle{{if .IsSearch}}, #search-query{{end}}">
             <option value="">All Topics</option>
             {{range .Topics}}
             <option value="{{.}}" {{if eq $.SelectedTopic .}}selected{{end}}>{{.}}</option>
@@ -34,11 +39,11 @@
         <!-- Feed filter -->
         <label for="feed-filter">Feed:</label>
         <select id="feed-filter" name="feed"
-                hx-get="/articles"
+                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
                 hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #topic-filter, #sort-filter, #liked-toggle">
+                hx-include="#score-filter, #topic-filter, #sort-filter, #liked-toggle{{if .IsSearch}}, #search-query{{end}}">
             <option value="">All Feeds</option>
             {{range .Feeds}}
             <option value="{{.}}" {{if eq $.SelectedFeed .}}selected{{end}}>{{.}}</option>
@@ -48,11 +53,11 @@
         <!-- Sort filter -->
         <label for="sort-filter">Sort:</label>
         <select id="sort-filter" name="sort"
-                hx-get="/articles"
+                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
                 hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #topic-filter, #feed-filter, #liked-toggle">
+                hx-include="#score-filter, #topic-filter, #feed-filter, #liked-toggle{{if .IsSearch}}, #search-query{{end}}">
             <option value="published" {{if eq .SelectedSort "published"}}selected{{end}}>Date</option>
             <option value="score" {{if eq .SelectedSort "score"}}selected{{end}}>Score</option>
             <option value="source+date" {{if eq .SelectedSort "source+date"}}selected{{end}}>Source + Date</option>
@@ -63,11 +68,11 @@
         <div class="toggle-buttons-group">
             <button id="liked-toggle" class="btn-toggle {{if .ShowLikedOnly}}active{{end}}" 
                     title="Show liked articles only"
-                    hx-get="/articles"
+                    hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                     hx-trigger="click"
                     hx-target="#articles-with-pagination"
                     hx-swap="innerHTML show:body:top"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter"
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter{{if .IsSearch}}, #search-query{{end}}"
                     hx-vals='{"liked": "{{if .ShowLikedOnly}}false{{else}}true{{end}}"}'>
                 ★ Liked
             </button>

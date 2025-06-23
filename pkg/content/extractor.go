@@ -9,9 +9,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-pkgz/repeater/v2"
 	"github.com/markusmobius/go-trafilatura"
 	"golang.org/x/net/html"
 )
+
+// clientError represents non-retryable client errors
+type clientError struct {
+	code    int
+	message string
+}
+
+func (e *clientError) Error() string {
+	if e.message != "" {
+		return e.message
+	}
+	return fmt.Sprintf("client error: %d", e.code)
+}
 
 // HTTPExtractor extracts article content from URLs using trafilatura
 type HTTPExtractor struct {
@@ -72,84 +86,113 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (*ExtractRes
 		return nil, fmt.Errorf("invalid URL: %s", urlStr)
 	}
 
-	// create request with context
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
+	var result *ExtractResult
+	termErr := &clientError{} // terminal error for client errors
+
+	// retry with exponential backoff for network/server errors
+	err = repeater.NewBackoff(3, time.Second, repeater.WithMaxDelay(10*time.Second)).
+		Do(ctx, func() error {
+			// create request with context
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
+			if err != nil {
+				return fmt.Errorf("create request: %w", err)
+			}
+
+			// set user agent
+			req.Header.Set("User-Agent", e.userAgent)
+
+			// add browser-like headers with randomization
+			addBrowserHeaders(req)
+
+			// fetch content
+			resp, err := e.client.Do(req)
+			if err != nil {
+				// network errors are retryable
+				return fmt.Errorf("fetch URL %s: %w", urlStr, err)
+			}
+			defer resp.Body.Close()
+
+			// handle status codes
+			switch {
+			case resp.StatusCode == http.StatusOK:
+				// success, continue to extraction
+			case resp.StatusCode >= 500 || resp.StatusCode == 429:
+				// server errors and rate limiting are retryable
+				return fmt.Errorf("server error: %d", resp.StatusCode)
+			default:
+				// client errors (4xx) are not retryable
+				termErr.code = resp.StatusCode
+				return termErr
+			}
+
+			// check content type - only process HTML/text content
+			contentType := resp.Header.Get("Content-Type")
+			if contentType != "" && !strings.Contains(strings.ToLower(contentType), "text/html") &&
+				!strings.Contains(strings.ToLower(contentType), "application/xhtml") &&
+				!strings.Contains(strings.ToLower(contentType), "text/plain") {
+				// non-HTML content (PDF, images, etc) - not retryable
+				termErr.code = resp.StatusCode
+				termErr.message = fmt.Sprintf("unsupported content type: %s", contentType)
+				return termErr
+			}
+
+			// configure trafilatura options
+			opts := trafilatura.Options{
+				EnableFallback:  true,
+				ExcludeComments: true,
+				ExcludeTables:   false,
+				IncludeImages:   e.includeImages,
+				IncludeLinks:    e.includeLinks,
+				Deduplicate:     true,
+				OriginalURL:     parsedURL,
+			}
+
+			// extract content
+			extracted, err := trafilatura.Extract(resp.Body, opts)
+			if err != nil {
+				return fmt.Errorf("extract content: %w", err)
+			}
+
+			if extracted == nil || extracted.ContentText == "" {
+				return fmt.Errorf("no content extracted")
+			}
+
+			// clean up content
+			content := strings.TrimSpace(extracted.ContentText)
+
+			// check minimum text length
+			if len(content) < e.minTextLength {
+				// too short content is not retryable
+				return fmt.Errorf("content too short: %d chars", len(content))
+			}
+
+			// extract rich content with simplified HTML if available
+			richContent := ""
+			if extracted.ContentNode != nil {
+				richContent = extractRichContent(extracted.ContentNode)
+			}
+
+			// build result
+			result = &ExtractResult{
+				Content:     content,
+				RichContent: richContent,
+				Title:       extracted.Metadata.Title,
+				URL:         urlStr,
+			}
+
+			// use metadata date if available
+			if !extracted.Metadata.Date.IsZero() {
+				result.Date = extracted.Metadata.Date
+			}
+
+			return nil
+		}, termErr) // pass termErr to stop on client errors
+
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return nil, err
 	}
 
-	// set user agent
-	req.Header.Set("User-Agent", e.userAgent)
-
-	// add browser-like headers with randomization
-	addBrowserHeaders(req)
-
-	// fetch content
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch URL %s: %w", urlStr, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	// configure trafilatura options
-	opts := trafilatura.Options{
-		EnableFallback:  true,
-		ExcludeComments: true,
-		ExcludeTables:   false,
-		IncludeImages:   e.includeImages,
-		IncludeLinks:    e.includeLinks,
-		Deduplicate:     true,
-		OriginalURL:     parsedURL,
-	}
-
-	// extract content
-	result, err := trafilatura.Extract(resp.Body, opts)
-	if err != nil {
-		return nil, fmt.Errorf("extract content from %s: %w", urlStr, err)
-	}
-
-	if result == nil {
-		return nil, fmt.Errorf("no content extracted")
-	}
-
-	// get main content
-	content := result.ContentText
-	if content == "" {
-		return nil, fmt.Errorf("no content extracted")
-	}
-
-	// clean up content
-	content = strings.TrimSpace(content)
-
-	// extract rich content with simplified HTML if available
-	richContent := ""
-	if result.ContentNode != nil {
-		richContent = extractRichContent(result.ContentNode)
-	}
-
-	// check minimum text length
-	if len(content) < e.minTextLength {
-		return nil, fmt.Errorf("content too short: %d chars (minimum %d)", len(content), e.minTextLength)
-	}
-
-	// build result
-	extractResult := &ExtractResult{
-		Content:     content,
-		RichContent: richContent,
-		Title:       result.Metadata.Title,
-		URL:         urlStr,
-	}
-
-	// use metadata date if available
-	if !result.Metadata.Date.IsZero() {
-		extractResult.Date = result.Metadata.Date
-	}
-
-	return extractResult, nil
+	return result, nil
 }
 
 // extractRichContent extracts content from HTML node preserving simplified HTML structure

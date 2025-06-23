@@ -256,14 +256,14 @@ func TestHTTPExtractor_Extract_ErrorCases(t *testing.T) {
 			serverFunc: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 			},
-			expectedErr: "unexpected status code: 404",
+			expectedErr: "client error: 404",
 		},
 		{
 			name: "server returns 500",
 			serverFunc: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 			},
-			expectedErr: "unexpected status code: 500",
+			expectedErr: "server error: 500",
 		},
 		{
 			name: "empty HTML",
@@ -564,9 +564,66 @@ func TestHTTPExtractor_UserAgent(t *testing.T) {
 	assert.NotEmpty(t, capturedHeaders.Get("Accept"))
 	assert.Contains(t, capturedHeaders.Get("Accept"), "text/html")
 	assert.NotEmpty(t, capturedHeaders.Get("Accept-Language"))
-	assert.NotEmpty(t, capturedHeaders.Get("Accept-Encoding"))
-	assert.Contains(t, capturedHeaders.Get("Accept-Encoding"), "gzip")
+	// accept-Encoding should be "identity" to request uncompressed content
+	assert.Equal(t, "identity", capturedHeaders.Get("Accept-Encoding"))
 	assert.Equal(t, "1", capturedHeaders.Get("Upgrade-Insecure-Requests"))
 	assert.NotEmpty(t, capturedHeaders.Get("Sec-Fetch-Dest"))
 	assert.NotEmpty(t, capturedHeaders.Get("Sec-Fetch-Mode"))
+}
+
+func TestHTTPExtractor_Extract_NonHTMLContent(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		statusCode  int
+		expectError string
+	}{
+		{
+			name:        "PDF content",
+			contentType: "application/pdf",
+			statusCode:  http.StatusOK,
+			expectError: "unsupported content type: application/pdf",
+		},
+		{
+			name:        "image content",
+			contentType: "image/jpeg",
+			statusCode:  http.StatusOK,
+			expectError: "unsupported content type: image/jpeg",
+		},
+		{
+			name:        "binary content",
+			contentType: "application/octet-stream",
+			statusCode:  http.StatusOK,
+			expectError: "unsupported content type: application/octet-stream",
+		},
+		{
+			name:        "video content",
+			contentType: "video/mp4",
+			statusCode:  http.StatusOK,
+			expectError: "unsupported content type: video/mp4",
+		},
+		{
+			name:        "zip file",
+			contentType: "application/zip",
+			statusCode:  http.StatusOK,
+			expectError: "unsupported content type: application/zip",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", tt.contentType)
+				w.WriteHeader(tt.statusCode)
+				w.Write([]byte("Binary content here"))
+			}))
+			defer server.Close()
+
+			extractor := NewHTTPExtractor(5*time.Second, "TestBot/1.0")
+			_, err := extractor.Extract(context.Background(), server.URL)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectError)
+		})
+	}
 }

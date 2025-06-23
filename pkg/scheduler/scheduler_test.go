@@ -60,15 +60,25 @@ func TestNewScheduler_DefaultConfig(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
-		// all config fields left as zero values to test defaults
+		// config values should be set by config loader, not by scheduler
+		UpdateInterval:             30 * time.Minute,
+		MaxWorkers:                 5,
+		PreferenceSummaryThreshold: 10,
+		CleanupAge:                 168 * time.Hour,
+		CleanupMinScore:            5.0,
+		CleanupInterval:            24 * time.Hour,
+		RetryAttempts:              5,
+		RetryInitialDelay:          100 * time.Millisecond,
+		RetryMaxDelay:              5 * time.Second,
+		RetryJitter:                0.3,
 	}
 	scheduler := NewScheduler(params)
 
 	assert.NotNil(t, scheduler)
-	assert.Equal(t, 30*time.Minute, scheduler.updateInterval)  // default
-	assert.Equal(t, 168*time.Hour, scheduler.cleanupAge)       // default 1 week
-	assert.InEpsilon(t, 5.0, scheduler.cleanupMinScore, 0.001) // default
-	assert.Equal(t, 24*time.Hour, scheduler.cleanupInterval)   // default
+	assert.Equal(t, 30*time.Minute, scheduler.updateInterval)
+	assert.Equal(t, 168*time.Hour, scheduler.cleanupAge)
+	assert.InEpsilon(t, 5.0, scheduler.cleanupMinScore, 0.001)
+	assert.Equal(t, 24*time.Hour, scheduler.cleanupInterval)
 	assert.NotNil(t, scheduler.feedProcessor)
 	assert.NotNil(t, scheduler.preferenceManager)
 }
@@ -224,6 +234,10 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		RetryAttempts:         5,
+		RetryInitialDelay:     10 * time.Millisecond,
+		RetryMaxDelay:         100 * time.Millisecond,
+		RetryJitter:           0.1,
 	}
 	scheduler := NewScheduler(params)
 
@@ -384,6 +398,10 @@ func TestScheduler_ProcessItem_ExtractionError(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		RetryAttempts:         5,
+		RetryInitialDelay:     10 * time.Millisecond,
+		RetryMaxDelay:         100 * time.Millisecond,
+		RetryJitter:           0.1,
 	}
 	scheduler := NewScheduler(params)
 
@@ -438,6 +456,10 @@ func TestScheduler_ProcessItem_ClassificationError(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		RetryAttempts:         5,
+		RetryInitialDelay:     10 * time.Millisecond,
+		RetryMaxDelay:         100 * time.Millisecond,
+		RetryJitter:           0.1,
 	}
 	scheduler := NewScheduler(params)
 
@@ -504,6 +526,10 @@ func TestScheduler_ProcessItem_NoClassificationResults(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		RetryAttempts:         5,
+		RetryInitialDelay:     10 * time.Millisecond,
+		RetryMaxDelay:         100 * time.Millisecond,
+		RetryJitter:           0.1,
 	}
 	scheduler := NewScheduler(params)
 
@@ -570,6 +596,10 @@ func TestScheduler_UpdateFeed_ParseError(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		RetryAttempts:         5,
+		RetryInitialDelay:     10 * time.Millisecond,
+		RetryMaxDelay:         100 * time.Millisecond,
+		RetryJitter:           0.1,
 	}
 	scheduler := NewScheduler(params)
 
@@ -622,6 +652,10 @@ func TestScheduler_UpdateFeed_DuplicateItems(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		RetryAttempts:         5,
+		RetryInitialDelay:     10 * time.Millisecond,
+		RetryMaxDelay:         100 * time.Millisecond,
+		RetryJitter:           0.1,
 	}
 	scheduler := NewScheduler(params)
 
@@ -918,6 +952,10 @@ func TestScheduler_UpdateFeed_ItemCreationError(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		RetryAttempts:         5,
+		RetryInitialDelay:     10 * time.Millisecond,
+		RetryMaxDelay:         100 * time.Millisecond,
+		RetryJitter:           0.1,
 	}
 	scheduler := NewScheduler(params)
 
@@ -1019,6 +1057,10 @@ func TestScheduler_UpdateFeed_EmptyTitle(t *testing.T) {
 		Parser:                parser,
 		Extractor:             extractor,
 		Classifier:            classifier,
+		RetryAttempts:         5,
+		RetryInitialDelay:     10 * time.Millisecond,
+		RetryMaxDelay:         100 * time.Millisecond,
+		RetryJitter:           0.1,
 	}
 	scheduler := NewScheduler(params)
 
@@ -1240,6 +1282,10 @@ func TestScheduler_UpdateFeed_ItemCreationWithLockError(t *testing.T) {
 		CleanupAge:                 7 * 24 * time.Hour,
 		CleanupMinScore:            5.0,
 		PreferenceSummaryThreshold: 25,
+		RetryAttempts:              5,
+		RetryInitialDelay:          10 * time.Millisecond,
+		RetryMaxDelay:              100 * time.Millisecond,
+		RetryJitter:                0.1,
 	}
 
 	scheduler := NewScheduler(params)

@@ -76,6 +76,8 @@ type Database interface {
 	DeleteFeed(ctx context.Context, feedID int64) error
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error
+	SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error)
+	GetSearchItemsCount(ctx context.Context, searchQuery string, req domain.ArticlesRequest) (int, error)
 }
 
 // Scheduler interface for on-demand operations
@@ -314,6 +316,7 @@ func (s *Server) setupRoutes() {
 	// web UI routes
 	s.router.HandleFunc("GET /", s.articlesHandler)
 	s.router.HandleFunc("GET /articles", s.articlesHandler)
+	s.router.HandleFunc("GET /search", s.searchHandler)
 	s.router.HandleFunc("GET /feeds", s.feedsHandler)
 	s.router.HandleFunc("GET /settings", s.settingsHandler)
 	s.router.HandleFunc("GET /rss-help", s.rssHelpHandler)
