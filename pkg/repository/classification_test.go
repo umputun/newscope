@@ -788,6 +788,17 @@ func TestClassificationRepository_GetRecentFeedback(t *testing.T) {
 		}
 		err = repos.Item.UpdateItemExtraction(context.Background(), testItems[i].ID, extraction)
 		require.NoError(t, err)
+
+		// add classification with summary
+		classification := &domain.Classification{
+			GUID:        testItems[i].GUID,
+			Score:       8.0,
+			Explanation: "Test classification",
+			Topics:      []string{"test"},
+			Summary:     fmt.Sprintf("AI summary for %s", testItems[i].Title),
+		}
+		err = repos.Item.UpdateItemClassification(context.Background(), testItems[i].ID, classification)
+		require.NoError(t, err)
 	}
 
 	// add feedback to items
@@ -814,6 +825,9 @@ func TestClassificationRepository_GetRecentFeedback(t *testing.T) {
 		feedbackTypes := make(map[domain.FeedbackType]int)
 		for _, example := range examples {
 			feedbackTypes[example.Feedback]++
+			// verify summary is included
+			assert.NotEmpty(t, example.Summary)
+			assert.Contains(t, example.Summary, "AI summary for")
 		}
 		assert.Equal(t, 2, feedbackTypes[domain.FeedbackLike])
 		assert.Equal(t, 1, feedbackTypes[domain.FeedbackDislike])
@@ -827,6 +841,9 @@ func TestClassificationRepository_GetRecentFeedback(t *testing.T) {
 		assert.Len(t, examples, 2)
 		for _, example := range examples {
 			assert.Equal(t, domain.FeedbackLike, example.Feedback)
+			// verify summary is included
+			assert.NotEmpty(t, example.Summary)
+			assert.Contains(t, example.Summary, "AI summary for")
 		}
 	})
 

@@ -141,15 +141,27 @@ func (r *FeedRepository) UpdateFeedFetched(ctx context.Context, feedID int64, ne
 	})
 }
 
-// UpdateFeedError updates feed after fetch error
+// UpdateFeedError updates feed after fetch error with exponential backoff
 func (r *FeedRepository) UpdateFeedError(ctx context.Context, feedID int64, errMsg string) error {
 	retrier := repeater.NewBackoff(5, 50*time.Millisecond, repeater.WithMaxDelay(2*time.Second))
 
 	return retrier.Do(ctx, func() error {
+		// simple exponential backoff: 5, 10, 20, 40, 80... minutes, capped at 24 hours
 		query := `
 			UPDATE feeds 
 			SET error_count = error_count + 1,
-			    last_error = ?
+			    last_error = ?,
+			    next_fetch = CASE 
+			        WHEN error_count >= 7 THEN datetime('now', '+1440 minutes')  -- 24 hours max
+			        WHEN error_count = 6 THEN datetime('now', '+640 minutes')   -- ~10.7 hours
+			        WHEN error_count = 5 THEN datetime('now', '+320 minutes')   -- ~5.3 hours
+			        WHEN error_count = 4 THEN datetime('now', '+160 minutes')   -- ~2.7 hours
+			        WHEN error_count = 3 THEN datetime('now', '+80 minutes')    -- ~1.3 hours
+			        WHEN error_count = 2 THEN datetime('now', '+40 minutes')    
+			        WHEN error_count = 1 THEN datetime('now', '+20 minutes')
+			        WHEN error_count = 0 THEN datetime('now', '+10 minutes')
+			        ELSE datetime('now', '+5 minutes')
+			    END
 			WHERE id = ?
 		`
 		_, err := r.db.ExecContext(ctx, query, errMsg, feedID)

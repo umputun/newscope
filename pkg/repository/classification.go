@@ -304,6 +304,7 @@ func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedba
 		query = `
 			SELECT title, description, 
 			       SUBSTR(extracted_content, 1, 500) as content,
+			       summary,
 			       user_feedback as feedback, 
 			       topics
 			FROM items 
@@ -318,6 +319,7 @@ func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedba
 		query = `
 			SELECT title, description, 
 			       SUBSTR(extracted_content, 1, 500) as content,
+			       summary,
 			       user_feedback as feedback, 
 			       topics
 			FROM items 
@@ -340,7 +342,7 @@ func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedba
 		var example domain.FeedbackExample
 		var topics classificationSQL
 		var feedbackStr string
-		err := rows.Scan(&example.Title, &example.Description, &example.Content, &feedbackStr, &topics)
+		err := rows.Scan(&example.Title, &example.Description, &example.Content, &example.Summary, &feedbackStr, &topics)
 		if err != nil {
 			return nil, fmt.Errorf("scan feedback row: %w", err)
 		}
@@ -368,6 +370,7 @@ func (r *ClassificationRepository) GetFeedbackSince(ctx context.Context, offset 
 	query := `
 		SELECT title, description, 
 		       SUBSTR(extracted_content, 1, 500) as content,
+		       summary,
 		       user_feedback as feedback, 
 		       topics
 		FROM items 
@@ -388,7 +391,7 @@ func (r *ClassificationRepository) GetFeedbackSince(ctx context.Context, offset 
 		var example domain.FeedbackExample
 		var topics classificationSQL
 		var feedbackStr string
-		err := rows.Scan(&example.Title, &example.Description, &example.Content, &feedbackStr, &topics)
+		err := rows.Scan(&example.Title, &example.Description, &example.Content, &example.Summary, &feedbackStr, &topics)
 		if err != nil {
 			return nil, fmt.Errorf("scan feedback row: %w", err)
 		}

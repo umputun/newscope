@@ -106,6 +106,7 @@ type FeedbackExample struct {
 	Title       string
 	Description string
 	Content     string
+	Summary     string
 	Feedback    FeedbackType
 	Topics      []string
 }
