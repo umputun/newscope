@@ -22,3 +22,44 @@ CREATE INDEX IF NOT EXISTS idx_items_score_classified ON items(relevance_score D
 
 -- Add composite index for topic filtering with score
 CREATE INDEX IF NOT EXISTS idx_items_classified_score ON items(classified_at, relevance_score DESC) WHERE classified_at IS NOT NULL;
+
+-- Migration 4: Add full-text search support
+CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
+    title,
+    description,
+    content,
+    extracted_content,
+    summary,
+    content=items,
+    content_rowid=id,
+    tokenize='porter unicode61'
+);
+
+-- Triggers to keep FTS index in sync
+CREATE TRIGGER IF NOT EXISTS items_fts_insert AFTER INSERT ON items BEGIN
+    INSERT INTO items_fts(rowid, title, description, content, extracted_content, summary)
+    VALUES (new.id, 
+            COALESCE(new.title, ''), 
+            COALESCE(new.description, ''), 
+            COALESCE(new.content, ''), 
+            COALESCE(new.extracted_content, ''), 
+            COALESCE(new.summary, ''));
+END;
+
+CREATE TRIGGER IF NOT EXISTS items_fts_delete AFTER DELETE ON items BEGIN
+    DELETE FROM items_fts WHERE rowid = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS items_fts_update AFTER UPDATE ON items BEGIN
+    INSERT OR REPLACE INTO items_fts(rowid, title, description, content, extracted_content, summary)
+    VALUES (new.id, 
+            COALESCE(new.title, ''), 
+            COALESCE(new.description, ''), 
+            COALESCE(new.content, ''), 
+            COALESCE(new.extracted_content, ''), 
+            COALESCE(new.summary, ''));
+END;
+
+-- Populate FTS index with existing items (safe to run multiple times)
+INSERT OR IGNORE INTO items_fts(rowid, title, description, content, extracted_content, summary)
+SELECT id, title, description, content, extracted_content, summary FROM items;

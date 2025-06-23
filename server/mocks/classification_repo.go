@@ -29,6 +29,9 @@ import (
 //			GetFeedbackCountFunc: func(ctx context.Context) (int64, error) {
 //				panic("mock out the GetFeedbackCount method")
 //			},
+//			GetSearchItemsCountFunc: func(ctx context.Context, searchQuery string, filter *domain.ItemFilter) (int, error) {
+//				panic("mock out the GetSearchItemsCount method")
+//			},
 //			GetTopTopicsByScoreFunc: func(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error) {
 //				panic("mock out the GetTopTopicsByScore method")
 //			},
@@ -37,6 +40,9 @@ import (
 //			},
 //			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetTopicsFiltered method")
+//			},
+//			SearchItemsFunc: func(ctx context.Context, searchQuery string, filter *domain.ItemFilter) ([]*domain.ClassifiedItem, error) {
+//				panic("mock out the SearchItems method")
 //			},
 //			UpdateItemFeedbackFunc: func(ctx context.Context, itemID int64, feedback *domain.Feedback) error {
 //				panic("mock out the UpdateItemFeedback method")
@@ -60,6 +66,9 @@ type ClassificationRepoMock struct {
 	// GetFeedbackCountFunc mocks the GetFeedbackCount method.
 	GetFeedbackCountFunc func(ctx context.Context) (int64, error)
 
+	// GetSearchItemsCountFunc mocks the GetSearchItemsCount method.
+	GetSearchItemsCountFunc func(ctx context.Context, searchQuery string, filter *domain.ItemFilter) (int, error)
+
 	// GetTopTopicsByScoreFunc mocks the GetTopTopicsByScore method.
 	GetTopTopicsByScoreFunc func(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error)
 
@@ -68,6 +77,9 @@ type ClassificationRepoMock struct {
 
 	// GetTopicsFilteredFunc mocks the GetTopicsFiltered method.
 	GetTopicsFilteredFunc func(ctx context.Context, minScore float64) ([]string, error)
+
+	// SearchItemsFunc mocks the SearchItems method.
+	SearchItemsFunc func(ctx context.Context, searchQuery string, filter *domain.ItemFilter) ([]*domain.ClassifiedItem, error)
 
 	// UpdateItemFeedbackFunc mocks the UpdateItemFeedback method.
 	UpdateItemFeedbackFunc func(ctx context.Context, itemID int64, feedback *domain.Feedback) error
@@ -100,6 +112,15 @@ type ClassificationRepoMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
+		// GetSearchItemsCount holds details about calls to the GetSearchItemsCount method.
+		GetSearchItemsCount []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// SearchQuery is the searchQuery argument value.
+			SearchQuery string
+			// Filter is the filter argument value.
+			Filter *domain.ItemFilter
+		}
 		// GetTopTopicsByScore holds details about calls to the GetTopTopicsByScore method.
 		GetTopTopicsByScore []struct {
 			// Ctx is the ctx argument value.
@@ -121,6 +142,15 @@ type ClassificationRepoMock struct {
 			// MinScore is the minScore argument value.
 			MinScore float64
 		}
+		// SearchItems holds details about calls to the SearchItems method.
+		SearchItems []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// SearchQuery is the searchQuery argument value.
+			SearchQuery string
+			// Filter is the filter argument value.
+			Filter *domain.ItemFilter
+		}
 		// UpdateItemFeedback holds details about calls to the UpdateItemFeedback method.
 		UpdateItemFeedback []struct {
 			// Ctx is the ctx argument value.
@@ -135,9 +165,11 @@ type ClassificationRepoMock struct {
 	lockGetClassifiedItems      sync.RWMutex
 	lockGetClassifiedItemsCount sync.RWMutex
 	lockGetFeedbackCount        sync.RWMutex
+	lockGetSearchItemsCount     sync.RWMutex
 	lockGetTopTopicsByScore     sync.RWMutex
 	lockGetTopics               sync.RWMutex
 	lockGetTopicsFiltered       sync.RWMutex
+	lockSearchItems             sync.RWMutex
 	lockUpdateItemFeedback      sync.RWMutex
 }
 
@@ -281,6 +313,46 @@ func (mock *ClassificationRepoMock) GetFeedbackCountCalls() []struct {
 	return calls
 }
 
+// GetSearchItemsCount calls GetSearchItemsCountFunc.
+func (mock *ClassificationRepoMock) GetSearchItemsCount(ctx context.Context, searchQuery string, filter *domain.ItemFilter) (int, error) {
+	if mock.GetSearchItemsCountFunc == nil {
+		panic("ClassificationRepoMock.GetSearchItemsCountFunc: method is nil but ClassificationRepo.GetSearchItemsCount was just called")
+	}
+	callInfo := struct {
+		Ctx         context.Context
+		SearchQuery string
+		Filter      *domain.ItemFilter
+	}{
+		Ctx:         ctx,
+		SearchQuery: searchQuery,
+		Filter:      filter,
+	}
+	mock.lockGetSearchItemsCount.Lock()
+	mock.calls.GetSearchItemsCount = append(mock.calls.GetSearchItemsCount, callInfo)
+	mock.lockGetSearchItemsCount.Unlock()
+	return mock.GetSearchItemsCountFunc(ctx, searchQuery, filter)
+}
+
+// GetSearchItemsCountCalls gets all the calls that were made to GetSearchItemsCount.
+// Check the length with:
+//
+//	len(mockedClassificationRepo.GetSearchItemsCountCalls())
+func (mock *ClassificationRepoMock) GetSearchItemsCountCalls() []struct {
+	Ctx         context.Context
+	SearchQuery string
+	Filter      *domain.ItemFilter
+} {
+	var calls []struct {
+		Ctx         context.Context
+		SearchQuery string
+		Filter      *domain.ItemFilter
+	}
+	mock.lockGetSearchItemsCount.RLock()
+	calls = mock.calls.GetSearchItemsCount
+	mock.lockGetSearchItemsCount.RUnlock()
+	return calls
+}
+
 // GetTopTopicsByScore calls GetTopTopicsByScoreFunc.
 func (mock *ClassificationRepoMock) GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]repository.TopicWithScore, error) {
 	if mock.GetTopTopicsByScoreFunc == nil {
@@ -386,6 +458,46 @@ func (mock *ClassificationRepoMock) GetTopicsFilteredCalls() []struct {
 	mock.lockGetTopicsFiltered.RLock()
 	calls = mock.calls.GetTopicsFiltered
 	mock.lockGetTopicsFiltered.RUnlock()
+	return calls
+}
+
+// SearchItems calls SearchItemsFunc.
+func (mock *ClassificationRepoMock) SearchItems(ctx context.Context, searchQuery string, filter *domain.ItemFilter) ([]*domain.ClassifiedItem, error) {
+	if mock.SearchItemsFunc == nil {
+		panic("ClassificationRepoMock.SearchItemsFunc: method is nil but ClassificationRepo.SearchItems was just called")
+	}
+	callInfo := struct {
+		Ctx         context.Context
+		SearchQuery string
+		Filter      *domain.ItemFilter
+	}{
+		Ctx:         ctx,
+		SearchQuery: searchQuery,
+		Filter:      filter,
+	}
+	mock.lockSearchItems.Lock()
+	mock.calls.SearchItems = append(mock.calls.SearchItems, callInfo)
+	mock.lockSearchItems.Unlock()
+	return mock.SearchItemsFunc(ctx, searchQuery, filter)
+}
+
+// SearchItemsCalls gets all the calls that were made to SearchItems.
+// Check the length with:
+//
+//	len(mockedClassificationRepo.SearchItemsCalls())
+func (mock *ClassificationRepoMock) SearchItemsCalls() []struct {
+	Ctx         context.Context
+	SearchQuery string
+	Filter      *domain.ItemFilter
+} {
+	var calls []struct {
+		Ctx         context.Context
+		SearchQuery string
+		Filter      *domain.ItemFilter
+	}
+	mock.lockSearchItems.RLock()
+	calls = mock.calls.SearchItems
+	mock.lockSearchItems.RUnlock()
 	return calls
 }
 

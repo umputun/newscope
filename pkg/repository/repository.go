@@ -162,10 +162,86 @@ func runMigrations(ctx context.Context, db *sqlx.DB) error {
 		return fmt.Errorf("read migrations: %w", err)
 	}
 
-	// execute migrations (indexes are idempotent with IF NOT EXISTS)
-	if _, err := db.ExecContext(ctx, string(migrations)); err != nil {
-		return fmt.Errorf("execute migrations: %w", err)
+	// split and execute migrations one by one to handle SQLite limitations
+	statements := splitMigrationStatements(string(migrations))
+	for _, stmt := range statements {
+		if stmt != "" {
+			if _, err := db.ExecContext(ctx, stmt); err != nil {
+				// check if this is an expected "already exists" error for idempotent migrations
+				errStr := err.Error()
+				if strings.Contains(errStr, "already exists") ||
+					strings.Contains(errStr, "duplicate") ||
+					strings.Contains(errStr, "UNIQUE constraint failed") {
+					// these errors are expected for idempotent migrations, skip
+					continue
+				}
+				// return actual errors
+				return fmt.Errorf("execute migration statement: %w", err)
+			}
+		}
 	}
 
 	return nil
+}
+
+// splitMigrationStatements splits SQL migration statements by semicolon
+func splitMigrationStatements(migrations string) []string {
+	// special handling for triggers with BEGIN/END blocks
+	lines := strings.Split(migrations, "\n")
+	var statements []string
+	var current strings.Builder
+	inTrigger := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// skip comment-only lines
+		if strings.HasPrefix(trimmed, "--") && current.Len() == 0 {
+			continue
+		}
+
+		// skip empty lines when not building a statement
+		if trimmed == "" && current.Len() == 0 {
+			continue
+		}
+
+		// detect trigger start
+		upperTrimmed := strings.ToUpper(trimmed)
+		if strings.Contains(upperTrimmed, "CREATE TRIGGER") {
+			inTrigger = true
+		}
+
+		// add line to current statement
+		if current.Len() > 0 || (trimmed != "" && !strings.HasPrefix(trimmed, "--")) {
+			current.WriteString(line)
+			current.WriteString("\n")
+		}
+
+		// check for statement end
+		if strings.HasSuffix(trimmed, ";") {
+			// for triggers, check if this is the END; statement
+			if inTrigger && strings.EqualFold(trimmed, "END;") {
+				inTrigger = false
+			}
+
+			// if not in trigger, or if we just ended a trigger, save the statement
+			if !inTrigger {
+				stmt := strings.TrimSpace(current.String())
+				if stmt != "" {
+					statements = append(statements, stmt)
+				}
+				current.Reset()
+			}
+		}
+	}
+
+	// add any remaining statement
+	if current.Len() > 0 {
+		stmt := strings.TrimSpace(current.String())
+		if stmt != "" {
+			statements = append(statements, stmt)
+		}
+	}
+
+	return statements
 }

@@ -25,6 +25,29 @@
                     <a href="/feeds" class="{{if eq .ActivePage "feeds"}}active{{end}}">Feeds</a>
                     <a href="/rss-help" class="{{if eq .ActivePage "rss-help"}}active{{end}}">RSS</a>
                     <a href="/settings" class="{{if eq .ActivePage "settings"}}active{{end}}">Settings</a>
+                    
+                    <!-- Search -->
+                    <div class="nav-search">
+                        <button class="search-toggle" onclick="toggleSearch()" aria-label="Search">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <path d="m21 21-4.35-4.35"/>
+                            </svg>
+                        </button>
+                        <form id="nav-search-form" action="/search" method="get" class="nav-search-form {{if .IsSearch}}active{{end}}">
+                            <input type="search" 
+                                   name="q" 
+                                   placeholder="Search articles..." 
+                                   value="{{.SearchQuery}}"
+                                   class="nav-search-input"
+                                   autocomplete="off">
+                            <button type="button" class="search-close" onclick="toggleSearch()" aria-label="Close search">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M18 6L6 18M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </nav>
@@ -39,5 +62,29 @@
             <p>Newscope &copy; 2024 Umputun. AI-powered RSS news classificator.</p>
         </div>
     </footer>
+    
+    <script>
+        function toggleSearch() {
+            const form = document.getElementById('nav-search-form');
+            const isActive = form.classList.contains('active');
+            
+            if (isActive) {
+                form.classList.remove('active');
+            } else {
+                form.classList.add('active');
+                form.querySelector('input').focus();
+            }
+        }
+        
+        // Close search on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const form = document.getElementById('nav-search-form');
+                if (form.classList.contains('active')) {
+                    form.classList.remove('active');
+                }
+            }
+        });
+    </script>
 </body>
 </html>

@@ -47,6 +47,9 @@ import (
 //			GetItemsFunc: func(ctx context.Context, limit int, offset int) ([]domain.Item, error) {
 //				panic("mock out the GetItems method")
 //			},
+//			GetSearchItemsCountFunc: func(ctx context.Context, searchQuery string, req domain.ArticlesRequest) (int, error) {
+//				panic("mock out the GetSearchItemsCount method")
+//			},
 //			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
 //				panic("mock out the GetSetting method")
 //			},
@@ -58,6 +61,9 @@ import (
 //			},
 //			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetTopicsFiltered method")
+//			},
+//			SearchItemsFunc: func(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+//				panic("mock out the SearchItems method")
 //			},
 //			SetSettingFunc: func(ctx context.Context, key string, value string) error {
 //				panic("mock out the SetSetting method")
@@ -108,6 +114,9 @@ type DatabaseMock struct {
 	// GetItemsFunc mocks the GetItems method.
 	GetItemsFunc func(ctx context.Context, limit int, offset int) ([]domain.Item, error)
 
+	// GetSearchItemsCountFunc mocks the GetSearchItemsCount method.
+	GetSearchItemsCountFunc func(ctx context.Context, searchQuery string, req domain.ArticlesRequest) (int, error)
+
 	// GetSettingFunc mocks the GetSetting method.
 	GetSettingFunc func(ctx context.Context, key string) (string, error)
 
@@ -119,6 +128,9 @@ type DatabaseMock struct {
 
 	// GetTopicsFilteredFunc mocks the GetTopicsFiltered method.
 	GetTopicsFilteredFunc func(ctx context.Context, minScore float64) ([]string, error)
+
+	// SearchItemsFunc mocks the SearchItems method.
+	SearchItemsFunc func(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error)
 
 	// SetSettingFunc mocks the SetSetting method.
 	SetSettingFunc func(ctx context.Context, key string, value string) error
@@ -206,6 +218,15 @@ type DatabaseMock struct {
 			// Offset is the offset argument value.
 			Offset int
 		}
+		// GetSearchItemsCount holds details about calls to the GetSearchItemsCount method.
+		GetSearchItemsCount []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// SearchQuery is the searchQuery argument value.
+			SearchQuery string
+			// Req is the req argument value.
+			Req domain.ArticlesRequest
+		}
 		// GetSetting holds details about calls to the GetSetting method.
 		GetSetting []struct {
 			// Ctx is the ctx argument value.
@@ -233,6 +254,15 @@ type DatabaseMock struct {
 			Ctx context.Context
 			// MinScore is the minScore argument value.
 			MinScore float64
+		}
+		// SearchItems holds details about calls to the SearchItems method.
+		SearchItems []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// SearchQuery is the searchQuery argument value.
+			SearchQuery string
+			// Req is the req argument value.
+			Req domain.ArticlesRequest
 		}
 		// SetSetting holds details about calls to the SetSetting method.
 		SetSetting []struct {
@@ -283,10 +313,12 @@ type DatabaseMock struct {
 	lockGetClassifiedItemsWithFilters sync.RWMutex
 	lockGetFeeds                      sync.RWMutex
 	lockGetItems                      sync.RWMutex
+	lockGetSearchItemsCount           sync.RWMutex
 	lockGetSetting                    sync.RWMutex
 	lockGetTopTopicsByScore           sync.RWMutex
 	lockGetTopics                     sync.RWMutex
 	lockGetTopicsFiltered             sync.RWMutex
+	lockSearchItems                   sync.RWMutex
 	lockSetSetting                    sync.RWMutex
 	lockUpdateFeed                    sync.RWMutex
 	lockUpdateFeedStatus              sync.RWMutex
@@ -657,6 +689,46 @@ func (mock *DatabaseMock) GetItemsCalls() []struct {
 	return calls
 }
 
+// GetSearchItemsCount calls GetSearchItemsCountFunc.
+func (mock *DatabaseMock) GetSearchItemsCount(ctx context.Context, searchQuery string, req domain.ArticlesRequest) (int, error) {
+	if mock.GetSearchItemsCountFunc == nil {
+		panic("DatabaseMock.GetSearchItemsCountFunc: method is nil but Database.GetSearchItemsCount was just called")
+	}
+	callInfo := struct {
+		Ctx         context.Context
+		SearchQuery string
+		Req         domain.ArticlesRequest
+	}{
+		Ctx:         ctx,
+		SearchQuery: searchQuery,
+		Req:         req,
+	}
+	mock.lockGetSearchItemsCount.Lock()
+	mock.calls.GetSearchItemsCount = append(mock.calls.GetSearchItemsCount, callInfo)
+	mock.lockGetSearchItemsCount.Unlock()
+	return mock.GetSearchItemsCountFunc(ctx, searchQuery, req)
+}
+
+// GetSearchItemsCountCalls gets all the calls that were made to GetSearchItemsCount.
+// Check the length with:
+//
+//	len(mockedDatabase.GetSearchItemsCountCalls())
+func (mock *DatabaseMock) GetSearchItemsCountCalls() []struct {
+	Ctx         context.Context
+	SearchQuery string
+	Req         domain.ArticlesRequest
+} {
+	var calls []struct {
+		Ctx         context.Context
+		SearchQuery string
+		Req         domain.ArticlesRequest
+	}
+	mock.lockGetSearchItemsCount.RLock()
+	calls = mock.calls.GetSearchItemsCount
+	mock.lockGetSearchItemsCount.RUnlock()
+	return calls
+}
+
 // GetSetting calls GetSettingFunc.
 func (mock *DatabaseMock) GetSetting(ctx context.Context, key string) (string, error) {
 	if mock.GetSettingFunc == nil {
@@ -798,6 +870,46 @@ func (mock *DatabaseMock) GetTopicsFilteredCalls() []struct {
 	mock.lockGetTopicsFiltered.RLock()
 	calls = mock.calls.GetTopicsFiltered
 	mock.lockGetTopicsFiltered.RUnlock()
+	return calls
+}
+
+// SearchItems calls SearchItemsFunc.
+func (mock *DatabaseMock) SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+	if mock.SearchItemsFunc == nil {
+		panic("DatabaseMock.SearchItemsFunc: method is nil but Database.SearchItems was just called")
+	}
+	callInfo := struct {
+		Ctx         context.Context
+		SearchQuery string
+		Req         domain.ArticlesRequest
+	}{
+		Ctx:         ctx,
+		SearchQuery: searchQuery,
+		Req:         req,
+	}
+	mock.lockSearchItems.Lock()
+	mock.calls.SearchItems = append(mock.calls.SearchItems, callInfo)
+	mock.lockSearchItems.Unlock()
+	return mock.SearchItemsFunc(ctx, searchQuery, req)
+}
+
+// SearchItemsCalls gets all the calls that were made to SearchItems.
+// Check the length with:
+//
+//	len(mockedDatabase.SearchItemsCalls())
+func (mock *DatabaseMock) SearchItemsCalls() []struct {
+	Ctx         context.Context
+	SearchQuery string
+	Req         domain.ArticlesRequest
+} {
+	var calls []struct {
+		Ctx         context.Context
+		SearchQuery string
+		Req         domain.ArticlesRequest
+	}
+	mock.lockSearchItems.RLock()
+	calls = mock.calls.SearchItems
+	mock.lockSearchItems.RUnlock()
 	return calls
 }
 

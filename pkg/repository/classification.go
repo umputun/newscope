@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -489,6 +490,112 @@ func (r *ClassificationRepository) GetClassifiedItemsCount(ctx context.Context, 
 	var count int
 	if err := r.db.GetContext(ctx, &count, query, args...); err != nil {
 		return 0, fmt.Errorf("get classified items count: %w", err)
+	}
+
+	return count, nil
+}
+
+// buildSearchWhereClause builds the common WHERE clause for search queries
+func (r *ClassificationRepository) buildSearchWhereClause(searchQuery string, filter *domain.ItemFilter) (whereClause string, args []interface{}) {
+	// sanitize search query for FTS5 - escape double quotes but allow other operators
+	// this allows OR, AND, NOT operators while preventing injection via quotes
+	sanitizedQuery := strings.ReplaceAll(searchQuery, `"`, `""`)
+
+	whereClause = `
+		FROM items i
+		JOIN feeds f ON i.feed_id = f.id
+		JOIN items_fts ON items_fts.rowid = i.id
+		WHERE items_fts MATCH ?
+		AND i.classified_at IS NOT NULL`
+
+	args = []interface{}{sanitizedQuery}
+
+	// add score filter
+	if filter.MinScore > 0 {
+		whereClause += ` AND i.relevance_score >= ?`
+		args = append(args, filter.MinScore)
+	}
+
+	// add topic filter if specified
+	if filter.Topic != "" {
+		whereClause += ` AND EXISTS (
+			SELECT 1 FROM json_each(i.topics) 
+			WHERE json_each.value = ?
+		)`
+		args = append(args, filter.Topic)
+	}
+
+	// add feed filter if specified
+	if filter.FeedName != "" {
+		whereClause += ` AND (f.title = ? OR f.title = '' AND ? LIKE '%' || REPLACE(REPLACE(SUBSTR(f.url, INSTR(f.url, '://') + 3), 'www.', ''), '/', '') || '%')`
+		args = append(args, filter.FeedName, filter.FeedName)
+	}
+
+	// add liked only filter if specified
+	if filter.ShowLikedOnly {
+		whereClause += ` AND i.user_feedback = 'like'`
+	}
+
+	return whereClause, args
+}
+
+// SearchItems searches for items using full-text search
+func (r *ClassificationRepository) SearchItems(ctx context.Context, searchQuery string, filter *domain.ItemFilter) ([]*domain.ClassifiedItem, error) {
+	// build the common WHERE clause
+	where, args := r.buildSearchWhereClause(searchQuery, filter)
+
+	// build the full query
+	query := `
+		SELECT 
+			i.*,
+			f.title as feed_title,
+			f.url as feed_url` + where
+
+	// add sorting
+	switch filter.SortBy {
+	case "score":
+		query += ` ORDER BY i.relevance_score DESC, i.published DESC`
+	case "source+date":
+		query += ` ORDER BY f.title ASC, i.published DESC`
+	case "source+score":
+		query += ` ORDER BY f.title ASC, i.relevance_score DESC, i.published DESC`
+	default:
+		// for search, default to relevance first (FTS5 bm25 score), then date
+		query += ` ORDER BY bm25(items_fts), i.published DESC`
+	}
+
+	// add pagination
+	if filter.Offset > 0 {
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, filter.Limit, filter.Offset)
+	} else {
+		query += ` LIMIT ?`
+		args = append(args, filter.Limit)
+	}
+
+	var sqlItems []itemWithFeedSQL
+	if err := r.db.SelectContext(ctx, &sqlItems, query, args...); err != nil {
+		return nil, fmt.Errorf("search items: %w", err)
+	}
+
+	items := make([]*domain.ClassifiedItem, len(sqlItems))
+	for i, sqlItem := range sqlItems {
+		items[i] = r.toDomainClassifiedItem(&sqlItem)
+	}
+	return items, nil
+}
+
+// GetSearchItemsCount returns the total count of items matching the search query
+func (r *ClassificationRepository) GetSearchItemsCount(ctx context.Context, searchQuery string, filter *domain.ItemFilter) (int, error) {
+	// build the common WHERE clause
+	where, args := r.buildSearchWhereClause(searchQuery, filter)
+
+	// build the count query
+	query := "SELECT COUNT(*)" + where
+
+	var count int
+	if err := r.db.GetContext(ctx, &count, query, args...); err != nil {
+		return 0, fmt.Errorf("get search items count: %w", err)
 	}
 
 	return count, nil

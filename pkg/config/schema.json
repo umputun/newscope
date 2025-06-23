@@ -223,7 +223,7 @@
         "user_agent": {
           "type": "string",
           "description": "User agent for HTTP requests",
-          "default": "Newscope/1.0"
+          "default": "Newscope/1.0 (+https://github.com/umputun/newscope)"
         },
         "fallback_url": {
           "type": "string",
