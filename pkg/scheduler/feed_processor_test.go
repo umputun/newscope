@@ -756,9 +756,9 @@ func TestFeedProcessor_ProcessItem_NonHTMLContent(t *testing.T) {
 	})
 
 	testItem := &domain.Item{
-		ID:   1,
-		GUID: "test-guid",
-		Link: "https://example.com/document.pdf",
+		ID:    1,
+		GUID:  "test-guid",
+		Link:  "https://example.com/document.pdf",
 		Title: "PDF Document",
 	}
 

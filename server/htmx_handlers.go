@@ -89,6 +89,13 @@ type articlesPageRequest struct {
 	searchQuery string
 }
 
+// commonPageData contains fields common to all pages
+type commonPageData struct {
+	ActivePage  string
+	IsSearch    bool
+	SearchQuery string
+}
+
 // articlesHandler displays the main articles page
 func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -187,7 +194,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 
 	// prepare template data for full page render
 	data := struct {
-		ActivePage    string
+		commonPageData
 		Articles      []domain.ItemWithClassification
 		ArticleCount  int
 		TotalCount    int
@@ -206,10 +213,12 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		HasNext     bool
 		HasPrev     bool
 		IsHTMX      bool
-		IsSearch    bool
-		SearchQuery string
 	}{
-		ActivePage:    "home",
+		commonPageData: commonPageData{
+			ActivePage:  "home",
+			IsSearch:    false,
+			SearchQuery: "",
+		},
 		Articles:      articles,
 		ArticleCount:  len(articles),
 		TotalCount:    totalCount,
@@ -228,8 +237,6 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		HasNext:     hasNext,
 		HasPrev:     hasPrev,
 		IsHTMX:      false,
-		IsSearch:    false,
-		SearchQuery: "",
 	}
 
 	// render full page with base template and article card component
@@ -307,15 +314,15 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// prepare template data
 	data := struct {
-		ActivePage  string
-		Feeds       []domain.Feed
-		IsSearch    bool
-		SearchQuery string
+		commonPageData
+		Feeds []domain.Feed
 	}{
-		ActivePage:  "feeds",
-		Feeds:       feeds,
-		IsSearch:    false,
-		SearchQuery: "",
+		commonPageData: commonPageData{
+			ActivePage:  "feeds",
+			IsSearch:    false,
+			SearchQuery: "",
+		},
+		Feeds: feeds,
 	}
 
 	// render page with base template

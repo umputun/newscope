@@ -54,7 +54,7 @@ llm:
 		// check server defaults
 		assert.Equal(t, ":8080", cfg.Server.Listen)
 		assert.Equal(t, 30*time.Second, cfg.Server.Timeout)
-		
+
 		// check LLM classification defaults
 		assert.Equal(t, 10, cfg.LLM.Classification.PreferenceSummaryThreshold)
 	})

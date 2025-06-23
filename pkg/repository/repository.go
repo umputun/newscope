@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite" // pure Go SQLite driver
 )
 
-//go:embed schema.sql migrations.sql
+//go:embed schema.sql
 var schemaFS embed.FS
 
 // Config represents database configuration
@@ -78,11 +78,6 @@ func NewRepositories(ctx context.Context, cfg Config) (*Repositories, error) {
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
 
-	// run migrations
-	if err := runMigrations(ctx, db); err != nil {
-		return nil, fmt.Errorf("run migrations: %w", err)
-	}
-
 	// create repositories
 	repos := &Repositories{
 		Feed:           NewFeedRepository(db),
@@ -137,111 +132,4 @@ func isLockError(err error) bool {
 	return strings.Contains(errStr, "SQLITE_BUSY") ||
 		strings.Contains(errStr, "database is locked") ||
 		strings.Contains(errStr, "database table is locked")
-}
-
-// runMigrations runs database migrations to update schema
-func runMigrations(ctx context.Context, db *sqlx.DB) error {
-	// check if summary column exists
-	var count int
-	err := db.GetContext(ctx, &count,
-		`SELECT COUNT(*) FROM pragma_table_info('items') WHERE name = 'summary'`)
-	if err != nil {
-		return fmt.Errorf("check summary column: %w", err)
-	}
-
-	// add summary column if it doesn't exist
-	if count == 0 {
-		if _, err := db.ExecContext(ctx, `ALTER TABLE items ADD COLUMN summary TEXT DEFAULT ''`); err != nil {
-			return fmt.Errorf("add summary column: %w", err)
-		}
-	}
-
-	// read and execute migrations.sql
-	migrations, err := schemaFS.ReadFile("migrations.sql")
-	if err != nil {
-		return fmt.Errorf("read migrations: %w", err)
-	}
-
-	// split and execute migrations one by one to handle SQLite limitations
-	statements := splitMigrationStatements(string(migrations))
-	for _, stmt := range statements {
-		if stmt != "" {
-			if _, err := db.ExecContext(ctx, stmt); err != nil {
-				// check if this is an expected "already exists" error for idempotent migrations
-				errStr := err.Error()
-				if strings.Contains(errStr, "already exists") ||
-					strings.Contains(errStr, "duplicate") ||
-					strings.Contains(errStr, "UNIQUE constraint failed") {
-					// these errors are expected for idempotent migrations, skip
-					continue
-				}
-				// return actual errors
-				return fmt.Errorf("execute migration statement: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// splitMigrationStatements splits SQL migration statements by semicolon
-func splitMigrationStatements(migrations string) []string {
-	// special handling for triggers with BEGIN/END blocks
-	lines := strings.Split(migrations, "\n")
-	var statements []string
-	var current strings.Builder
-	inTrigger := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// skip comment-only lines
-		if strings.HasPrefix(trimmed, "--") && current.Len() == 0 {
-			continue
-		}
-
-		// skip empty lines when not building a statement
-		if trimmed == "" && current.Len() == 0 {
-			continue
-		}
-
-		// detect trigger start
-		upperTrimmed := strings.ToUpper(trimmed)
-		if strings.Contains(upperTrimmed, "CREATE TRIGGER") {
-			inTrigger = true
-		}
-
-		// add line to current statement
-		if current.Len() > 0 || (trimmed != "" && !strings.HasPrefix(trimmed, "--")) {
-			current.WriteString(line)
-			current.WriteString("\n")
-		}
-
-		// check for statement end
-		if strings.HasSuffix(trimmed, ";") {
-			// for triggers, check if this is the END; statement
-			if inTrigger && strings.EqualFold(trimmed, "END;") {
-				inTrigger = false
-			}
-
-			// if not in trigger, or if we just ended a trigger, save the statement
-			if !inTrigger {
-				stmt := strings.TrimSpace(current.String())
-				if stmt != "" {
-					statements = append(statements, stmt)
-				}
-				current.Reset()
-			}
-		}
-	}
-
-	// add any remaining statement
-	if current.Len() > 0 {
-		stmt := strings.TrimSpace(current.String())
-		if stmt != "" {
-			statements = append(statements, stmt)
-		}
-	}
-
-	return statements
 }

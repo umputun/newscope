@@ -127,7 +127,7 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (*ExtractRes
 
 			// check content type - only process HTML/text content
 			contentType := resp.Header.Get("Content-Type")
-			if contentType != "" && !strings.Contains(strings.ToLower(contentType), "text/html") && 
+			if contentType != "" && !strings.Contains(strings.ToLower(contentType), "text/html") &&
 				!strings.Contains(strings.ToLower(contentType), "application/xhtml") &&
 				!strings.Contains(strings.ToLower(contentType), "text/plain") {
 				// non-HTML content (PDF, images, etc) - not retryable

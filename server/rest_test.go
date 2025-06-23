@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -159,6 +160,7 @@ func TestServer_createFeedHandler(t *testing.T) {
 	}
 
 	feedCreated := false
+	var mu sync.Mutex
 	fetchTriggered := false
 
 	database := &mocks.DatabaseMock{
@@ -175,7 +177,9 @@ func TestServer_createFeedHandler(t *testing.T) {
 
 	scheduler := &mocks.SchedulerMock{
 		UpdateFeedNowFunc: func(ctx context.Context, feedID int64) error {
+			mu.Lock()
 			fetchTriggered = true
+			mu.Unlock()
 			assert.Equal(t, int64(99), feedID)
 			return nil
 		},
@@ -198,7 +202,9 @@ func TestServer_createFeedHandler(t *testing.T) {
 
 	// wait for async fetch
 	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
 	assert.True(t, fetchTriggered)
+	mu.Unlock()
 
 	// response should contain feed card HTML
 	assert.Contains(t, w.Body.String(), "New Site")

@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
@@ -69,18 +68,6 @@ func TestClassificationRepository_SearchItemsSimple(t *testing.T) {
 	_, err = db.ExecContext(ctx, string(schema))
 	require.NoError(t, err)
 
-	// read and execute migrations
-	migrations, err := schemaFS.ReadFile("migrations.sql")
-	require.NoError(t, err)
-	// run migrations line by line to handle SQLite limitations
-	for _, migration := range splitMigrations(string(migrations)) {
-		if migration != "" {
-			_, err = db.ExecContext(ctx, migration)
-			// ignore errors for migrations that might fail (like adding columns)
-			_ = err
-		}
-	}
-
 	// verify FTS table exists
 	var ftsCount int
 	err = db.Get(&ftsCount, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='items_fts'`)
@@ -107,30 +94,4 @@ func TestClassificationRepository_SearchItemsSimple(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, items, 1)
 	assert.Equal(t, "Go Programming", items[0].Title)
-}
-
-func splitMigrations(migrations string) []string {
-	// simple split by semicolon, handling comments
-	lines := strings.Split(migrations, "\n")
-	var statements []string
-	var current strings.Builder
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "--") || trimmed == "" {
-			continue
-		}
-		current.WriteString(line)
-		current.WriteString("\n")
-		if strings.HasSuffix(trimmed, ";") {
-			statements = append(statements, strings.TrimSpace(current.String()))
-			current.Reset()
-		}
-	}
-
-	if current.Len() > 0 {
-		statements = append(statements, strings.TrimSpace(current.String()))
-	}
-
-	return statements
 }
