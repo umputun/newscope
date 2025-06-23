@@ -2,8 +2,6 @@ module github.com/umputun/newscope
 
 go 1.24.1
 
-toolchain go1.24.3
-
 require (
 	github.com/fatih/color v1.18.0
 	github.com/go-pkgz/lgr v0.12.1
