@@ -76,4 +76,3 @@ func (d Weekday) String() string {
 	}
 	return "%!Weekday(" + strconv.Itoa(int(d)) + ")"
 }
-

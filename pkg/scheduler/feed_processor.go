@@ -101,6 +101,12 @@ func (fp *FeedProcessor) ProcessItem(ctx context.Context, item *domain.Item) {
 	// 1. Extract content
 	extracted, err := fp.extractor.Extract(ctx, item.Link)
 	if err != nil {
+		// check if error indicates unsupported content type (PDF, images, etc)
+		if strings.Contains(err.Error(), "unsupported content type") {
+			lgr.Printf("[INFO] skipping non-HTML content for item %d from %s: %v", item.ID, item.Link, err)
+			// don't store anything for non-HTML content
+			return
+		}
 		lgr.Printf("[WARN] failed to extract content for item %d from %s: %v", item.ID, item.Link, err)
 		extraction := &domain.ExtractedContent{
 			Error:       err.Error(),

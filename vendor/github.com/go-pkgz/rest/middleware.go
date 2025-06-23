@@ -19,7 +19,6 @@ func Wrap(handler http.Handler, mws ...func(http.Handler) http.Handler) http.Han
 	return handler
 }
 
-
 // AppInfo adds custom app-info to the response header
 func AppInfo(app, author, version string) func(http.Handler) http.Handler {
 	f := func(h http.Handler) http.Handler {
