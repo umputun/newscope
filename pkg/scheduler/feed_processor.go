@@ -103,8 +103,18 @@ func (fp *FeedProcessor) ProcessItem(ctx context.Context, item *domain.Item) {
 	if err != nil {
 		// check if error indicates unsupported content type (PDF, images, etc)
 		if strings.Contains(err.Error(), "unsupported content type") {
-			lgr.Printf("[INFO] skipping non-HTML content for item %d from %s: %v", item.ID, item.Link, err)
-			// don't store anything for non-HTML content
+			lgr.Printf("[INFO] non-HTML content for item %d from %s: %v", item.ID, item.Link, err)
+			// store error for non-HTML content so user knows why it wasn't extracted
+			extraction := &domain.ExtractedContent{
+				Error:       "Binary content (PDF, image, or other non-HTML format)",
+				ExtractedAt: time.Now(),
+			}
+			updateErr := fp.retryFunc(ctx, func() error {
+				return fp.itemManager.UpdateItemExtraction(ctx, item.ID, extraction)
+			})
+			if updateErr != nil {
+				lgr.Printf("[WARN] failed to update extraction status for item %d after retries: %v", item.ID, updateErr)
+			}
 			return
 		}
 		lgr.Printf("[WARN] failed to extract content for item %d from %s: %v", item.ID, item.Link, err)

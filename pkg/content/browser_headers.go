@@ -32,6 +32,8 @@ func addBrowserHeaders(req *http.Request) {
 	// essential headers that should always be present
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
 	// don't request compression - simpler to handle and store
+	// set identity to explicitly request uncompressed content
+	req.Header.Set("Accept-Encoding", "identity")
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	req.Header.Set("Upgrade-Insecure-Requests", "1")

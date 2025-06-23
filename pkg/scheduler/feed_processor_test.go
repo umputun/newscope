@@ -734,3 +734,56 @@ func TestFeedProcessor_UpdateFeed_ItemCreationWithLockError(t *testing.T) {
 	assert.GreaterOrEqual(t, len(itemManager.CreateItemCalls()), 5) // should be called at least 5 times
 	assert.Len(t, feedManager.UpdateFeedFetchedCalls(), 1)
 }
+
+func TestFeedProcessor_ProcessItem_NonHTMLContent(t *testing.T) {
+	itemManager := &mocks.ItemManagerMock{}
+	extractor := &mocks.ExtractorMock{}
+
+	retryFunc := func(ctx context.Context, op func() error) error {
+		return op()
+	}
+
+	fp := NewFeedProcessor(FeedProcessorConfig{
+		FeedManager:           &mocks.FeedManagerMock{},
+		ItemManager:           itemManager,
+		ClassificationManager: &mocks.ClassificationManagerMock{},
+		SettingManager:        &mocks.SettingManagerMock{},
+		Parser:                &mocks.ParserMock{},
+		Extractor:             extractor,
+		Classifier:            &mocks.ClassifierMock{},
+		MaxWorkers:            1,
+		RetryFunc:             retryFunc,
+	})
+
+	testItem := &domain.Item{
+		ID:   1,
+		GUID: "test-guid",
+		Link: "https://example.com/document.pdf",
+		Title: "PDF Document",
+	}
+
+	// setup extraction to fail with unsupported content type error
+	extractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
+		return nil, fmt.Errorf("unsupported content type: application/pdf")
+	}
+
+	// setup item manager to expect extraction error update with specific binary content message
+	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
+		assert.Equal(t, testItem.ID, itemID)
+		assert.Equal(t, "Binary content (PDF, image, or other non-HTML format)", extraction.Error)
+		assert.False(t, extraction.ExtractedAt.IsZero())
+		return nil
+	}
+
+	// setup GetItem
+	itemManager.GetItemFunc = func(ctx context.Context, id int64) (*domain.Item, error) {
+		return testItem, nil
+	}
+
+	err := fp.ExtractContentNow(context.Background(), 1)
+
+	// verify - should not return error but should call UpdateItemExtraction with binary content message
+	require.NoError(t, err)
+	assert.Len(t, extractor.ExtractCalls(), 1)
+	assert.Len(t, itemManager.UpdateItemExtractionCalls(), 1)
+}
