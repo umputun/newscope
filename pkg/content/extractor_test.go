@@ -256,14 +256,14 @@ func TestHTTPExtractor_Extract_ErrorCases(t *testing.T) {
 			serverFunc: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 			},
-			expectedErr: "unexpected status code: 404",
+			expectedErr: "client error: 404",
 		},
 		{
 			name: "server returns 500",
 			serverFunc: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 			},
-			expectedErr: "unexpected status code: 500",
+			expectedErr: "server error: 500",
 		},
 		{
 			name: "empty HTML",
