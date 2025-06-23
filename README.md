@@ -20,6 +20,7 @@ In addition to intelligent feed curation, newscope provides:
 - Custom RSS feed generation with filters
 - Modern web UI with multiple view modes
 - Real-time feed updates
+- Full-text search across all articles with relevance scoring
 
 ## Basic Usage
 
