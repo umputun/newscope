@@ -1301,6 +1301,15 @@ func TestClassificationRepository_SearchItems(t *testing.T) {
 			topics:      []string{"javascript", "web"},
 			feedback:    "dislike",
 		},
+		{
+			title:       "ChatGPT and AI Revolution",
+			description: "How ChatGPT is changing the AI landscape",
+			content:     "ChatGPT represents a major advancement in conversational AI technology",
+			summary:     "The impact of ChatGPT on AI development",
+			score:       9.0,
+			topics:      []string{"ai", "chatgpt"},
+			feedback:    "like",
+		},
 	}
 
 	// insert items
@@ -1400,6 +1409,27 @@ func TestClassificationRepository_SearchItems(t *testing.T) {
 			filter:      &domain.ItemFilter{Limit: 10},
 			wantCount:   0,
 			wantTitles:  []string{},
+		},
+		{
+			name:        "search for GPT should find ChatGPT",
+			searchQuery: "GPT",
+			filter:      &domain.ItemFilter{Limit: 10},
+			wantCount:   1,
+			wantTitles:  []string{"ChatGPT and AI Revolution"},
+		},
+		{
+			name:        "search for ChatGPT exact match",
+			searchQuery: "ChatGPT",
+			filter:      &domain.ItemFilter{Limit: 10},
+			wantCount:   1,
+			wantTitles:  []string{"ChatGPT and AI Revolution"},
+		},
+		{
+			name:        "complex query with OR operator",
+			searchQuery: "golang OR chatgpt",
+			filter:      &domain.ItemFilter{Limit: 10},
+			wantCount:   2,
+			wantTitles:  []string{"ChatGPT and AI Revolution", "Golang Best Practices"},
 		},
 	}
 

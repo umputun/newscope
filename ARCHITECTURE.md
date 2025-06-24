@@ -101,6 +101,19 @@ SQLite-based persistence using pure Go driver (modernc.org/sqlite) with sqlx for
 - WAL mode for better concurrent read performance
 - Batch operations for classification updates
 
+#### Full-Text Search (FTS5)
+
+**Search Implementation:**
+- SQLite FTS5 virtual table for full-text search across articles
+- Searches in: title, description, content, extracted_content, summary
+- Porter stemmer with Unicode support for better matching
+- Hybrid search approach:
+  - Single-word queries use SQL LIKE for substring matching (e.g., "GPT" finds "ChatGPT")
+  - Complex queries with operators (OR, AND, NOT) use FTS5 for performance
+  - Supports phrase search with quotes: "exact phrase"
+- Results sorted by BM25 relevance score for FTS5 queries
+- Automatically maintained via triggers on the items table
+
 ### 3. Feed System (`pkg/feed`)
 
 Handles RSS/Atom feed parsing and management.

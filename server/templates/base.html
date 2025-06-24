@@ -67,12 +67,18 @@
         function toggleSearch() {
             const form = document.getElementById('nav-search-form');
             const isActive = form.classList.contains('active');
+            const searchInput = form.querySelector('input');
             
             if (isActive) {
                 form.classList.remove('active');
+                // reset search by navigating to home if on search page
+                if (window.location.pathname === '/search') {
+                    window.location.href = '/';
+                }
             } else {
                 form.classList.add('active');
-                form.querySelector('input').focus();
+                // small delay to ensure the form is visible before focusing
+                setTimeout(() => searchInput.focus(), 50);
             }
         }
         

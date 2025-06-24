@@ -501,14 +501,43 @@ func (r *ClassificationRepository) buildSearchWhereClause(searchQuery string, fi
 	// this allows OR, AND, NOT operators while preventing injection via quotes
 	sanitizedQuery := strings.ReplaceAll(searchQuery, `"`, `""`)
 
-	whereClause = `
-		FROM items i
-		JOIN feeds f ON i.feed_id = f.id
-		JOIN items_fts ON items_fts.rowid = i.id
-		WHERE items_fts MATCH ?
-		AND i.classified_at IS NOT NULL`
+	// for simple single-word queries, use a hybrid approach:
+	// try FTS5 match first, then fallback to LIKE for substring matching
+	isSingleWord := !strings.Contains(sanitizedQuery, " ") &&
+		!strings.Contains(sanitizedQuery, "OR") &&
+		!strings.Contains(sanitizedQuery, "AND") &&
+		!strings.Contains(sanitizedQuery, "NOT") &&
+		!strings.Contains(sanitizedQuery, "*") &&
+		!strings.Contains(sanitizedQuery, "\"")
 
-	args = []interface{}{sanitizedQuery}
+	if isSingleWord {
+		// for single words, use LIKE for substring matching
+		// this allows finding "GPT" within "ChatGPT"
+		whereClause = `
+			FROM items i
+			JOIN feeds f ON i.feed_id = f.id
+			WHERE (
+				i.title LIKE ? OR 
+				i.description LIKE ? OR 
+				i.content LIKE ? OR
+				i.extracted_content LIKE ? OR
+				i.summary LIKE ?
+			)
+			AND i.classified_at IS NOT NULL`
+
+		likePattern := "%" + sanitizedQuery + "%"
+		args = []interface{}{likePattern, likePattern, likePattern, likePattern, likePattern}
+	} else {
+		// use FTS5 for complex queries
+		whereClause = `
+			FROM items i
+			JOIN feeds f ON i.feed_id = f.id
+			JOIN items_fts ON items_fts.rowid = i.id
+			WHERE items_fts MATCH ?
+			AND i.classified_at IS NOT NULL`
+
+		args = []interface{}{sanitizedQuery}
+	}
 
 	// add score filter
 	if filter.MinScore > 0 {
@@ -544,6 +573,15 @@ func (r *ClassificationRepository) SearchItems(ctx context.Context, searchQuery 
 	// build the common WHERE clause
 	where, args := r.buildSearchWhereClause(searchQuery, filter)
 
+	// check if this is a simple single-word query (for hybrid search)
+	sanitizedQuery := strings.ReplaceAll(searchQuery, `"`, `""`)
+	isSingleWord := !strings.Contains(sanitizedQuery, " ") &&
+		!strings.Contains(sanitizedQuery, "OR") &&
+		!strings.Contains(sanitizedQuery, "AND") &&
+		!strings.Contains(sanitizedQuery, "NOT") &&
+		!strings.Contains(sanitizedQuery, "*") &&
+		!strings.Contains(sanitizedQuery, "\"")
+
 	// build the full query
 	query := `
 		SELECT 
@@ -560,8 +598,14 @@ func (r *ClassificationRepository) SearchItems(ctx context.Context, searchQuery 
 	case "source+score":
 		query += ` ORDER BY f.title ASC, i.relevance_score DESC, i.published DESC`
 	default:
-		// for search, default to relevance first (FTS5 bm25 score), then date
-		query += ` ORDER BY bm25(items_fts), i.published DESC`
+		// for search, default to relevance first, then date
+		if isSingleWord {
+			// for hybrid search, can't use bm25 so just order by date
+			query += ` ORDER BY i.published DESC`
+		} else {
+			// for FTS5 queries, use bm25 relevance score
+			query += ` ORDER BY bm25(items_fts), i.published DESC`
+		}
 	}
 
 	// add pagination

@@ -20,7 +20,7 @@ In addition to intelligent feed curation, newscope provides:
 - Custom RSS feed generation with filters
 - Modern web UI with multiple view modes
 - Real-time feed updates
-- Full-text search across all articles with relevance scoring
+- Full-text search with partial word matching
 
 ## Basic Usage
 
@@ -140,6 +140,18 @@ The **Articles** page provides:
 - Source filtering (clickable feed names)
 - View modes: Expanded (⊞) or Condensed (☰)
 - Sort options: date, score, or source
+
+### Searching Articles
+
+Click the magnifying glass icon in the navigation bar to search across all articles:
+- **Simple searches**: Just type a word to find it anywhere in articles (e.g., "GPT" finds "ChatGPT")
+- **Advanced searches**: Use operators for complex queries:
+  - `golang OR python` - Find articles about either topic
+  - `AI AND ethics` - Find articles about both topics
+  - `crypto NOT bitcoin` - Find crypto articles excluding bitcoin
+  - `"exact phrase"` - Search for an exact phrase
+- Search results can be filtered by score, topic, source, and liked status
+- Results are sorted by relevance by default
 
 ### Providing Feedback
 
