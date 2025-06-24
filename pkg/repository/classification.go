@@ -573,15 +573,6 @@ func (r *ClassificationRepository) SearchItems(ctx context.Context, searchQuery 
 	// build the common WHERE clause
 	where, args := r.buildSearchWhereClause(searchQuery, filter)
 
-	// check if this is a simple single-word query (for hybrid search)
-	sanitizedQuery := strings.ReplaceAll(searchQuery, `"`, `""`)
-	isSingleWord := !strings.Contains(sanitizedQuery, " ") &&
-		!strings.Contains(sanitizedQuery, "OR") &&
-		!strings.Contains(sanitizedQuery, "AND") &&
-		!strings.Contains(sanitizedQuery, "NOT") &&
-		!strings.Contains(sanitizedQuery, "*") &&
-		!strings.Contains(sanitizedQuery, "\"")
-
 	// build the full query
 	query := `
 		SELECT 
@@ -597,15 +588,11 @@ func (r *ClassificationRepository) SearchItems(ctx context.Context, searchQuery 
 		query += ` ORDER BY f.title ASC, i.published DESC`
 	case "source+score":
 		query += ` ORDER BY f.title ASC, i.relevance_score DESC, i.published DESC`
+	case "published":
+		query += ` ORDER BY i.published DESC`
 	default:
-		// for search, default to relevance first, then date
-		if isSingleWord {
-			// for hybrid search, can't use bm25 so just order by date
-			query += ` ORDER BY i.published DESC`
-		} else {
-			// for FTS5 queries, use bm25 relevance score
-			query += ` ORDER BY bm25(items_fts), i.published DESC`
-		}
+		// default to date sorting for everything
+		query += ` ORDER BY i.published DESC`
 	}
 
 	// add pagination

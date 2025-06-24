@@ -1429,7 +1429,7 @@ func TestClassificationRepository_SearchItems(t *testing.T) {
 			searchQuery: "golang OR chatgpt",
 			filter:      &domain.ItemFilter{Limit: 10},
 			wantCount:   2,
-			wantTitles:  []string{"ChatGPT and AI Revolution", "Golang Best Practices"},
+			wantTitles:  []string{"Golang Best Practices", "ChatGPT and AI Revolution"},
 		},
 	}
 

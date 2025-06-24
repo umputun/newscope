@@ -858,7 +858,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	feedName := r.URL.Query().Get("feed")
 	sortBy := r.URL.Query().Get("sort")
 	if sortBy == "" {
-		sortBy = "relevance" // default to relevance for search
+		sortBy = "published" // default to date sort, same as articles page
 	}
 	showLikedOnly := r.URL.Query().Get("liked") == "true" || r.URL.Query().Get("liked") == "on"
 
