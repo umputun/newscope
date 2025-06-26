@@ -36,20 +36,24 @@ func TestServer_rssFeedHandler(t *testing.T) {
 
 	now := time.Now()
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
+		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ClassifiedItem, error) {
 			assert.InEpsilon(t, 5.0, minScore, 0.001) // default score
 			assert.Equal(t, "technology", topic)
 			assert.Equal(t, 100, limit)
 
-			return []domain.ItemWithClassification{
+			return []domain.ClassifiedItem{
 				{
-					GUID:           "guid-1",
-					Title:          "Tech News",
-					Link:           "https://example.com/tech",
-					Published:      now,
-					RelevanceScore: 8.5,
-					Explanation:    "Tech related",
-					Topics:         []string{"technology"},
+					Item: &domain.Item{
+						GUID:      "guid-1",
+						Title:     "Tech News",
+						Link:      "https://example.com/tech",
+						Published: now,
+					},
+					Classification: &domain.Classification{
+						Score:       8.5,
+						Explanation: "Tech related",
+						Topics:      []string{"technology"},
+					},
 				},
 			}, nil
 		},
@@ -100,39 +104,47 @@ func TestServer_rssHandler(t *testing.T) {
 	classifiedAt := now
 
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
+		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ClassifiedItem, error) {
 			// verify parameters
 			assert.InEpsilon(t, 7.0, minScore, 0.001)
 			assert.Equal(t, "technology", topic)
 			assert.Equal(t, 100, limit)
 
-			return []domain.ItemWithClassification{
+			return []domain.ClassifiedItem{
 				{
-					GUID:           "guid-1",
-					Title:          "AI Breakthrough & More",
-					Link:           "https://example.com/ai-news",
-					Description:    "Major advances in AI",
-					Author:         "John Doe",
-					Published:      now,
-					ID:             1,
-					FeedName:       "Tech News",
-					RelevanceScore: 9.5,
-					Explanation:    "Highly relevant to AI developments",
-					Topics:         []string{"ai", "technology"},
-					ClassifiedAt:   &classifiedAt,
+					Item: &domain.Item{
+						ID:          1,
+						GUID:        "guid-1",
+						Title:       "AI Breakthrough & More",
+						Link:        "https://example.com/ai-news",
+						Description: "Major advances in AI",
+						Author:      "John Doe",
+						Published:   now,
+					},
+					FeedName: "Tech News",
+					Classification: &domain.Classification{
+						Score:        9.5,
+						Explanation:  "Highly relevant to AI developments",
+						Topics:       []string{"ai", "technology"},
+						ClassifiedAt: classifiedAt,
+					},
 				},
 				{
-					GUID:           "guid-2",
-					Title:          "Cloud Computing <Updates>",
-					Link:           "https://example.com/cloud",
-					Description:    "New cloud services",
-					Published:      now.Add(-1 * time.Hour),
-					ID:             2,
-					FeedName:       "Cloud Weekly",
-					RelevanceScore: 7.5,
-					Explanation:    "Important cloud updates",
-					Topics:         []string{"cloud", "infrastructure"},
-					ClassifiedAt:   &classifiedAt,
+					Item: &domain.Item{
+						ID:          2,
+						GUID:        "guid-2",
+						Title:       "Cloud Computing <Updates>",
+						Link:        "https://example.com/cloud",
+						Description: "New cloud services",
+						Published:   now.Add(-1 * time.Hour),
+					},
+					FeedName: "Cloud Weekly",
+					Classification: &domain.Classification{
+						Score:        7.5,
+						Explanation:  "Important cloud updates",
+						Topics:       []string{"cloud", "infrastructure"},
+						ClassifiedAt: classifiedAt,
+					},
 				},
 			}, nil
 		},
@@ -199,7 +211,7 @@ func TestServer_RSSHandler_DatabaseError(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
+		GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ClassifiedItem, error) {
 			return nil, errors.New("database query failed")
 		},
 	}

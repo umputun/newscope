@@ -67,6 +67,80 @@ type ClassifiedItem struct {
 	UserFeedback   *Feedback
 }
 
+// GetRelevanceScore returns the relevance score or 0 if not classified.
+// This method is safe to call even when Classification is nil.
+func (c *ClassifiedItem) GetRelevanceScore() float64 {
+	if c.Classification != nil {
+		return c.Classification.Score
+	}
+	return 0
+}
+
+// GetExplanation returns the classification explanation or empty string
+func (c *ClassifiedItem) GetExplanation() string {
+	if c.Classification != nil {
+		return c.Classification.Explanation
+	}
+	return ""
+}
+
+// GetTopics returns the topics or empty slice
+func (c *ClassifiedItem) GetTopics() []string {
+	if c.Classification != nil {
+		return c.Classification.Topics
+	}
+	return []string{}
+}
+
+// GetSummary returns the summary or empty string
+func (c *ClassifiedItem) GetSummary() string {
+	if c.Classification != nil {
+		return c.Classification.Summary
+	}
+	return ""
+}
+
+// GetClassifiedAt returns when the item was classified or nil
+func (c *ClassifiedItem) GetClassifiedAt() *time.Time {
+	if c.Classification != nil {
+		t := c.Classification.ClassifiedAt
+		return &t
+	}
+	return nil
+}
+
+// GetExtractedContent returns extracted plain text or empty string
+func (c *ClassifiedItem) GetExtractedContent() string {
+	if c.Extraction != nil {
+		return c.Extraction.PlainText
+	}
+	return ""
+}
+
+// GetExtractedRichContent returns extracted HTML or empty string
+func (c *ClassifiedItem) GetExtractedRichContent() string {
+	if c.Extraction != nil {
+		return c.Extraction.RichHTML
+	}
+	return ""
+}
+
+// GetExtractionError returns extraction error or empty string
+func (c *ClassifiedItem) GetExtractionError() string {
+	if c.Extraction != nil {
+		return c.Extraction.Error
+	}
+	return ""
+}
+
+// GetUserFeedback returns user feedback as string or empty string
+func (c *ClassifiedItem) GetUserFeedback() string {
+	if c.UserFeedback != nil {
+		return string(c.UserFeedback.Type)
+	}
+	return ""
+}
+
 // ItemFilter represents filtering criteria for items
 type ItemFilter struct {
 	MinScore       float64
@@ -129,27 +203,4 @@ type ParsedItem struct {
 	Content     string // content from RSS feed (if available)
 	Author      string
 	Published   time.Time
-}
-
-// ItemWithClassification represents an item with all processing data for UI display
-type ItemWithClassification struct {
-	ID                   int64  // database ID for actions
-	FeedID               int64  // feed ID
-	FeedName             string // name of the feed
-	GUID                 string
-	Title                string
-	Link                 string
-	Description          string
-	Content              string
-	Author               string
-	Published            time.Time
-	ExtractedContent     string     // extracted content as plain text
-	ExtractedRichContent string     // extracted content with HTML formatting
-	ExtractionError      string     // extraction error if any
-	RelevanceScore       float64    // LLM classification score (0-10)
-	Explanation          string     // LLM explanation for the score
-	Topics               []string   // topics identified by LLM
-	Summary              string     // AI-generated summary
-	ClassifiedAt         *time.Time // when classified
-	UserFeedback         string     // user feedback: like, dislike
 }

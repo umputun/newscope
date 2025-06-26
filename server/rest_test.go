@@ -70,15 +70,21 @@ func TestServer_feedbackHandler(t *testing.T) {
 			assert.Equal(t, "like", feedback)
 			return nil
 		},
-		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
-			return &domain.ItemWithClassification{
-				Title:          "Test Article",
-				Link:           "https://example.com",
-				Published:      time.Now(),
-				ID:             itemID,
-				FeedName:       "Test Feed",
-				RelevanceScore: 7.5,
-				UserFeedback:   "like",
+		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
+			return &domain.ClassifiedItem{
+				Item: &domain.Item{
+					ID:        itemID,
+					Title:     "Test Article",
+					Link:      "https://example.com",
+					Published: time.Now(),
+				},
+				FeedName: "Test Feed",
+				Classification: &domain.Classification{
+					Score: 7.5,
+				},
+				UserFeedback: &domain.Feedback{
+					Type: domain.FeedbackLike,
+				},
 			}, nil
 		},
 	}
@@ -127,14 +133,17 @@ func TestServer_extractHandler(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
-			return &domain.ItemWithClassification{
-
-				Title:            "Test Article",
-				Published:        time.Now(),
-				ID:               itemID,
-				FeedName:         "Test Feed",
-				ExtractedContent: "Full article content here",
+		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
+			return &domain.ClassifiedItem{
+				Item: &domain.Item{
+					ID:        itemID,
+					Title:     "Test Article",
+					Published: time.Now(),
+				},
+				FeedName: "Test Feed",
+				Extraction: &domain.ExtractedContent{
+					PlainText: "Full article content here",
+				},
 			}, nil
 		},
 	}
@@ -520,7 +529,7 @@ func TestServer_FeedbackHandler_DatabaseErrors(t *testing.T) {
 			UpdateItemFeedbackFunc: func(ctx context.Context, itemID int64, feedback string) error {
 				return nil // update succeeds
 			},
-			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
 				return nil, errors.New("item not found")
 			},
 		}
@@ -619,7 +628,7 @@ func TestServer_ExtractHandler_Errors(t *testing.T) {
 
 	t.Run("get item error after extraction", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
-			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
 				return nil, errors.New("item not found")
 			},
 		}

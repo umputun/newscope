@@ -71,7 +71,7 @@ func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// if article no longer meets score threshold after feedback, remove it
-		if article.RelevanceScore < minScore {
+		if article.GetRelevanceScore() < minScore {
 			// return empty response to remove the article from the list
 			w.WriteHeader(http.StatusOK)
 			return

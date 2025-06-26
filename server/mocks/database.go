@@ -29,16 +29,16 @@ import (
 //			GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
 //				panic("mock out the GetAllFeeds method")
 //			},
-//			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+//			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
 //				panic("mock out the GetClassifiedItem method")
 //			},
-//			GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
+//			GetClassifiedItemsFunc: func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ClassifiedItem, error) {
 //				panic("mock out the GetClassifiedItems method")
 //			},
 //			GetClassifiedItemsCountFunc: func(ctx context.Context, req domain.ArticlesRequest) (int, error) {
 //				panic("mock out the GetClassifiedItemsCount method")
 //			},
-//			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+//			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
 //				panic("mock out the GetClassifiedItemsWithFilters method")
 //			},
 //			GetFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
@@ -62,7 +62,7 @@ import (
 //			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetTopicsFiltered method")
 //			},
-//			SearchItemsFunc: func(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+//			SearchItemsFunc: func(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
 //				panic("mock out the SearchItems method")
 //			},
 //			SetSettingFunc: func(ctx context.Context, key string, value string) error {
@@ -97,16 +97,16 @@ type DatabaseMock struct {
 	GetAllFeedsFunc func(ctx context.Context) ([]domain.Feed, error)
 
 	// GetClassifiedItemFunc mocks the GetClassifiedItem method.
-	GetClassifiedItemFunc func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error)
+	GetClassifiedItemFunc func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error)
 
 	// GetClassifiedItemsFunc mocks the GetClassifiedItems method.
-	GetClassifiedItemsFunc func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error)
+	GetClassifiedItemsFunc func(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ClassifiedItem, error)
 
 	// GetClassifiedItemsCountFunc mocks the GetClassifiedItemsCount method.
 	GetClassifiedItemsCountFunc func(ctx context.Context, req domain.ArticlesRequest) (int, error)
 
 	// GetClassifiedItemsWithFiltersFunc mocks the GetClassifiedItemsWithFilters method.
-	GetClassifiedItemsWithFiltersFunc func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error)
+	GetClassifiedItemsWithFiltersFunc func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error)
 
 	// GetFeedsFunc mocks the GetFeeds method.
 	GetFeedsFunc func(ctx context.Context) ([]domain.Feed, error)
@@ -130,7 +130,7 @@ type DatabaseMock struct {
 	GetTopicsFilteredFunc func(ctx context.Context, minScore float64) ([]string, error)
 
 	// SearchItemsFunc mocks the SearchItems method.
-	SearchItemsFunc func(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error)
+	SearchItemsFunc func(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error)
 
 	// SetSettingFunc mocks the SetSetting method.
 	SetSettingFunc func(ctx context.Context, key string, value string) error
@@ -466,7 +466,7 @@ func (mock *DatabaseMock) GetAllFeedsCalls() []struct {
 }
 
 // GetClassifiedItem calls GetClassifiedItemFunc.
-func (mock *DatabaseMock) GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+func (mock *DatabaseMock) GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
 	if mock.GetClassifiedItemFunc == nil {
 		panic("DatabaseMock.GetClassifiedItemFunc: method is nil but Database.GetClassifiedItem was just called")
 	}
@@ -502,7 +502,7 @@ func (mock *DatabaseMock) GetClassifiedItemCalls() []struct {
 }
 
 // GetClassifiedItems calls GetClassifiedItemsFunc.
-func (mock *DatabaseMock) GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
+func (mock *DatabaseMock) GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ClassifiedItem, error) {
 	if mock.GetClassifiedItemsFunc == nil {
 		panic("DatabaseMock.GetClassifiedItemsFunc: method is nil but Database.GetClassifiedItems was just called")
 	}
@@ -582,7 +582,7 @@ func (mock *DatabaseMock) GetClassifiedItemsCountCalls() []struct {
 }
 
 // GetClassifiedItemsWithFilters calls GetClassifiedItemsWithFiltersFunc.
-func (mock *DatabaseMock) GetClassifiedItemsWithFilters(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+func (mock *DatabaseMock) GetClassifiedItemsWithFilters(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
 	if mock.GetClassifiedItemsWithFiltersFunc == nil {
 		panic("DatabaseMock.GetClassifiedItemsWithFiltersFunc: method is nil but Database.GetClassifiedItemsWithFilters was just called")
 	}
@@ -874,7 +874,7 @@ func (mock *DatabaseMock) GetTopicsFilteredCalls() []struct {
 }
 
 // SearchItems calls SearchItemsFunc.
-func (mock *DatabaseMock) SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+func (mock *DatabaseMock) SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
 	if mock.SearchItemsFunc == nil {
 		panic("DatabaseMock.SearchItemsFunc: method is nil but Database.SearchItems was just called")
 	}

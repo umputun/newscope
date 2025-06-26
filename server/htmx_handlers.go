@@ -68,7 +68,7 @@ func getViewMode(r *http.Request) string {
 
 // articlesPageRequest holds data for rendering articles page
 type articlesPageRequest struct {
-	articles      []domain.ItemWithClassification
+	articles      []domain.ClassifiedItem
 	topics        []string
 	feeds         []string
 	selectedTopic string
@@ -91,9 +91,10 @@ type articlesPageRequest struct {
 
 // commonPageData contains fields common to all pages
 type commonPageData struct {
-	ActivePage  string
-	IsSearch    bool
-	SearchQuery string
+	ActivePage   string
+	IsSearch     bool
+	SearchQuery  string
+	SelectedSort string
 }
 
 // articlesHandler displays the main articles page
@@ -195,7 +196,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	// prepare template data for full page render
 	data := struct {
 		commonPageData
-		Articles      []domain.ItemWithClassification
+		Articles      []domain.ClassifiedItem
 		ArticleCount  int
 		TotalCount    int
 		Topics        []string
@@ -203,7 +204,6 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		MinScore      float64
 		SelectedTopic string
 		SelectedFeed  string
-		SelectedSort  string
 		ShowLikedOnly bool
 		// pagination
 		CurrentPage int
@@ -215,9 +215,10 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		IsHTMX      bool
 	}{
 		commonPageData: commonPageData{
-			ActivePage:  "home",
-			IsSearch:    false,
-			SearchQuery: "",
+			ActivePage:   "home",
+			IsSearch:     false,
+			SearchQuery:  "",
+			SelectedSort: sortBy,
 		},
 		Articles:      articles,
 		ArticleCount:  len(articles),
@@ -227,7 +228,6 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		MinScore:      minScore,
 		SelectedTopic: topic,
 		SelectedFeed:  feedName,
-		SelectedSort:  sortBy,
 		ShowLikedOnly: showLikedOnly,
 		// pagination
 		CurrentPage: page,
@@ -279,7 +279,7 @@ func (s *Server) writeHTMXOutOfBandUpdates(w http.ResponseWriter, req articlesPa
 }
 
 // writeArticlesList renders the articles container with the list of articles
-func (s *Server) writeArticlesList(w http.ResponseWriter, articles []domain.ItemWithClassification, viewMode string) {
+func (s *Server) writeArticlesList(w http.ResponseWriter, articles []domain.ClassifiedItem, viewMode string) {
 	// render the complete articles-with-pagination wrapper
 	if _, err := fmt.Fprintf(w, `<div id="articles-container" class="view-%s"><div id="articles-list">`, viewMode); err != nil {
 		log.Printf("[WARN] failed to write articles container start: %v", err)
@@ -318,9 +318,10 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		Feeds []domain.Feed
 	}{
 		commonPageData: commonPageData{
-			ActivePage:  "feeds",
-			IsSearch:    false,
-			SearchQuery: "",
+			ActivePage:   "feeds",
+			IsSearch:     false,
+			SearchQuery:  "",
+			SelectedSort: "",
 		},
 		Feeds: feeds,
 	}
@@ -375,6 +376,7 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 		AvailableTopics []string
 		IsSearch        bool
 		SearchQuery     string
+		SelectedSort    string
 	}{
 		ActivePage:      "settings",
 		Config:          cfg,
@@ -385,6 +387,7 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 		AvailableTopics: availableTopics,
 		IsSearch:        false,
 		SearchQuery:     "",
+		SelectedSort:    "",
 	}
 
 	// render settings page
@@ -418,21 +421,23 @@ func (s *Server) rssHelpHandler(w http.ResponseWriter, r *http.Request) {
 
 	// prepare template data
 	data := struct {
-		ActivePage  string
-		TopTopics   []domain.TopicWithScore
-		AllTopics   []string
-		BaseURL     string
-		Version     string
-		IsSearch    bool
-		SearchQuery string
+		ActivePage   string
+		TopTopics    []domain.TopicWithScore
+		AllTopics    []string
+		BaseURL      string
+		Version      string
+		IsSearch     bool
+		SearchQuery  string
+		SelectedSort string
 	}{
-		ActivePage:  "rss-help",
-		TopTopics:   topTopics,
-		AllTopics:   allTopics,
-		BaseURL:     baseURL,
-		Version:     s.version,
-		IsSearch:    false,
-		SearchQuery: "",
+		ActivePage:   "rss-help",
+		TopTopics:    topTopics,
+		AllTopics:    allTopics,
+		BaseURL:      baseURL,
+		Version:      s.version,
+		IsSearch:     false,
+		SearchQuery:  "",
+		SelectedSort: "",
 	}
 
 	// render RSS help page
@@ -515,7 +520,7 @@ func (s *Server) renderPage(w http.ResponseWriter, templateName string, data int
 }
 
 // renderArticleCard renders a single article card as HTML
-func (s *Server) renderArticleCard(w http.ResponseWriter, article *domain.ItemWithClassification) {
+func (s *Server) renderArticleCard(w http.ResponseWriter, article *domain.ClassifiedItem) {
 	if err := s.templates.ExecuteTemplate(w, "article-card.html", article); err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to render article", err)
 		return
@@ -602,7 +607,7 @@ func (s *Server) writeLikedButton(w http.ResponseWriter, showLikedOnly bool) {
 func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPageRequest) {
 	// create template data matching the structure used by full page render
 	paginationData := struct {
-		Articles      []domain.ItemWithClassification
+		Articles      []domain.ClassifiedItem
 		TotalCount    int
 		MinScore      float64
 		SelectedTopic string
@@ -941,8 +946,8 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 
 	// prepare template data for full page render
 	data := struct {
-		ActivePage    string
-		Articles      []domain.ItemWithClassification
+		commonPageData
+		Articles      []domain.ClassifiedItem
 		ArticleCount  int
 		TotalCount    int
 		Topics        []string
@@ -950,9 +955,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		MinScore      float64
 		SelectedTopic string
 		SelectedFeed  string
-		SelectedSort  string
 		ShowLikedOnly bool
-		SearchQuery   string
 		// pagination
 		CurrentPage int
 		TotalPages  int
@@ -961,9 +964,13 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		HasNext     bool
 		HasPrev     bool
 		IsHTMX      bool
-		IsSearch    bool
 	}{
-		ActivePage:    "search",
+		commonPageData: commonPageData{
+			ActivePage:   "search",
+			IsSearch:     true,
+			SearchQuery:  searchQuery,
+			SelectedSort: sortBy,
+		},
 		Articles:      articles,
 		ArticleCount:  len(articles),
 		TotalCount:    totalCount,
@@ -972,9 +979,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		MinScore:      minScore,
 		SelectedTopic: topic,
 		SelectedFeed:  feedName,
-		SelectedSort:  sortBy,
 		ShowLikedOnly: showLikedOnly,
-		SearchQuery:   searchQuery,
 		// pagination
 		CurrentPage: page,
 		TotalPages:  totalPages,
@@ -983,7 +988,6 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		HasNext:     hasNext,
 		HasPrev:     hasPrev,
 		IsHTMX:      false,
-		IsSearch:    true,
 	}
 
 	// render full page with search results

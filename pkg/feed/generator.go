@@ -22,7 +22,7 @@ func NewGenerator(baseURL string) *Generator {
 }
 
 // GenerateRSS creates an RSS 2.0 feed from classified items
-func (g *Generator) GenerateRSS(items []domain.ItemWithClassification, topic string, minScore float64) (string, error) {
+func (g *Generator) GenerateRSS(items []domain.ClassifiedItem, topic string, minScore float64) (string, error) {
 	// determine title
 	var title string
 	if topic != "" {
@@ -69,28 +69,29 @@ func (g *Generator) GenerateRSS(items []domain.ItemWithClassification, topic str
 }
 
 // convertToRSSItem converts a domain item with classification to an RSS item
-func (g *Generator) convertToRSSItem(item domain.ItemWithClassification) *RSSItem {
+func (g *Generator) convertToRSSItem(item domain.ClassifiedItem) *RSSItem {
 	// build description
-	desc := fmt.Sprintf("Score: %.1f/10 - %s", item.RelevanceScore, item.Explanation)
-	if len(item.Topics) > 0 {
-		desc += fmt.Sprintf("\nTopics: %s", strings.Join(item.Topics, ", "))
+	desc := fmt.Sprintf("Score: %.1f/10 - %s", item.GetRelevanceScore(), item.GetExplanation())
+	topics := item.GetTopics()
+	if len(topics) > 0 {
+		desc += fmt.Sprintf("\nTopics: %s", strings.Join(topics, ", "))
 	}
 
 	// add summary if available, otherwise use original description
-	if item.Summary != "" {
-		desc += "\n\n" + item.Summary
+	if summary := item.GetSummary(); summary != "" {
+		desc += "\n\n" + summary
 	} else if item.Description != "" {
 		desc += "\n\n" + item.Description
 	}
 
 	return &RSSItem{
-		Title:       fmt.Sprintf("[%.1f] %s", item.RelevanceScore, item.Title),
+		Title:       fmt.Sprintf("[%.1f] %s", item.GetRelevanceScore(), item.Title),
 		Link:        item.Link,
 		GUID:        item.GUID,
 		Description: desc,
 		Author:      item.Author,
 		PubDate:     item.Published.Format(time.RFC1123Z),
-		Categories:  item.Topics,
+		Categories:  topics,
 	}
 }
 

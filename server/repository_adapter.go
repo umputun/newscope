@@ -101,7 +101,7 @@ func (r *RepositoryAdapter) GetItems(ctx context.Context, limit, _ int) ([]domai
 }
 
 // GetClassifiedItems returns items with classification data
-func (r *RepositoryAdapter) GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error) {
+func (r *RepositoryAdapter) GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ClassifiedItem, error) {
 	req := domain.ArticlesRequest{
 		MinScore: minScore,
 		Topic:    topic,
@@ -113,7 +113,7 @@ func (r *RepositoryAdapter) GetClassifiedItems(ctx context.Context, minScore flo
 }
 
 // GetClassifiedItemsWithFilters returns items with classification data filtered by topic and feed
-func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
 	// calculate offset from page number
 	offset := 0
 	if req.Page > 1 {
@@ -136,52 +136,15 @@ func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, r
 		return nil, err
 	}
 
-	// convert to ItemWithClassification
-	result := make([]domain.ItemWithClassification, 0, len(items))
+	// convert to domain.ClassifiedItem and handle feed name
+	result := make([]domain.ClassifiedItem, 0, len(items))
 	for _, item := range items {
-		result = append(result, r.toItemWithClassification(item))
+		classified := *item
+		classified.FeedName = getFeedDisplayName(item.FeedName, item.FeedURL)
+		result = append(result, classified)
 	}
 
 	return result, nil
-}
-
-// toItemWithClassification converts a domain.ClassifiedItem to domain.ItemWithClassification
-func (r *RepositoryAdapter) toItemWithClassification(item *domain.ClassifiedItem) domain.ItemWithClassification {
-	result := domain.ItemWithClassification{
-		ID:          item.ID,
-		FeedID:      item.FeedID,
-		FeedName:    getFeedDisplayName(item.FeedName, item.FeedURL),
-		GUID:        item.GUID,
-		Title:       item.Title,
-		Link:        item.Link,
-		Description: item.Description,
-		Content:     item.Content,
-		Author:      item.Author,
-		Published:   item.Published,
-	}
-
-	// handle extraction data if available
-	if item.Extraction != nil {
-		result.ExtractedContent = item.Extraction.PlainText
-		result.ExtractedRichContent = item.Extraction.RichHTML
-		result.ExtractionError = item.Extraction.Error
-	}
-
-	// handle classification data if available
-	if item.Classification != nil {
-		result.RelevanceScore = item.Classification.Score
-		result.Explanation = item.Classification.Explanation
-		result.Topics = item.Classification.Topics
-		result.Summary = item.Classification.Summary
-		result.ClassifiedAt = &item.Classification.ClassifiedAt
-	}
-
-	// handle feedback if available
-	if item.UserFeedback != nil {
-		result.UserFeedback = string(item.UserFeedback.Type)
-	}
-
-	return result
 }
 
 // GetClassifiedItemsCount returns total count of classified items matching filters
@@ -208,14 +171,15 @@ func (r *RepositoryAdapter) UpdateItemFeedback(ctx context.Context, itemID int64
 }
 
 // GetClassifiedItem returns a single item with classification data
-func (r *RepositoryAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+func (r *RepositoryAdapter) GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
 	item, err := r.classificationRepo.GetClassifiedItem(ctx, itemID)
 	if err != nil {
 		return nil, err
 	}
 
-	result := r.toItemWithClassification(item)
-	return &result, nil
+	// handle feed name
+	item.FeedName = getFeedDisplayName(item.FeedName, item.FeedURL)
+	return item, nil
 }
 
 // GetTopics returns all unique topics from classified items
@@ -298,7 +262,7 @@ func (r *RepositoryAdapter) SetSetting(ctx context.Context, key, value string) e
 }
 
 // SearchItems searches for items using full-text search
-func (r *RepositoryAdapter) SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+func (r *RepositoryAdapter) SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
 	// calculate offset from page number
 	offset := 0
 	if req.Page > 1 {
@@ -321,10 +285,12 @@ func (r *RepositoryAdapter) SearchItems(ctx context.Context, searchQuery string,
 		return nil, err
 	}
 
-	// convert to ItemWithClassification
-	result := make([]domain.ItemWithClassification, 0, len(items))
+	// convert to domain.ClassifiedItem and handle feed name
+	result := make([]domain.ClassifiedItem, 0, len(items))
 	for _, item := range items {
-		result = append(result, r.toItemWithClassification(item))
+		classified := *item
+		classified.FeedName = getFeedDisplayName(item.FeedName, item.FeedURL)
+		result = append(result, classified)
 	}
 
 	return result, nil

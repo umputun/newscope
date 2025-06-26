@@ -47,20 +47,24 @@ func TestServer_articlesHandler(t *testing.T) {
 	classifiedAt := now
 
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
-			return []domain.ItemWithClassification{
+		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
+			return []domain.ClassifiedItem{
 				{
-					GUID:           "guid-1",
-					Title:          "Test Article",
-					Link:           "https://example.com/article",
-					Description:    "A test article",
-					Published:      now,
-					ID:             1,
-					FeedName:       "Test Feed",
-					RelevanceScore: 8.5,
-					Explanation:    "Very relevant",
-					Topics:         []string{"tech", "ai"},
-					ClassifiedAt:   &classifiedAt,
+					Item: &domain.Item{
+						ID:          1,
+						GUID:        "guid-1",
+						Title:       "Test Article",
+						Link:        "https://example.com/article",
+						Description: "A test article",
+						Published:   now,
+					},
+					FeedName: "Test Feed",
+					Classification: &domain.Classification{
+						Score:        8.5,
+						Explanation:  "Very relevant",
+						Topics:       []string{"tech", "ai"},
+						ClassifiedAt: classifiedAt,
+					},
 				},
 			}, nil
 		},
@@ -117,8 +121,8 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w2.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(1/1)</span>`) // should update count
 
 	// test HTMX request with no articles
-	database.GetClassifiedItemsWithFiltersFunc = func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
-		return []domain.ItemWithClassification{}, nil
+	database.GetClassifiedItemsWithFiltersFunc = func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
+		return []domain.ClassifiedItem{}, nil
 	}
 
 	req3 := httptest.NewRequest("GET", "/articles?score=10.0", http.NoBody)
@@ -133,26 +137,32 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w3.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(0/1)</span>`) // should show 0 count
 
 	// test liked filter
-	database.GetClassifiedItemsWithFiltersFunc = func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+	database.GetClassifiedItemsWithFiltersFunc = func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
 		// verify that ShowLikedOnly is passed correctly
 		if req.ShowLikedOnly {
-			return []domain.ItemWithClassification{
+			return []domain.ClassifiedItem{
 				{
-					Title:          "Liked Article",
-					Link:           "https://example.com/liked",
-					Description:    "A liked article",
-					Published:      now,
-					ID:             2,
-					FeedName:       "Test Feed",
-					RelevanceScore: 9.0,
-					Explanation:    "User liked this",
-					Topics:         []string{"favorites"},
-					ClassifiedAt:   &classifiedAt,
-					UserFeedback:   "like",
+					Item: &domain.Item{
+						ID:          2,
+						Title:       "Liked Article",
+						Link:        "https://example.com/liked",
+						Description: "A liked article",
+						Published:   now,
+					},
+					FeedName: "Test Feed",
+					Classification: &domain.Classification{
+						Score:        9.0,
+						Explanation:  "User liked this",
+						Topics:       []string{"favorites"},
+						ClassifiedAt: classifiedAt,
+					},
+					UserFeedback: &domain.Feedback{
+						Type: domain.FeedbackLike,
+					},
 				},
 			}, nil
 		}
-		return []domain.ItemWithClassification{}, nil
+		return []domain.ClassifiedItem{}, nil
 	}
 
 	// test with liked filter on
@@ -294,12 +304,15 @@ func TestServer_articleContentHandler(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
 			assert.Equal(t, int64(789), itemID)
-			return &domain.ItemWithClassification{
-
-				Title:            "Full Article",
-				ExtractedContent: "This is the full article content.",
+			return &domain.ClassifiedItem{
+				Item: &domain.Item{
+					Title: "Full Article",
+				},
+				Extraction: &domain.ExtractedContent{
+					PlainText: "This is the full article content.",
+				},
 			}, nil
 		},
 	}
@@ -401,7 +414,7 @@ func TestServer_ArticlesHandler_DatabaseError(t *testing.T) {
 
 	t.Run("database error on get classified items", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
-			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
+			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
 				return nil, errors.New("database connection failed")
 			},
 		}
@@ -424,8 +437,8 @@ func TestServer_ArticlesHandler_DatabaseError(t *testing.T) {
 
 	t.Run("database error on get count", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
-			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
-				return []domain.ItemWithClassification{}, nil
+			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
+				return []domain.ClassifiedItem{}, nil
 			},
 			GetClassifiedItemsCountFunc: func(ctx context.Context, req domain.ArticlesRequest) (int, error) {
 				return 0, errors.New("count query failed")
@@ -506,7 +519,7 @@ func TestServer_ArticleContentHandler_Errors(t *testing.T) {
 
 	t.Run("article not found", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
-			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
+			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
 				return nil, errors.New("article not found")
 			},
 		}
@@ -593,10 +606,14 @@ func TestServer_RenderArticleCard_TemplateError(t *testing.T) {
 		templates: template.New("broken"), // empty template without article-card.html
 	}
 
-	article := &domain.ItemWithClassification{
-		ID:             1,
-		Title:          "Test Article",
-		RelevanceScore: 8.5,
+	article := &domain.ClassifiedItem{
+		Item: &domain.Item{
+			ID:    1,
+			Title: "Test Article",
+		},
+		Classification: &domain.Classification{
+			Score: 8.5,
+		},
 	}
 
 	w := httptest.NewRecorder()
@@ -630,13 +647,17 @@ func TestServer_TemplateErrors(t *testing.T) {
 
 	t.Run("ArticlesHandler template error", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
-			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error) {
-				return []domain.ItemWithClassification{
+			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
+				return []domain.ClassifiedItem{
 					{
-						ID:             1,
-						Title:          "Test Article",
-						Published:      now,
-						RelevanceScore: 8.5,
+						Item: &domain.Item{
+							ID:        1,
+							Title:     "Test Article",
+							Published: now,
+						},
+						Classification: &domain.Classification{
+							Score: 8.5,
+						},
 					},
 				}, nil
 			},
@@ -757,11 +778,15 @@ func TestServer_TemplateErrors(t *testing.T) {
 
 	t.Run("ArticleContentHandler template error", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
-			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error) {
-				return &domain.ItemWithClassification{
-					ID:               123,
-					Title:            "Test Article",
-					ExtractedContent: "Test content",
+			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
+				return &domain.ClassifiedItem{
+					Item: &domain.Item{
+						ID:    123,
+						Title: "Test Article",
+					},
+					Extraction: &domain.ExtractedContent{
+						PlainText: "Test content",
+					},
 				}, nil
 			},
 		}

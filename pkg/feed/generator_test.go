@@ -14,30 +14,38 @@ func TestGenerator_GenerateRSS(t *testing.T) {
 	generator := NewGenerator("https://example.com")
 
 	pubTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
-	items := []domain.ItemWithClassification{
+	items := []domain.ClassifiedItem{
 		{
-			ID:             1,
-			Title:          "Test Article 1",
-			Link:           "https://example.com/article1",
-			GUID:           "guid1",
-			Description:    "This is test article 1",
-			Author:         "John Doe",
-			Published:      pubTime,
-			RelevanceScore: 8.5,
-			Explanation:    "Highly relevant to AI topics",
-			Topics:         []string{"AI", "Technology"},
+			Item: &domain.Item{
+				ID:          1,
+				Title:       "Test Article 1",
+				Link:        "https://example.com/article1",
+				GUID:        "guid1",
+				Description: "This is test article 1",
+				Author:      "John Doe",
+				Published:   pubTime,
+			},
+			Classification: &domain.Classification{
+				Score:       8.5,
+				Explanation: "Highly relevant to AI topics",
+				Topics:      []string{"AI", "Technology"},
+			},
 		},
 		{
-			ID:             2,
-			Title:          "Test Article 2",
-			Link:           "https://example.com/article2",
-			GUID:           "guid2",
-			Description:    "This is test article 2",
-			Author:         "Jane Smith",
-			Published:      pubTime.Add(1 * time.Hour),
-			RelevanceScore: 7.2,
-			Explanation:    "Moderately relevant",
-			Topics:         []string{"Science"},
+			Item: &domain.Item{
+				ID:          2,
+				Title:       "Test Article 2",
+				Link:        "https://example.com/article2",
+				GUID:        "guid2",
+				Description: "This is test article 2",
+				Author:      "Jane Smith",
+				Published:   pubTime.Add(1 * time.Hour),
+			},
+			Classification: &domain.Classification{
+				Score:       7.2,
+				Explanation: "Moderately relevant",
+				Topics:      []string{"Science"},
+			},
 		},
 	}
 
@@ -79,7 +87,7 @@ func TestGenerator_GenerateRSS(t *testing.T) {
 	})
 
 	t.Run("empty items", func(t *testing.T) {
-		rss, err := generator.GenerateRSS([]domain.ItemWithClassification{}, "", 5.0)
+		rss, err := generator.GenerateRSS([]domain.ClassifiedItem{}, "", 5.0)
 		require.NoError(t, err)
 
 		assert.Contains(t, rss, `<channel>`)
@@ -101,16 +109,20 @@ func TestGenerator_GenerateRSS(t *testing.T) {
 func TestGenerator_convertToRSSItem(t *testing.T) {
 	generator := NewGenerator("https://example.com")
 
-	item := domain.ItemWithClassification{
-		Title:          "Test Article",
-		Link:           "https://example.com/article",
-		GUID:           "guid123",
-		Description:    "Article description",
-		Author:         "Test Author",
-		Published:      time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-		RelevanceScore: 9.0,
-		Explanation:    "Very relevant",
-		Topics:         []string{"Tech", "AI"},
+	item := domain.ClassifiedItem{
+		Item: &domain.Item{
+			Title:       "Test Article",
+			Link:        "https://example.com/article",
+			GUID:        "guid123",
+			Description: "Article description",
+			Author:      "Test Author",
+			Published:   time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+		},
+		Classification: &domain.Classification{
+			Score:       9.0,
+			Explanation: "Very relevant",
+			Topics:      []string{"Tech", "AI"},
+		},
 	}
 
 	rssItem := generator.convertToRSSItem(item)
@@ -176,16 +188,20 @@ func TestRSSXMLStructure(t *testing.T) {
 	// test that the XML structure is correctly formed
 	generator := NewGenerator("https://example.com")
 
-	items := []domain.ItemWithClassification{
+	items := []domain.ClassifiedItem{
 		{
-			Title:          "Test & Article <with> Special Characters",
-			Link:           "https://example.com/article",
-			GUID:           "guid1",
-			Author:         "Author & Co.",
-			Published:      time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-			RelevanceScore: 8.0,
-			Explanation:    "Test explanation with <html> tags",
-			Topics:         []string{"Tech & Science"},
+			Item: &domain.Item{
+				Title:     "Test & Article <with> Special Characters",
+				Link:      "https://example.com/article",
+				GUID:      "guid1",
+				Author:    "Author & Co.",
+				Published: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			},
+			Classification: &domain.Classification{
+				Score:       8.0,
+				Explanation: "Test explanation with <html> tags",
+				Topics:      []string{"Tech & Science"},
+			},
 		},
 	}
 

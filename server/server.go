@@ -60,10 +60,10 @@ type Server struct {
 type Database interface {
 	GetFeeds(ctx context.Context) ([]domain.Feed, error)
 	GetItems(ctx context.Context, limit, offset int) ([]domain.Item, error)
-	GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ItemWithClassification, error)
-	GetClassifiedItemsWithFilters(ctx context.Context, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error)
+	GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]domain.ClassifiedItem, error)
+	GetClassifiedItemsWithFilters(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error)
 	GetClassifiedItemsCount(ctx context.Context, req domain.ArticlesRequest) (int, error)
-	GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ItemWithClassification, error)
+	GetClassifiedItem(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error)
 	UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error
 	GetTopics(ctx context.Context) ([]string, error)
 	GetTopicsFiltered(ctx context.Context, minScore float64) ([]string, error)
@@ -76,7 +76,7 @@ type Database interface {
 	DeleteFeed(ctx context.Context, feedID int64) error
 	GetSetting(ctx context.Context, key string) (string, error)
 	SetSetting(ctx context.Context, key, value string) error
-	SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ItemWithClassification, error)
+	SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error)
 	GetSearchItemsCount(ctx context.Context, searchQuery string, req domain.ArticlesRequest) (int, error)
 }
 

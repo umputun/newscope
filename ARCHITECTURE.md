@@ -265,8 +265,8 @@ HTTP server providing REST API and web UI with server-side rendering.
 type Database interface {
     GetFeeds(ctx context.Context) ([]types.Feed, error)
     GetItems(ctx context.Context, limit, offset int) ([]types.Item, error)
-    GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]types.ItemWithClassification, error)
-    GetClassifiedItem(ctx context.Context, itemID int64) (*types.ItemWithClassification, error)
+    GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]types.ClassifiedItem, error)
+    GetClassifiedItem(ctx context.Context, itemID int64) (*types.ClassifiedItem, error)
     UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error
     GetTopics(ctx context.Context) ([]string, error)
     GetAllFeeds(ctx context.Context) ([]db.Feed, error)

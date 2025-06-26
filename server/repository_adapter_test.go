@@ -134,12 +134,12 @@ func TestRepositoryAdapter_GetClassifiedItemsWithFilters_Pagination(t *testing.T
 			require.Len(t, items, 1)
 			assert.Equal(t, int64(1), items[0].ID)
 			assert.Equal(t, "Tech News", items[0].FeedName)
-			assert.InDelta(t, 8.5, items[0].RelevanceScore, 0.01)
+			assert.InDelta(t, 8.5, items[0].GetRelevanceScore(), 0.01)
 		})
 	}
 }
 
-func TestRepositoryAdapter_GetClassifiedItemsWithFilters_DomainTransformation(t *testing.T) {
+func TestRepositoryAdapter_GetClassifiedItemsWithFilters_PassThrough(t *testing.T) {
 	feedRepo := &mocks.FeedRepoMock{}
 	itemRepo := &mocks.ItemRepoMock{}
 	classificationRepo := &mocks.ClassificationRepoMock{}
@@ -152,7 +152,7 @@ func TestRepositoryAdapter_GetClassifiedItemsWithFilters_DomainTransformation(t 
 	tests := []struct {
 		name           string
 		classifiedItem *domain.ClassifiedItem
-		expectedResult domain.ItemWithClassification
+		expectedResult domain.ClassifiedItem
 	}{
 		{
 			name: "complete item with all fields",
@@ -185,26 +185,6 @@ func TestRepositoryAdapter_GetClassifiedItemsWithFilters_DomainTransformation(t 
 					Type: domain.FeedbackLike,
 				},
 			},
-			expectedResult: domain.ItemWithClassification{
-				ID:                   1,
-				FeedID:               10,
-				FeedName:             "Test Feed",
-				GUID:                 "item-1",
-				Title:                "Test Article",
-				Link:                 "https://example.com/article",
-				Description:          "Test description",
-				Content:              "Test content",
-				Author:               "Test Author",
-				Published:            now,
-				RelevanceScore:       7.5,
-				Explanation:          "Relevant article",
-				Topics:               []string{"tech", "ai"},
-				ClassifiedAt:         &classifiedAt,
-				ExtractedContent:     "Extracted plain text",
-				ExtractedRichContent: "<p>Extracted rich content</p>",
-				ExtractionError:      "",
-				UserFeedback:         "like",
-			},
 		},
 		{
 			name: "item with nil classification",
@@ -220,18 +200,6 @@ func TestRepositoryAdapter_GetClassifiedItemsWithFilters_DomainTransformation(t 
 				Classification: nil,
 				Extraction:     nil,
 				UserFeedback:   nil,
-			},
-			expectedResult: domain.ItemWithClassification{
-				ID:             2,
-				FeedID:         20,
-				FeedName:       "Another Feed",
-				GUID:           "item-2",
-				Title:          "Another Article",
-				Published:      now,
-				RelevanceScore: 0,
-				Explanation:    "",
-				Topics:         nil,
-				ClassifiedAt:   nil,
 			},
 		},
 		{
@@ -250,17 +218,6 @@ func TestRepositoryAdapter_GetClassifiedItemsWithFilters_DomainTransformation(t 
 					RichHTML:  "",
 					Error:     "extraction failed",
 				},
-			},
-			expectedResult: domain.ItemWithClassification{
-				ID:                   3,
-				FeedID:               30,
-				FeedName:             "Error Feed",
-				GUID:                 "item-3",
-				Title:                "Error Article",
-				Published:            now,
-				ExtractedContent:     "",
-				ExtractedRichContent: "",
-				ExtractionError:      "extraction failed",
 			},
 		},
 	}
@@ -281,7 +238,8 @@ func TestRepositoryAdapter_GetClassifiedItemsWithFilters_DomainTransformation(t 
 
 			require.NoError(t, err)
 			require.Len(t, items, 1)
-			assert.Equal(t, tt.expectedResult, items[0])
+			// verify that the ClassifiedItem is properly converted
+			assert.Equal(t, *tt.classifiedItem, items[0])
 		})
 	}
 }
@@ -463,8 +421,8 @@ func TestRepositoryAdapter_GetClassifiedItem(t *testing.T) {
 		require.NotNil(t, item)
 		assert.Equal(t, int64(789), item.ID)
 		assert.Equal(t, "example.com", item.FeedName) // URL hostname extraction
-		assert.InDelta(t, 9.0, item.RelevanceScore, 0.01)
-		assert.Equal(t, &classifiedAt, item.ClassifiedAt)
+		assert.InDelta(t, 9.0, item.GetRelevanceScore(), 0.01)
+		assert.Equal(t, &classifiedAt, item.GetClassifiedAt())
 	})
 
 	t.Run("repository error", func(t *testing.T) {
