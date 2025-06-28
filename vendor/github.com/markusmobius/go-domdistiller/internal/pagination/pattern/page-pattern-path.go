@@ -266,17 +266,17 @@ func (pp *PathComponentPagePattern) getLongestCommonSuffixLength(str1, str2 stri
 
 // hasSamePathComponentsAs returns true if, except for the path component containing the page param, the
 // other path components of doc URL are the same as pattern's. But pattern may have more components, e.g.:
-// - doc URL is /thread/12, pattern is /thread/12/page/[*!]
-//   returns true because "thread" and "12" in doc URL match those in pattern
-// - doc URL is /thread/12/foo, pattern is /thread/12/page/[*!]/foo
-//   returns false because "foo" in doc URL doesn't match "page" in pattern whose page param
-//   path component comes after.
-// - doc URL is /thread/12/foo, pattern is /thread/12/[*!]/foo
-//   returns true because "foo" in doc URL would match "foo" in pattern whose page param path
-//   component is skipped when matching.
-// - doc URL is /thread/foo.html, pattern is /thread/foo/[*!]
-//   returns true because "foo.html" in doc URL would match "foo" in pattern whose trailing
-//   html extension is skipped when matching.
+//   - doc URL is /thread/12, pattern is /thread/12/page/[*!]
+//     returns true because "thread" and "12" in doc URL match those in pattern
+//   - doc URL is /thread/12/foo, pattern is /thread/12/page/[*!]/foo
+//     returns false because "foo" in doc URL doesn't match "page" in pattern whose page param
+//     path component comes after.
+//   - doc URL is /thread/12/foo, pattern is /thread/12/[*!]/foo
+//     returns true because "foo" in doc URL would match "foo" in pattern whose page param path
+//     component is skipped when matching.
+//   - doc URL is /thread/foo.html, pattern is /thread/foo/[*!]
+//     returns true because "foo.html" in doc URL would match "foo" in pattern whose trailing
+//     html extension is skipped when matching.
 func (pp *PathComponentPagePattern) hasSamePathComponentsAs(parsedURL *nurl.URL) bool {
 	// Trim trailing shtml extension from doc URL path
 	parsedURLPath := rxEndOrHasSHTML.ReplaceAllString(parsedURL.Path, "")

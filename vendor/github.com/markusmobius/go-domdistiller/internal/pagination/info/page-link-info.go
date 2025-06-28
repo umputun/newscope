@@ -30,10 +30,10 @@ import "github.com/markusmobius/go-domdistiller/internal/pagination/pattern"
 
 // PageLinkInfo stores information about the link (anchor) after PageParameterDetector
 // has detected the page parameter:
-// - the page number (as represented by the original plain text) for the link
-// - the original page parameter numeric component in the URL (this component would be replaced
-//   by pattern.PageParamPlaceholder in the URL pattern)
-// - the position of this link in the list of ascending numbers.
+//   - the page number (as represented by the original plain text) for the link
+//   - the original page parameter numeric component in the URL (this component would be replaced
+//     by pattern.PageParamPlaceholder in the URL pattern)
+//   - the position of this link in the list of ascending numbers.
 type PageLinkInfo struct {
 	PageNumber         int
 	PageParamValue     int

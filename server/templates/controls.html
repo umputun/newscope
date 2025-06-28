@@ -1,0 +1,43 @@
+
+{{define "topic-dropdown"}}
+<select id="topic-filter" name="topic" hx-get="/articles" hx-trigger="change" hx-target="#articles-with-pagination" hx-include="#score-filter, #feed-filter" hx-swap-oob="true">
+    <option value="">All Topics</option>
+    {{range .Topics}}
+    <option value="{{.}}" {{if eq . $.SelectedTopic}}selected{{end}}>{{.}}</option>
+    {{end}}
+</select>
+{{end}}
+
+{{define "feed-dropdown"}}
+<select id="feed-filter" name="feed" hx-get="/articles" hx-trigger="change" hx-target="#articles-with-pagination" hx-include="#score-filter, #topic-filter" hx-swap-oob="true">
+    <option value="">All Feeds</option>
+    {{range .Feeds}}
+    <option value="{{.}}" {{if eq . $.SelectedFeed}}selected{{end}}>{{.}}</option>
+    {{end}}
+</select>
+{{end}}
+
+{{define "liked-button"}}
+<button id="liked-toggle" class="btn-toggle {{if .ShowLikedOnly}}active{{end}}"
+        title="Show liked articles only"
+        hx-get="/articles"
+        hx-trigger="click"
+        hx-target="#articles-with-pagination"
+        hx-swap="innerHTML show:top"
+        hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter"
+        hx-vals='{"liked": "{{if .ShowLikedOnly}}false{{else}}true{{end}}"}'
+        hx-swap-oob="true">
+    ★ Liked
+</button>
+{{end}}
+
+{{define "content-toggle-button"}}
+<span id="content-toggle-{{.ID}}" hx-swap-oob="true">
+    <button class="btn-content"
+            hx-get="{{.URL}}"
+            hx-target="#content-{{.ID}}"
+            hx-swap="innerHTML">
+        {{.Label}}
+    </button>
+</span>
+{{end}}

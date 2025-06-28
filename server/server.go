@@ -208,7 +208,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"templates/article-content.html",
 		"templates/pagination.html",
 		"templates/topic-tags.html",
-		"templates/topic-dropdowns.html")
+		"templates/topic-dropdowns.html",
+		"templates/controls.html")
 	if err != nil {
 		log.Printf("[WARN] failed to parse templates: %v", err)
 	}

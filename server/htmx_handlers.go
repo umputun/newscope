@@ -472,14 +472,14 @@ func (s *Server) articleContentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// also send out-of-band update for the button
-	fmt.Fprintf(w, `<span id="content-toggle-%d" hx-swap-oob="true">
-		<button class="btn-content"
-			hx-get="/api/v1/articles/%d/hide"
-			hx-target="#content-%d"
-			hx-swap="innerHTML">
-			Hide Content
-		</button>
-	</span>`, id, id, id)
+	data := map[string]interface{}{
+		"ID":    id,
+		"URL":   fmt.Sprintf("/api/v1/articles/%d/hide", id),
+		"Label": "Hide Content",
+	}
+	if err := s.templates.ExecuteTemplate(w, "content-toggle-button", data); err != nil {
+		log.Printf("[WARN] failed to write content toggle button: %v", err)
+	}
 }
 
 // hideContentHandler returns the hidden state for article content
@@ -497,14 +497,14 @@ func (s *Server) hideContentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// also send out-of-band update for the button
-	fmt.Fprintf(w, `<span id="content-toggle-%d" hx-swap-oob="true">
-		<button class="btn-content"
-			hx-get="/api/v1/articles/%d/content"
-			hx-target="#content-%d"
-			hx-swap="innerHTML">
-			Show Content
-		</button>
-	</span>`, id, id, id)
+	data := map[string]interface{}{
+		"ID":    id,
+		"URL":   fmt.Sprintf("/api/v1/articles/%d/content", id),
+		"Label": "Show Content",
+	}
+	if err := s.templates.ExecuteTemplate(w, "content-toggle-button", data); err != nil {
+		log.Printf("[WARN] failed to write content toggle button: %v", err)
+	}
 }
 
 // renderPage renders a pre-parsed page template
@@ -535,70 +535,42 @@ func (s *Server) renderFeedCard(w http.ResponseWriter, feed *domain.Feed) {
 	}
 }
 
-// writeTopicDropdown writes the topic dropdown HTML
+// writeTopicDropdown renders the topic dropdown HTML using a template
 func (s *Server) writeTopicDropdown(w http.ResponseWriter, topics []string, selectedTopic string) {
-	var topicHTML strings.Builder
-	topicHTML.WriteString(`<select id="topic-filter" name="topic" hx-get="/articles" hx-trigger="change" hx-target="#articles-with-pagination" hx-include="#score-filter, #feed-filter" hx-swap-oob="true">`)
-	topicHTML.WriteString(`<option value="">All Topics</option>`)
-
-	for _, t := range topics {
-		selected := ""
-		if t == selectedTopic {
-			selected = " selected"
-		}
-		topicHTML.WriteString(fmt.Sprintf(`<option value=%q%s>%s</option>`, t, selected, t))
+	data := struct {
+		Topics        []string
+		SelectedTopic string
+	}{
+		Topics:        topics,
+		SelectedTopic: selectedTopic,
 	}
-
-	topicHTML.WriteString(`</select>`)
-
-	if _, err := w.Write([]byte(topicHTML.String())); err != nil {
+	if err := s.templates.ExecuteTemplate(w, "topic-dropdown", data); err != nil {
 		log.Printf("[WARN] failed to write topic dropdown: %v", err)
 	}
 }
 
-// writeFeedDropdown writes the feed dropdown HTML
+// writeFeedDropdown renders the feed dropdown HTML using a template
 func (s *Server) writeFeedDropdown(w http.ResponseWriter, feeds []string, selectedFeed string) {
-	var feedHTML strings.Builder
-	feedHTML.WriteString(`<select id="feed-filter" name="feed" hx-get="/articles" hx-trigger="change" hx-target="#articles-with-pagination" hx-include="#score-filter, #topic-filter" hx-swap-oob="true">`)
-	feedHTML.WriteString(`<option value="">All Feeds</option>`)
-
-	for _, f := range feeds {
-		selected := ""
-		if f == selectedFeed {
-			selected = " selected"
-		}
-		feedHTML.WriteString(fmt.Sprintf(`<option value=%q%s>%s</option>`, f, selected, f))
+	data := struct {
+		Feeds        []string
+		SelectedFeed string
+	}{
+		Feeds:        feeds,
+		SelectedFeed: selectedFeed,
 	}
-
-	feedHTML.WriteString(`</select>`)
-
-	if _, err := w.Write([]byte(feedHTML.String())); err != nil {
+	if err := s.templates.ExecuteTemplate(w, "feed-dropdown", data); err != nil {
 		log.Printf("[WARN] failed to write feed dropdown: %v", err)
 	}
 }
 
-// writeLikedButton writes the liked button with proper state using out-of-band swap
+// writeLikedButton renders the liked button with proper state using a template
 func (s *Server) writeLikedButton(w http.ResponseWriter, showLikedOnly bool) {
-	activeClass := ""
-	nextValue := "true"
-	if showLikedOnly {
-		activeClass = " active"
-		nextValue = "false"
+	data := struct {
+		ShowLikedOnly bool
+	}{
+		ShowLikedOnly: showLikedOnly,
 	}
-
-	buttonHTML := fmt.Sprintf(`<button id="liked-toggle" class="btn-toggle%s" 
-                    title="Show liked articles only"
-                    hx-get="/articles"
-                    hx-trigger="click"
-                    hx-target="#articles-with-pagination"
-                    hx-swap="innerHTML show:top"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter"
-                    hx-vals='{"liked": "%s"}'
-                    hx-swap-oob="true">
-                ★ Liked
-            </button>`, activeClass, nextValue)
-
-	if _, err := w.Write([]byte(buttonHTML)); err != nil {
+	if err := s.templates.ExecuteTemplate(w, "liked-button", data); err != nil {
 		log.Printf("[WARN] failed to write liked button: %v", err)
 	}
 }

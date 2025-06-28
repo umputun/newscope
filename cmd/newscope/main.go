@@ -74,7 +74,7 @@ func run(ctx context.Context, opts Opts) error {
 	}
 
 	// setup logging with secrets for redaction
-	SetupLog(opts.Debug, cfg.LLM.APIKey)
+	setupLog(opts.Debug, opts.NoColor, cfg.LLM.APIKey)
 
 	log.Printf("[INFO] starting newscope version %s", revision)
 
@@ -150,22 +150,24 @@ func run(ctx context.Context, opts Opts) error {
 	return nil
 }
 
-// SetupLog configures the logger
-func SetupLog(dbg bool, secs ...string) {
+// setupLog configures the logger
+func setupLog(dbg, noColor bool, secs ...string) {
 	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
 	if dbg {
 		logOpts = []lgr.Option{lgr.Debug, lgr.CallerFile, lgr.CallerFunc, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
 	}
 
-	colorizer := lgr.Mapper{
-		ErrorFunc:  func(s string) string { return color.New(color.FgHiRed).Sprint(s) },
-		WarnFunc:   func(s string) string { return color.New(color.FgRed).Sprint(s) },
-		InfoFunc:   func(s string) string { return color.New(color.FgYellow).Sprint(s) },
-		DebugFunc:  func(s string) string { return color.New(color.FgWhite).Sprint(s) },
-		CallerFunc: func(s string) string { return color.New(color.FgBlue).Sprint(s) },
-		TimeFunc:   func(s string) string { return color.New(color.FgCyan).Sprint(s) },
+	if !noColor {
+		colorizer := lgr.Mapper{
+			ErrorFunc:  func(s string) string { return color.New(color.FgHiRed).Sprint(s) },
+			WarnFunc:   func(s string) string { return color.New(color.FgRed).Sprint(s) },
+			InfoFunc:   func(s string) string { return color.New(color.FgYellow).Sprint(s) },
+			DebugFunc:  func(s string) string { return color.New(color.FgWhite).Sprint(s) },
+			CallerFunc: func(s string) string { return color.New(color.FgBlue).Sprint(s) },
+			TimeFunc:   func(s string) string { return color.New(color.FgCyan).Sprint(s) },
+		}
+		logOpts = append(logOpts, lgr.Map(colorizer))
 	}
-	logOpts = append(logOpts, lgr.Map(colorizer))
 
 	if len(secs) > 0 {
 		logOpts = append(logOpts, lgr.Secret(secs...))

@@ -124,19 +124,19 @@ func TestRun_ServerStartStop(t *testing.T) {
 func TestSetupLog(t *testing.T) {
 	t.Run("debug mode enabled", func(t *testing.T) {
 		// capture log output to verify debug mode
-		SetupLog(true)
+		setupLog(true, false)
 		// the function should complete without panic
 		// we can't easily test logger configuration directly
 	})
 
 	t.Run("debug mode disabled", func(t *testing.T) {
-		SetupLog(false)
+		setupLog(false, false)
 		// the function should complete without panic
 	})
 
 	t.Run("with secrets", func(t *testing.T) {
 		// test that secrets are passed through to logger
-		SetupLog(true, "secret1", "secret2")
+		setupLog(true, false, "secret1", "secret2")
 		// the function should complete without panic
 		// secrets configuration is internal to lgr
 	})
@@ -147,7 +147,7 @@ func TestSetupLog(t *testing.T) {
 		os.Setenv("NO_COLOR", "1")
 		defer os.Setenv("NO_COLOR", oldNoColor)
 
-		SetupLog(false)
+		setupLog(false, false)
 		// the function should complete without panic
 	})
 }
