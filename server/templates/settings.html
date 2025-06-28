@@ -104,6 +104,22 @@
                     </div>
                 </div>
             </div>
+            
+            <div class="settings-section">
+                <div class="section-header">
+                    <i class="fas fa-brain"></i>
+                    <h3>Learning Preferences</h3>
+                </div>
+                
+                <div id="preference-summary-container" class="preference-summary-container"
+                     hx-get="/api/v1/preferences/view"
+                     hx-trigger="load">
+                    <!-- Content will be loaded via HTMX -->
+                    <div class="loading">
+                        <i class="fas fa-spinner fa-spin"></i> Loading preferences...
+                    </div>
+                </div>
+            </div>
         </div>
     </div>  <!-- End of preferences-tab -->
     

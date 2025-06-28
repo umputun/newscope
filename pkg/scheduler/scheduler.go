@@ -344,8 +344,6 @@ func (e *criticalError) Is(target error) bool {
 	return ok
 }
 
-
-
 // isLockError checks if an error is a SQLite lock/busy error
 func isLockError(err error) bool {
 	if err == nil {

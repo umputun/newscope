@@ -59,6 +59,13 @@ func NewPreferenceManager(cfg PreferenceManagerConfig) *PreferenceManager {
 // the preference summary using the LLM. This method is designed to be
 // called periodically but will only perform expensive LLM operations when needed.
 func (pm *PreferenceManager) UpdatePreferenceSummary(ctx context.Context) error {
+	// check if preference learning is enabled
+	enabledStr, _ := pm.settingManager.GetSetting(ctx, domain.SettingPreferenceSummaryEnabled)
+	if enabledStr == "false" {
+		lgr.Printf("[DEBUG] preference learning is disabled, skipping update")
+		return nil
+	}
+
 	// get more feedback examples for better learning (50 instead of 10)
 	const feedbackExamples = 50
 
