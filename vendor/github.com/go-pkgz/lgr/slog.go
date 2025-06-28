@@ -23,13 +23,13 @@ func FromSlogHandler(h slog.Handler) L {
 // SetupWithSlog sets up the global logger with a slog logger
 func SetupWithSlog(logger *slog.Logger) {
 	options := []Option{SlogHandler(logger.Handler())}
-
+	
 	// check if the slog handler is enabled for debug level
 	// if so, enable debug mode in lgr to prevent filtering
 	if logger.Handler().Enabled(context.Background(), slog.LevelDebug) {
 		options = append(options, Debug)
 	}
-
+	
 	Setup(options...)
 }
 

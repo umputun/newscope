@@ -35,7 +35,7 @@ github.com/forPelevin/gomoji
 # github.com/go-pkgz/lgr v0.12.1
 ## explicit; go 1.21
 github.com/go-pkgz/lgr
-# github.com/go-pkgz/repeater/v2 v2.0.1
+# github.com/go-pkgz/repeater/v2 v2.1.0
 ## explicit; go 1.23
 github.com/go-pkgz/repeater/v2
 # github.com/go-pkgz/rest v1.20.3

@@ -133,3 +133,77 @@ WithJitter(float64)           // add randomness to delays (0-1.0)
 - Can stop on specific errors (pass them as additional parameters to Do)
 - Special `ErrAny` to stop on any error
 - Returns last error if all attempts fail
+
+## Execution Statistics
+
+The repeater tracks execution statistics that can be accessed after calling `Do()`:
+
+```go
+r := repeater.NewFixed(5, 100*time.Millisecond)
+
+err := r.Do(ctx, func() error {
+    // operation that might fail
+    return someOperation()
+})
+
+// Get execution statistics
+stats := r.Stats()
+
+fmt.Printf("Attempts: %d\n", stats.Attempts)
+fmt.Printf("Success: %v\n", stats.Success)
+fmt.Printf("Total Duration: %v\n", stats.TotalDuration)
+fmt.Printf("Work Duration: %v\n", stats.WorkDuration)
+fmt.Printf("Delay Duration: %v\n", stats.DelayDuration)
+if stats.LastError != nil {
+    fmt.Printf("Last Error: %v\n", stats.LastError)
+}
+```
+
+### Available Statistics
+
+The `Stats` struct provides the following information:
+
+- `Attempts` - Number of attempts made (including successful ones)
+- `Success` - Whether the operation eventually succeeded
+- `TotalDuration` - Total elapsed time from start to finish
+- `WorkDuration` - Time spent executing the function (excluding delays)
+- `DelayDuration` - Time spent in delays between attempts
+- `LastError` - Last error encountered (nil if succeeded)
+- `StartedAt` - When the repeater started
+- `FinishedAt` - When the repeater finished
+
+### Usage Example
+
+```go
+r := repeater.NewBackoff(3, time.Second)
+
+start := time.Now()
+err := r.Do(ctx, func() error {
+    // Simulate work that takes time
+    time.Sleep(200 * time.Millisecond)
+    
+    // Randomly fail
+    if rand.Float32() < 0.7 {
+        return errors.New("temporary error")
+    }
+    return nil
+})
+
+stats := r.Stats()
+
+// Log detailed statistics
+log.Printf("Operation completed in %v with %d attempts", 
+    stats.TotalDuration, stats.Attempts)
+log.Printf("Time spent working: %v", stats.WorkDuration)
+log.Printf("Time spent waiting: %v", stats.DelayDuration)
+
+if err != nil {
+    log.Printf("Failed after %d attempts: %v", stats.Attempts, err)
+} else {
+    log.Printf("Succeeded after %d attempts", stats.Attempts)
+}
+```
+
+### Thread Safety
+
+Note that the `Repeater` is not thread-safe. Each `Repeater` instance should not be used concurrently for different functions. Create separate `Repeater` instances for concurrent operations.

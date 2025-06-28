@@ -14,9 +14,25 @@ import (
 // makes it fail on any error from the function
 var ErrAny = errors.New("any error")
 
-// Repeater holds configuration for retry operations
+// Stats holds execution statistics for a repeater run
+type Stats struct {
+	LastError     error         // Last error encountered (nil if succeeded)
+	StartedAt     time.Time     // When the repeater started
+	FinishedAt    time.Time     // When the repeater finished
+	TotalDuration time.Duration // Total elapsed time from start to finish
+	WorkDuration  time.Duration // Time spent executing the function (excluding delays)
+	DelayDuration time.Duration // Time spent in delays between attempts
+	Attempts      int           // Number of attempts made (including the successful one)
+	Success       bool          // Whether the operation eventually succeeded
+}
+
+// Repeater holds configuration for retry operations.
+// Note: Repeater is not thread-safe. Each Repeater instance should not be used
+// concurrently for different functions. Create separate Repeater instances for
+// concurrent operations.
 type Repeater struct {
 	strategy Strategy
+	stats    Stats
 	attempts int
 }
 
@@ -54,6 +70,19 @@ func NewFixed(attempts int, delay time.Duration) *Repeater {
 func (r *Repeater) Do(ctx context.Context, fun func() error, termErrs ...error) error {
 	var lastErr error
 
+	// reset and initialize stats
+	r.stats = Stats{
+		StartedAt: time.Now(),
+	}
+
+	// finalizeStats updates the stats before returning
+	finalizeStats := func(attempts int, err error) {
+		r.stats.Attempts = attempts
+		r.stats.LastError = err
+		r.stats.FinishedAt = time.Now()
+		r.stats.TotalDuration = r.stats.FinishedAt.Sub(r.stats.StartedAt)
+	}
+
 	inErrors := func(err error) bool {
 		for _, e := range termErrs {
 			if errors.Is(e, ErrAny) {
@@ -69,16 +98,24 @@ func (r *Repeater) Do(ctx context.Context, fun func() error, termErrs ...error) 
 	for attempt := 0; attempt < r.attempts; attempt++ {
 		// check context before each attempt
 		if err := ctx.Err(); err != nil {
-			return err
+			finalizeStats(attempt, err)
+			return err //nolint:wrapcheck // context errors are standard and don't need wrapping
 		}
 
+		workStart := time.Now()
 		var err error
 		if err = fun(); err == nil {
+			r.stats.WorkDuration += time.Since(workStart)
+			r.stats.Success = true
+			finalizeStats(attempt+1, nil)
 			return nil
 		}
 
+		r.stats.WorkDuration += time.Since(workStart)
+
 		lastErr = err
 		if inErrors(err) {
+			finalizeStats(attempt+1, err)
 			return err
 		}
 
@@ -86,14 +123,24 @@ func (r *Repeater) Do(ctx context.Context, fun func() error, termErrs ...error) 
 		if attempt < r.attempts-1 {
 			delay := r.strategy.NextDelay(attempt + 1)
 			if delay > 0 {
+				delayStart := time.Now()
 				select {
 				case <-ctx.Done():
-					return ctx.Err()
+					r.stats.DelayDuration += time.Since(delayStart)
+					finalizeStats(attempt+1, ctx.Err())
+					return ctx.Err() //nolint:wrapcheck // context errors are standard and don't need wrapping
 				case <-time.After(delay):
+					r.stats.DelayDuration += time.Since(delayStart)
 				}
 			}
 		}
 	}
 
+	finalizeStats(r.attempts, lastErr)
 	return lastErr
+}
+
+// Stats returns the execution statistics from the last Do() call
+func (r *Repeater) Stats() Stats {
+	return r.stats
 }

@@ -324,7 +324,7 @@ func (s *Scheduler) retryDBOperation(ctx context.Context, operation func() error
 			lgr.Printf("[DEBUG] database operation succeeded after %d attempts", attempt)
 		}
 		return nil
-	})
+	}, &criticalError{})
 }
 
 // criticalError wraps an error to signal repeater to stop retrying
@@ -333,8 +333,18 @@ type criticalError struct {
 }
 
 func (e *criticalError) Error() string {
+	if e == nil || e.err == nil {
+		return ""
+	}
 	return e.err.Error()
 }
+
+func (e *criticalError) Is(target error) bool {
+	_, ok := target.(*criticalError)
+	return ok
+}
+
+
 
 // isLockError checks if an error is a SQLite lock/busy error
 func isLockError(err error) bool {

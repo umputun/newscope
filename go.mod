@@ -5,7 +5,7 @@ go 1.24.1
 require (
 	github.com/fatih/color v1.18.0
 	github.com/go-pkgz/lgr v0.12.1
-	github.com/go-pkgz/repeater/v2 v2.0.1
+	github.com/go-pkgz/repeater/v2 v2.1.0
 	github.com/go-pkgz/rest v1.20.3
 	github.com/go-pkgz/routegroup v1.4.1
 	github.com/invopop/jsonschema v0.13.0

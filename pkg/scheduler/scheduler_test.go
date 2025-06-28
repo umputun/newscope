@@ -989,9 +989,9 @@ func TestScheduler_UpdateFeed_ItemCreationError(t *testing.T) {
 		return false, nil
 	}
 
-	// setup item creation to fail
+	// setup item creation to fail with a lock error to trigger retries
 	itemManager.CreateItemFunc = func(ctx context.Context, item *domain.Item) error {
-		return assert.AnError
+		return fmt.Errorf("database is locked")
 	}
 
 	// setup feed update to still succeed
