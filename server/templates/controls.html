@@ -23,7 +23,7 @@
         hx-get="/articles"
         hx-trigger="click"
         hx-target="#articles-with-pagination"
-        hx-swap="innerHTML show:top"
+        hx-swap="innerHTML show:body:top"
         hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter"
         hx-vals='{"liked": "{{if .ShowLikedOnly}}false{{else}}true{{end}}"}'
         hx-swap-oob="true">
