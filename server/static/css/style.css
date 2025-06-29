@@ -51,56 +51,64 @@
     --bg-danger: #fee2e2;
 }
 
-/* Dark Theme */
-@media (prefers-color-scheme: dark) {
-    :root {
-        /* Primary colors remain vibrant */
-        --primary-color: #3b82f6;
-        --primary-hover: #2563eb;
-        --success-color: #10b981;
-        --danger-color: #f87171;
-        --warning-color: #fbbf24;
-        --score-bar-bg: #3b82f6;
-        
-        /* Background colors - dark variants */
-        --bg-primary: #0f172a;
-        --bg-secondary: #1e293b;
-        --bg-tertiary: #334155;
-        --bg-hover: #334155;
-        
-        /* Text colors - light variants */
-        --text-primary: #f1f5f9;
-        --text-secondary: #cbd5e1;
-        --text-tertiary: #94a3b8;
-        --text-muted: #64748b;
-        
-        /* Border colors */
-        --border-primary: #334155;
-        --border-secondary: #475569;
-        
-        /* Component specific */
-        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-        --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
-        --code-bg: #1e293b;
-        --code-text: #e2e8f0;
-        --blockquote-border: #475569;
-        --link-hover: #60a5fa;
-        
-        /* Status colors */
-        --status-error-bg: rgba(248, 113, 113, 0.1);
-        --status-error-border: rgba(248, 113, 113, 0.3);
-        --status-info-bg: rgba(96, 165, 250, 0.1);
-        --status-info-text: #60a5fa;
-        
-        /* Tag colors */
-        --tag-bg: rgba(59, 130, 246, 0.1);
-        --tag-text: #60a5fa;
-        --tag-border: rgba(59, 130, 246, 0.3);
-        --bg-danger: rgba(239, 68, 68, 0.1);
-    }
+/* Dark Theme - Applied via manual toggle or system preference (handled by JS) */
+:root.dark-theme,
+html.dark-theme {
+    /* Primary colors remain vibrant */
+    --primary-color: #3b82f6;
+    --primary-hover: #2563eb;
+    --success-color: #10b981;
+    --danger-color: #f87171;
+    --warning-color: #fbbf24;
+    --score-bar-bg: #3b82f6;
+    
+    /* Background colors - dark variants */
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-hover: #334155;
+    
+    /* Text colors - light variants */
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-tertiary: #94a3b8;
+    --text-muted: #64748b;
+    
+    /* Border colors */
+    --border-primary: #334155;
+    --border-secondary: #475569;
+    
+    /* Component specific */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+    --code-bg: #1e293b;
+    --code-text: #e2e8f0;
+    --blockquote-border: #475569;
+    --link-hover: #60a5fa;
+    
+    /* Status colors */
+    --status-error-bg: rgba(248, 113, 113, 0.1);
+    --status-error-border: rgba(248, 113, 113, 0.3);
+    --status-info-bg: rgba(96, 165, 250, 0.1);
+    --status-info-text: #60a5fa;
+    
+    /* Tag colors */
+    --tag-bg: rgba(59, 130, 246, 0.1);
+    --tag-text: #60a5fa;
+    --tag-border: rgba(59, 130, 246, 0.3);
+    --bg-danger: rgba(239, 68, 68, 0.1);
 }
 
 /* Base Styles */
+html {
+    /* Ensure CSS variables cascade properly in Safari */
+    color-scheme: light;
+}
+
+html.dark-theme {
+    color-scheme: dark;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     line-height: 1.6;
@@ -1908,6 +1916,51 @@ small.text-muted {
 
 .search-toggle:hover {
     color: var(--primary-color);
+}
+
+/* Theme Toggle */
+.theme-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    margin-left: 1rem;
+    transition: color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+    position: relative;
+    width: 24px;
+    height: 24px;
+}
+
+.theme-toggle:hover {
+    color: var(--primary-color);
+}
+
+.theme-toggle svg {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    transition: opacity 0.3s ease;
+}
+
+.theme-toggle .sun-icon {
+    opacity: 1;
+}
+
+.theme-toggle .moon-icon {
+    opacity: 0;
+}
+
+html.dark-theme .theme-toggle .sun-icon {
+    opacity: 0;
+}
+
+html.dark-theme .theme-toggle .moon-icon {
+    opacity: 1;
 }
 
 .nav-search-form {

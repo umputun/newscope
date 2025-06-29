@@ -44,19 +44,115 @@ Open http://localhost:8080 to access the web interface.
 4. Provide feedback to improve recommendations
 5. Subscribe to filtered RSS feeds in your reader
 
+## Screenshots
+
+### Main Interface
+
+<p align="center">
+  <img src="docs/screenshots/articles-main.png" alt="Articles View - Light Theme" width="800">
+  <br>
+  <em>Main articles view with AI-generated scores and topic tags</em>
+</p>
+
 <details>
-<summary>Screenshots</summary>
+<summary>Dark Theme</summary>
 
-![Articles View](https://via.placeholder.com/800x450)
-*Articles page with score filtering and topic tags*
-
-![Feeds Management](https://via.placeholder.com/800x450)
-*Managing RSS feed subscriptions*
-
-![Content Extraction](https://via.placeholder.com/800x450)
-*Full article content extraction*
+<p align="center">
+  <img src="docs/screenshots/articles-main-dark.png" alt="Articles View - Dark Theme" width="800">
+</p>
 
 </details>
+
+### Article Views
+
+<p align="center">
+  <img src="docs/screenshots/articles-condensed.png" alt="Condensed View" width="800">
+  <br>
+  <em>Condensed view for scanning through more articles quickly</em>
+</p>
+
+<details>
+<summary>Dark Theme</summary>
+
+<p align="center">
+  <img src="docs/screenshots/articles-condensed-dark.png" alt="Condensed View - Dark Theme" width="800">
+</p>
+
+</details>
+
+### Article Content
+
+<p align="center">
+  <img src="docs/screenshots/article-content.png" alt="Article Content" width="800">
+  <br>
+  <em>Expanded article with full content extracted and displayed</em>
+</p>
+
+### Settings
+
+<p align="center">
+  <img src="docs/screenshots/settings-general.png" alt="Settings - General" width="800">
+  <br>
+  <em>Configure topic preferences to influence article scoring</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/settings-ai-preferences.png" alt="AI Preferences" width="800">
+  <br>
+  <em>View and manage AI-learned preferences based on your feedback</em>
+</p>
+
+<details>
+<summary>Dark Theme</summary>
+
+<p align="center">
+  <img src="docs/screenshots/settings-dark.png" alt="Settings - Dark Theme" width="800">
+</p>
+
+</details>
+
+### Feed Management
+
+<p align="center">
+  <img src="docs/screenshots/feeds.png" alt="Feeds Management" width="800">
+  <br>
+  <em>Manage RSS feed subscriptions with custom update intervals</em>
+</p>
+
+<details>
+<summary>Dark Theme</summary>
+
+<p align="center">
+  <img src="docs/screenshots/feeds-dark.png" alt="Feeds - Dark Theme" width="800">
+</p>
+
+</details>
+
+### RSS Integration
+
+<p align="center">
+  <img src="docs/screenshots/rss-help.png" alt="RSS Help" width="800">
+  <br>
+  <em>Generate filtered RSS feeds for any RSS reader</em>
+</p>
+
+### Search
+
+<p align="center">
+  <img src="docs/screenshots/search-results.png" alt="Search Results" width="800">
+  <br>
+  <em>Full-text search with advanced operators and filtering</em>
+</p>
+
+### Mobile View
+
+<p align="center">
+  <img src="docs/screenshots/mobile-view.png" alt="Mobile View - Light" width="375">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="docs/screenshots/mobile-view-dark.png" alt="Mobile View - Dark" width="375">
+  <br>
+  <em>Responsive mobile design in light and dark themes</em>
+</p>
 
 ## Installation
 
@@ -120,6 +216,9 @@ llm:
   classification:
     feedback_examples: 50
     preference_summary_threshold: 10  # Number of new feedbacks before updating preference summary
+    summary_retry_attempts: 3         # Retry if summary contains forbidden phrases (default: 3)
+    # Optional: Custom forbidden prefixes (defaults provided if not specified)
+    # forbidden_summary_prefixes: ["The article discusses", "Article analyzes", "Discusses"]
 
 extraction:
   enabled: true
