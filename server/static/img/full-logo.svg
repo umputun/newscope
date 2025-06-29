@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="7 0 425 60" width="425" height="60">
+  <!-- Logo icon positioned on the left, shorter height -->
+  <g transform="translate(10, 10)">
+    <!-- Document frame -->
+    <rect x="0" y="0" width="38" height="40" rx="6" ry="6" fill="none" stroke="#3b82f6" stroke-width="5"/>
+    
+    <!-- Single bold element inside - document/page symbol -->
+    <rect x="8" y="10" width="22" height="20" rx="3" ry="3" fill="#3b82f6"/>
+  </g>
+  
+  <!-- NEWSCOPE text aligned with logo, vertically centered -->
+  <text x="65" y="30" font-family="Arial, Helvetica, sans-serif" font-size="56" font-weight="bold" fill="#3b82f6" dominant-baseline="central">NEWSCOPE</text>
+</svg>

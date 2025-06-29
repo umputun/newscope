@@ -1,10 +1,9 @@
-# Newscope
-
 <div align="center">
-  <img src="server/static/img/logo.svg" alt="Newscope Logo" width="120">
+  <img src="server/static/img/full-logo.svg" alt="Newscope" width="425">
+  <br>
+  
+  [![Build Status](https://github.com/umputun/newscope/workflows/build/badge.svg)](https://github.com/umputun/newscope/actions) [![Coverage Status](https://coveralls.io/repos/github/umputun/newscope/badge.svg?branch=master)](https://coveralls.io/github/umputun/newscope?branch=master)
 </div>
-
-[![Build Status](https://github.com/umputun/newscope/workflows/build/badge.svg)](https://github.com/umputun/newscope/actions) [![Coverage Status](https://coveralls.io/repos/github/umputun/newscope/badge.svg?branch=master)](https://coveralls.io/github/umputun/newscope?branch=master)
 
 Newscope is a self-hosted RSS feed reader that uses AI to score articles based on your interests. It learns from your feedback to filter out noise and surface content you actually want to read. Instead of drowning in hundreds of articles, you get a personalized feed with scores from 0-10, automatic topic extraction, and the ability to generate custom RSS feeds for any topic with quality thresholds.
 
