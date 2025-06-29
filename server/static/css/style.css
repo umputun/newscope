@@ -2002,6 +2002,8 @@ small.text-muted {
     margin: 0;
     font-size: 1.1rem;
     color: var(--text-primary);
+    border-top: none;
+    padding-top: 0;
 }
 
 .preference-summary-meta {
