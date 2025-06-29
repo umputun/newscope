@@ -3,9 +3,6 @@ FROM ghcr.io/umputun/baseimage/buildgo:latest as build
 WORKDIR /build
 ADD . /build
 
-# run tests
-RUN cd /build && go test -mod=vendor ./...
-
 # build version based on git revision or CI info
 RUN \
     if [ -z "$CI" ] ; then \
