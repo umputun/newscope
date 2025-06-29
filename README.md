@@ -168,6 +168,22 @@ Configure preferred and avoided topics in Settings to influence article scoring:
 
 This allows you to boost content you're interested in and filter out topics you want to avoid.
 
+### AI-Learned Preferences
+
+The system automatically learns your preferences based on your likes and dislikes:
+- **Preference Summary**: A personalized description of what content you prefer and want to avoid
+- **Automatic Learning**: Updates after every 10 feedback actions (configurable)
+- **Manual Control**: Edit the preference summary directly in Settings
+- **Enable/Disable**: Toggle preference learning on/off
+- **Reset**: Clear all preferences and start fresh
+
+To manage your preferences:
+1. Go to Settings → AI-Learned Preferences
+2. View your current preference summary
+3. Click "Edit" to modify it manually
+4. Toggle the switch to enable/disable learning
+5. Use "Reset" to clear all preferences
+
 ### Content Extraction
 
 Click "Extract Content" on any article to fetch and display the full text. Content is sanitized and formatted for readability.
@@ -245,6 +261,12 @@ llm:
 - `POST /api/v1/feeds` - Create new feed
 - `PUT /api/v1/feeds/{id}` - Update feed
 - `DELETE /api/v1/feeds/{id}` - Delete feed
+
+### Preference Management
+
+- `GET /api/v1/preferences` - Get preference summary and metadata
+- `PUT /api/v1/preferences` - Update preference summary
+- `DELETE /api/v1/preferences` - Reset all preferences
 
 ### RSS Endpoints
 

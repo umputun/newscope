@@ -6,7 +6,7 @@
 - Run specific test: `go test -run TestName ./path/to/package`
 - Run tests with coverage: `go test -cover ./...`
 - Run linting: `golangci-lint run ./...`
-- Format code: `gofmt -s -w .`
+- Format code: `gofmt -s -w $(find . -type f -name "*.go" -not -path "./vendor/*")`
 - Run code generation: `go generate ./...`
 - Coverage report: `go test -race -coverprofile=coverage.out ./... && go tool cover -func=coverage.out`
 - Normalize code comments: `command -v unfuck-ai-comments >/dev/null || go install github.com/umputun/unfuck-ai-comments@latest; unfuck-ai-comments run --fmt --skip=mocks ./...`

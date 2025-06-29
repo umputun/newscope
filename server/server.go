@@ -209,7 +209,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"templates/pagination.html",
 		"templates/topic-tags.html",
 		"templates/topic-dropdowns.html",
-		"templates/controls.html")
+		"templates/controls.html",
+		"templates/preference-summary.html")
 	if err != nil {
 		log.Printf("[WARN] failed to parse templates: %v", err)
 	}
@@ -342,6 +343,18 @@ func (s *Server) setupRoutes() {
 		// topic preferences management
 		r.HandleFunc("POST /topics", s.addTopicHandler)
 		r.HandleFunc("DELETE /topics/{topic}", s.deleteTopicHandler)
+
+		// preference summary management (JSON API)
+		r.HandleFunc("GET /preferences", s.getPreferencesHandler)
+		r.HandleFunc("PUT /preferences", s.updatePreferencesHandler)
+		r.HandleFunc("DELETE /preferences", s.deletePreferencesHandler)
+
+		// preference summary management (HTMX handlers)
+		r.HandleFunc("GET /preferences/view", s.preferenceViewHandler)
+		r.HandleFunc("GET /preferences/edit", s.preferenceEditHandler)
+		r.HandleFunc("POST /preferences/save", s.preferenceSaveHandler)
+		r.HandleFunc("DELETE /preferences/reset", s.preferenceResetHandler)
+		r.HandleFunc("POST /preferences/toggle", s.preferenceToggleHandler)
 	})
 
 	// RSS routes

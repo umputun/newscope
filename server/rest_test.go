@@ -932,3 +932,376 @@ func TestServer_DeleteFeedHandler_Error(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "delete failed")
 }
+
+func TestServer_GetPreferencesHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	t.Run("get preferences with all data", func(t *testing.T) {
+		now := time.Now().UTC()
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				switch key {
+				case domain.SettingPreferenceSummary:
+					return "User prefers technical articles about Go programming", nil
+				case domain.SettingPreferenceSummaryEnabled:
+					return "true", nil
+				case domain.SettingLastSummaryFeedbackCount:
+					return "150", nil
+				case domain.SettingPreferenceSummaryLastUpdate:
+					return now.Format(time.RFC3339), nil
+				default:
+					return "", nil
+				}
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("GET", "/api/v1/preferences", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.getPreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+		var resp map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+
+		assert.Equal(t, "User prefers technical articles about Go programming", resp["summary"])
+		assert.Equal(t, true, resp["enabled"])
+		assert.InEpsilon(t, float64(150), resp["feedback_count"], 0.01)
+		assert.NotNil(t, resp["last_update"])
+	})
+
+	t.Run("get preferences with defaults when not set", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				return "", nil // nothing is set
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("GET", "/api/v1/preferences", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.getPreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var resp map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+
+		assert.Empty(t, resp["summary"])
+		assert.Equal(t, true, resp["enabled"]) // defaults to true
+		assert.InDelta(t, 0.0, resp["feedback_count"], 0.001)
+		assert.Nil(t, resp["last_update"])
+	})
+
+	t.Run("get preferences with disabled status", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				if key == domain.SettingPreferenceSummaryEnabled {
+					return "false", nil
+				}
+				return "", nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("GET", "/api/v1/preferences", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.getPreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var resp map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+
+		assert.Equal(t, false, resp["enabled"])
+	})
+
+	t.Run("database error", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				if key == domain.SettingPreferenceSummary {
+					return "", errors.New("database error")
+				}
+				return "", nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("GET", "/api/v1/preferences", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.getPreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "database error")
+	})
+}
+
+func TestServer_UpdatePreferencesHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	t.Run("update summary only", func(t *testing.T) {
+		setCalls := 0
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				setCalls++
+				switch key {
+				case domain.SettingPreferenceSummary:
+					assert.Equal(t, "Updated preference summary", value)
+				case domain.SettingPreferenceSummaryLastUpdate:
+					// should be a valid timestamp
+					_, err := time.Parse(time.RFC3339, value)
+					require.NoError(t, err)
+				default:
+					t.Errorf("unexpected key: %s", key)
+				}
+				return nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		body := `{"summary": "Updated preference summary"}`
+		req := httptest.NewRequest("PUT", "/api/v1/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.updatePreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, 2, setCalls) // summary + last update
+		assert.Contains(t, w.Body.String(), `"status":"ok"`)
+	})
+
+	t.Run("update enabled status", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				if key == domain.SettingPreferenceSummaryEnabled {
+					assert.Equal(t, "false", value)
+				}
+				return nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		enabled := false
+		body := fmt.Sprintf(`{"enabled": %v}`, enabled)
+		req := httptest.NewRequest("PUT", "/api/v1/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.updatePreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("update both summary and enabled", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				// should update all settings
+				return nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		enabled := true
+		body := fmt.Sprintf(`{"summary": "New summary", "enabled": %v}`, enabled)
+		req := httptest.NewRequest("PUT", "/api/v1/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.updatePreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("summary too long", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		longSummary := strings.Repeat("a", 1001)
+		body := fmt.Sprintf(`{"summary": %q}`, longSummary)
+		req := httptest.NewRequest("PUT", "/api/v1/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.updatePreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "preference summary too long")
+	})
+
+	t.Run("invalid JSON", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		body := `{invalid json`
+		req := httptest.NewRequest("PUT", "/api/v1/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.updatePreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "invalid request body")
+	})
+
+	t.Run("database error on summary update", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				if key == domain.SettingPreferenceSummary {
+					return errors.New("database error")
+				}
+				return nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		body := `{"summary": "New summary"}`
+		req := httptest.NewRequest("PUT", "/api/v1/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.updatePreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "database error")
+	})
+
+	t.Run("database error on enabled update", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				if key == domain.SettingPreferenceSummaryEnabled {
+					return errors.New("database error")
+				}
+				return nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		enabled := true
+		body := fmt.Sprintf(`{"enabled": %v}`, enabled)
+		req := httptest.NewRequest("PUT", "/api/v1/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		srv.updatePreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "database error")
+	})
+}
+
+func TestServer_DeletePreferencesHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	t.Run("successful delete", func(t *testing.T) {
+		setCalls := make(map[string]string)
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				setCalls[key] = value
+				return nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("DELETE", "/api/v1/preferences", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.deletePreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"status":"ok"`)
+
+		// verify all settings were cleared
+		assert.Empty(t, setCalls[domain.SettingPreferenceSummary])
+		assert.Equal(t, "0", setCalls[domain.SettingLastSummaryFeedbackCount])
+		assert.Empty(t, setCalls[domain.SettingPreferenceSummaryLastUpdate])
+		assert.Len(t, setCalls, 3)
+	})
+
+	t.Run("database error on summary clear", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				if key == domain.SettingPreferenceSummary {
+					return errors.New("database error")
+				}
+				return nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("DELETE", "/api/v1/preferences", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.deletePreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "database error")
+	})
+
+	t.Run("database error on feedback count reset", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				if key == domain.SettingLastSummaryFeedbackCount {
+					return errors.New("database error")
+				}
+				return nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("DELETE", "/api/v1/preferences", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.deletePreferencesHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "database error")
+	})
+}

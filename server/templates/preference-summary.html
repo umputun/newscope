@@ -1,0 +1,73 @@
+<div class="preference-summary-header">
+    <h4 class="subsection-header">
+        <i class="fas fa-user-cog"></i>
+        AI-Learned Preferences
+    </h4>
+    <div class="preference-summary-meta">
+        <span class="meta-item">
+            <i class="fas fa-chart-line"></i>
+            <span class="count">{{.FeedbackCount}}</span> feedback items
+        </span>
+        <span class="meta-item">
+            <i class="fas fa-clock"></i>
+            Last updated: <span class="time">{{.LastUpdate}}</span>
+        </span>
+    </div>
+</div>
+
+<div class="preference-summary-controls">
+    <label class="toggle-switch">
+        <input type="checkbox" {{if .Enabled}}checked{{end}}
+               hx-post="/api/v1/preferences/toggle"
+               hx-target="#preference-summary-container"
+               hx-swap="innerHTML">
+        <span class="toggle-slider"></span>
+        <span class="toggle-label">Enable preference learning</span>
+    </label>
+    
+    <div class="button-group">
+        {{if .EditMode}}
+            <button class="btn btn-primary"
+                    hx-post="/api/v1/preferences/save"
+                    hx-include="#preference-form"
+                    hx-target="#preference-summary-container"
+                    hx-swap="innerHTML">
+                <i class="fas fa-save"></i>
+                Save
+            </button>
+            <button class="btn btn-secondary"
+                    hx-get="/api/v1/preferences/view"
+                    hx-target="#preference-summary-container"
+                    hx-swap="innerHTML">
+                <i class="fas fa-times"></i>
+                Cancel
+            </button>
+        {{else}}
+            <button class="btn btn-secondary"
+                    hx-get="/api/v1/preferences/edit"
+                    hx-target="#preference-summary-container"
+                    hx-swap="innerHTML">
+                <i class="fas fa-edit"></i>
+                Edit
+            </button>
+        {{end}}
+        <button class="btn btn-danger"
+                hx-delete="/api/v1/preferences/reset"
+                hx-target="#preference-summary-container"
+                hx-swap="innerHTML"
+                hx-confirm="Are you sure you want to reset your preferences? This will clear all learned preferences and reset the feedback counter.">
+            <i class="fas fa-redo"></i>
+            Reset
+        </button>
+    </div>
+</div>
+
+<form id="preference-form" class="preference-summary-content">
+    <textarea name="summary" class="preference-summary-textarea" {{if not .EditMode}}readonly{{end}}
+              placeholder="No preference summary yet. The AI will learn from your likes and dislikes to build a personalized preference profile.">{{.Summary}}</textarea>
+    <input type="hidden" name="enabled" value="{{if .Enabled}}on{{end}}">
+    <div class="preference-summary-help">
+        <i class="fas fa-info-circle"></i>
+        <p>This summary is automatically generated based on your article feedback. It helps the AI better understand what content you prefer and what you want to avoid.</p>
+    </div>
+</form>

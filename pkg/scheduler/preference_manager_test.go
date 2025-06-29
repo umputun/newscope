@@ -29,6 +29,10 @@ func TestPreferenceManager_UpdatePreferenceSummary(t *testing.T) {
 
 		settingManager := &mocks.SettingManagerMock{
 			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				// preference learning is enabled by default (not "false")
+				if key == domain.SettingPreferenceSummaryEnabled {
+					return "", nil
+				}
 				// no existing preference summary
 				return "", nil
 			},
@@ -94,6 +98,8 @@ func TestPreferenceManager_UpdatePreferenceSummary(t *testing.T) {
 		settingManager := &mocks.SettingManagerMock{
 			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
 				switch key {
+				case domain.SettingPreferenceSummaryEnabled:
+					return "", nil // enabled by default
 				case "preference_summary":
 					return "Old summary", nil
 				case "last_summary_feedback_count":
@@ -152,6 +158,8 @@ func TestPreferenceManager_UpdatePreferenceSummary(t *testing.T) {
 		settingManager := &mocks.SettingManagerMock{
 			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
 				switch key {
+				case domain.SettingPreferenceSummaryEnabled:
+					return "", nil // enabled by default
 				case "preference_summary":
 					return "Existing summary", nil
 				case "last_summary_feedback_count":
@@ -184,5 +192,50 @@ func TestPreferenceManager_UpdatePreferenceSummary(t *testing.T) {
 		assert.Empty(t, classifier.GeneratePreferenceSummaryCalls())
 		assert.Empty(t, classifier.UpdatePreferenceSummaryCalls())
 		assert.Empty(t, settingManager.SetSettingCalls()) // no update
+	})
+
+	t.Run("skip update when preference learning is disabled", func(t *testing.T) {
+		// setup mocks
+		classificationManager := &mocks.ClassificationManagerMock{
+			GetRecentFeedbackFunc: func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+				t.Fatal("should not be called when preference learning is disabled")
+				return nil, nil
+			},
+		}
+
+		settingManager := &mocks.SettingManagerMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				if key == domain.SettingPreferenceSummaryEnabled {
+					return "false", nil
+				}
+				return "", nil
+			},
+		}
+
+		classifier := &mocks.ClassifierMock{}
+
+		retryFunc := func(ctx context.Context, op func() error) error {
+			return op()
+		}
+
+		pm := NewPreferenceManager(PreferenceManagerConfig{
+			ClassificationManager:      classificationManager,
+			SettingManager:             settingManager,
+			Classifier:                 classifier,
+			PreferenceSummaryThreshold: 25,
+			RetryFunc:                  retryFunc,
+		})
+
+		// execute
+		err := pm.UpdatePreferenceSummary(context.Background())
+
+		// verify
+		require.NoError(t, err)
+		assert.Len(t, settingManager.GetSettingCalls(), 1) // only checked the enabled setting
+		assert.Equal(t, domain.SettingPreferenceSummaryEnabled, settingManager.GetSettingCalls()[0].Key)
+		assert.Empty(t, classificationManager.GetRecentFeedbackCalls()) // should not try to get feedback
+		assert.Empty(t, classifier.GeneratePreferenceSummaryCalls())
+		assert.Empty(t, classifier.UpdatePreferenceSummaryCalls())
+		assert.Empty(t, settingManager.SetSettingCalls()) // no updates
 	})
 }

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
@@ -967,4 +968,203 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
 		return
 	}
+}
+
+// preferenceViewHandler returns the preference summary view for HTMX
+func (s *Server) preferenceViewHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// get preference summary
+	summary, err := s.db.GetSetting(ctx, domain.SettingPreferenceSummary)
+	if err != nil {
+		log.Printf("[WARN] failed to get preference summary: %v", err)
+	}
+
+	// get enabled status
+	enabledStr, _ := s.db.GetSetting(ctx, domain.SettingPreferenceSummaryEnabled)
+	enabled := enabledStr != "false" // default to true if not set
+
+	// get feedback count
+	countStr, _ := s.db.GetSetting(ctx, domain.SettingLastSummaryFeedbackCount)
+	feedbackCount := int64(0)
+	if countStr != "" {
+		feedbackCount, _ = strconv.ParseInt(countStr, 10, 64)
+	}
+
+	// get last update time
+	lastUpdateStr, _ := s.db.GetSetting(ctx, domain.SettingPreferenceSummaryLastUpdate)
+	var lastUpdate string
+	if lastUpdateStr != "" {
+		if t, err := time.Parse(time.RFC3339, lastUpdateStr); err == nil {
+			lastUpdate = t.Format("Jan 2, 2006 at 3:04 PM")
+		}
+	}
+	if lastUpdate == "" {
+		lastUpdate = "Never"
+	}
+
+	// prepare template data
+	data := struct {
+		Summary       string
+		Enabled       bool
+		FeedbackCount int64
+		LastUpdate    string
+		EditMode      bool
+	}{
+		Summary:       summary,
+		Enabled:       enabled,
+		FeedbackCount: feedbackCount,
+		LastUpdate:    lastUpdate,
+		EditMode:      false,
+	}
+
+	// render preference summary template
+	if err := s.templates.ExecuteTemplate(w, "preference-summary.html", data); err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render preference summary", err)
+	}
+}
+
+// preferenceEditHandler returns the preference summary in edit mode
+func (s *Server) preferenceEditHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// get preference summary
+	summary, _ := s.db.GetSetting(ctx, domain.SettingPreferenceSummary)
+	enabledStr, _ := s.db.GetSetting(ctx, domain.SettingPreferenceSummaryEnabled)
+	enabled := enabledStr != "false"
+
+	countStr, _ := s.db.GetSetting(ctx, domain.SettingLastSummaryFeedbackCount)
+	feedbackCount := int64(0)
+	if countStr != "" {
+		feedbackCount, _ = strconv.ParseInt(countStr, 10, 64)
+	}
+
+	lastUpdateStr, _ := s.db.GetSetting(ctx, domain.SettingPreferenceSummaryLastUpdate)
+	var lastUpdate string
+	if lastUpdateStr != "" {
+		if t, err := time.Parse(time.RFC3339, lastUpdateStr); err == nil {
+			lastUpdate = t.Format("Jan 2, 2006 at 3:04 PM")
+		}
+	}
+	if lastUpdate == "" {
+		lastUpdate = "Never"
+	}
+
+	data := struct {
+		Summary       string
+		Enabled       bool
+		FeedbackCount int64
+		LastUpdate    string
+		EditMode      bool
+	}{
+		Summary:       summary,
+		Enabled:       enabled,
+		FeedbackCount: feedbackCount,
+		LastUpdate:    lastUpdate,
+		EditMode:      true,
+	}
+
+	if err := s.templates.ExecuteTemplate(w, "preference-summary.html", data); err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render preference summary", err)
+	}
+}
+
+// preferenceSaveHandler saves preference summary updates
+func (s *Server) preferenceSaveHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// parse form data
+	if err := r.ParseForm(); err != nil {
+		s.respondWithError(w, http.StatusBadRequest, "Invalid form data", err)
+		return
+	}
+
+	summary := r.FormValue("summary")
+	enabled := r.FormValue("enabled") == "on"
+
+	// validate summary length
+	if len(summary) > 1000 {
+		s.respondWithError(w, http.StatusBadRequest, "Preference summary too long (max 1000 characters)", nil)
+		return
+	}
+
+	// update summary
+	if err := s.db.SetSetting(ctx, domain.SettingPreferenceSummary, summary); err != nil {
+		log.Printf("[WARN] failed to update preference summary: %v", err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to save preferences", err)
+		return
+	}
+
+	// update enabled status
+	enabledStr := "true"
+	if !enabled {
+		enabledStr = "false"
+	}
+	if err := s.db.SetSetting(ctx, domain.SettingPreferenceSummaryEnabled, enabledStr); err != nil {
+		log.Printf("[WARN] failed to update preference enabled status: %v", err)
+	}
+
+	// update last update time
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := s.db.SetSetting(ctx, domain.SettingPreferenceSummaryLastUpdate, now); err != nil {
+		log.Printf("[WARN] failed to update last update time: %v", err)
+	}
+
+	// redirect to view mode
+	s.preferenceViewHandler(w, r)
+}
+
+// preferenceResetHandler resets preference summary
+func (s *Server) preferenceResetHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// clear preference summary
+	if err := s.db.SetSetting(ctx, domain.SettingPreferenceSummary, ""); err != nil {
+		log.Printf("[WARN] failed to clear preference summary: %v", err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to reset preferences", err)
+		return
+	}
+
+	// reset feedback count
+	if err := s.db.SetSetting(ctx, domain.SettingLastSummaryFeedbackCount, "0"); err != nil {
+		log.Printf("[WARN] failed to reset feedback count: %v", err)
+	}
+
+	// clear last update time
+	if err := s.db.SetSetting(ctx, domain.SettingPreferenceSummaryLastUpdate, ""); err != nil {
+		log.Printf("[WARN] failed to clear last update time: %v", err)
+	}
+
+	// return to view mode with cleared data
+	s.preferenceViewHandler(w, r)
+}
+
+// preferenceToggleHandler toggles preference learning enabled/disabled
+func (s *Server) preferenceToggleHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// get current state
+	enabledStr, err := s.db.GetSetting(ctx, domain.SettingPreferenceSummaryEnabled)
+	if err != nil && enabledStr == "" {
+		log.Printf("[WARN] failed to get preference enabled status: %v", err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to get preference enabled status", err)
+		return
+	}
+	currentEnabled := enabledStr != "false"
+
+	// toggle state
+	newEnabled := !currentEnabled
+	newEnabledStr := "true"
+	if !newEnabled {
+		newEnabledStr = "false"
+	}
+
+	if err := s.db.SetSetting(ctx, domain.SettingPreferenceSummaryEnabled, newEnabledStr); err != nil {
+		log.Printf("[WARN] failed to update preference enabled status: %v", err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to update preference status", err)
+		return
+	}
+
+	// return updated view
+	s.preferenceViewHandler(w, r)
 }

@@ -1426,3 +1426,296 @@ func TestServer_DeleteTopicHandler(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
+
+func TestServer_PreferenceHandlers(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	t.Run("preferenceViewHandler", func(t *testing.T) {
+		now := time.Now().UTC()
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				switch key {
+				case domain.SettingPreferenceSummary:
+					return "User prefers technical articles about Go programming", nil
+				case domain.SettingPreferenceSummaryEnabled:
+					return "true", nil
+				case domain.SettingLastSummaryFeedbackCount:
+					return "150", nil
+				case domain.SettingPreferenceSummaryLastUpdate:
+					return now.Format(time.RFC3339), nil
+				default:
+					return "", nil
+				}
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("GET", "/api/v1/preferences/view", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.preferenceViewHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "User prefers technical articles about Go programming")
+		assert.Contains(t, w.Body.String(), "150")
+		assert.Contains(t, w.Body.String(), `checked`)
+		assert.Contains(t, w.Body.String(), `<textarea name="summary" class="preference-summary-textarea" readonly`) // should be in view mode
+	})
+
+	t.Run("preferenceEditHandler", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				switch key {
+				case domain.SettingPreferenceSummary:
+					return "Existing preference summary", nil
+				case domain.SettingPreferenceSummaryEnabled:
+					return "false", nil
+				case domain.SettingLastSummaryFeedbackCount:
+					return "50", nil
+				default:
+					return "", nil
+				}
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("GET", "/api/v1/preferences/edit", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.preferenceEditHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "Existing preference summary")
+		assert.NotContains(t, w.Body.String(), `readonly`) // textarea should be editable
+		assert.NotContains(t, w.Body.String(), `checked`)  // should not be checked when false
+	})
+
+	t.Run("preferenceSaveHandler", func(t *testing.T) {
+		setCalls := make(map[string]string)
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				setCalls[key] = value
+				return nil
+			},
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				// after save, return the updated values
+				switch key {
+				case domain.SettingPreferenceSummary:
+					return "Updated preference summary", nil
+				case domain.SettingPreferenceSummaryEnabled:
+					return "true", nil
+				case domain.SettingLastSummaryFeedbackCount:
+					return "100", nil
+				case domain.SettingPreferenceSummaryLastUpdate:
+					return time.Now().UTC().Format(time.RFC3339), nil
+				default:
+					return "", nil
+				}
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		form := url.Values{}
+		form.Add("summary", "Updated preference summary")
+		form.Add("enabled", "on")
+
+		req := httptest.NewRequest("POST", "/api/v1/preferences/save", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.preferenceSaveHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "Updated preference summary", setCalls[domain.SettingPreferenceSummary])
+		assert.Equal(t, "true", setCalls[domain.SettingPreferenceSummaryEnabled])
+		assert.NotEmpty(t, setCalls[domain.SettingPreferenceSummaryLastUpdate])
+
+		// should return view mode
+		assert.Contains(t, w.Body.String(), "Updated preference summary")
+		assert.Contains(t, w.Body.String(), `readonly`)
+	})
+
+	t.Run("preferenceSaveHandler with disabled", func(t *testing.T) {
+		setCalls := make(map[string]string)
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				setCalls[key] = value
+				return nil
+			},
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				return "", nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		form := url.Values{}
+		form.Add("summary", "New summary")
+		// no "enabled" field means disabled
+
+		req := httptest.NewRequest("POST", "/api/v1/preferences/save", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.preferenceSaveHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "false", setCalls[domain.SettingPreferenceSummaryEnabled])
+	})
+
+	t.Run("preferenceSaveHandler database error", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				if key == domain.SettingPreferenceSummary {
+					return errors.New("database error")
+				}
+				return nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		form := url.Values{}
+		form.Add("summary", "New summary")
+
+		req := httptest.NewRequest("POST", "/api/v1/preferences/save", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.preferenceSaveHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to save preferences")
+	})
+
+	t.Run("preferenceResetHandler", func(t *testing.T) {
+		setCalls := make(map[string]string)
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				setCalls[key] = value
+				return nil
+			},
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				// after reset, everything should be empty/default
+				return "", nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("DELETE", "/api/v1/preferences/reset", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.preferenceResetHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Empty(t, setCalls[domain.SettingPreferenceSummary])
+		assert.Equal(t, "0", setCalls[domain.SettingLastSummaryFeedbackCount])
+		assert.Empty(t, setCalls[domain.SettingPreferenceSummaryLastUpdate])
+
+		// should return empty view
+		assert.Contains(t, w.Body.String(), "No preference summary yet")
+	})
+
+	t.Run("preferenceToggleHandler enable to disable", func(t *testing.T) {
+		callCount := 0
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				callCount++
+				if callCount == 1 && key == domain.SettingPreferenceSummaryEnabled {
+					return "true", nil // currently enabled
+				}
+				if key == domain.SettingPreferenceSummaryEnabled {
+					return "false", nil // after toggle
+				}
+				return "", nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				assert.Equal(t, domain.SettingPreferenceSummaryEnabled, key)
+				assert.Equal(t, "false", value)
+				return nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/preferences/toggle", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.preferenceToggleHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.NotContains(t, w.Body.String(), `checked`) // should be unchecked after toggle
+	})
+
+	t.Run("preferenceToggleHandler disable to enable", func(t *testing.T) {
+		callCount := 0
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				callCount++
+				if callCount == 1 && key == domain.SettingPreferenceSummaryEnabled {
+					return "false", nil // currently disabled
+				}
+				if key == domain.SettingPreferenceSummaryEnabled {
+					return "true", nil // after toggle
+				}
+				return "", nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				assert.Equal(t, domain.SettingPreferenceSummaryEnabled, key)
+				assert.Equal(t, "true", value)
+				return nil
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/preferences/toggle", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.preferenceToggleHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `checked`) // should be checked after toggle
+	})
+
+	t.Run("preferenceToggleHandler database error", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
+				if key == domain.SettingPreferenceSummaryEnabled {
+					return "", errors.New("database error")
+				}
+				return "", nil
+			},
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				return nil // won't be called due to early error
+			},
+		}
+
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/preferences/toggle", http.NoBody)
+		w := httptest.NewRecorder()
+
+		srv.preferenceToggleHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to get preference enabled status")
+	})
+}

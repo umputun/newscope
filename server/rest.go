@@ -348,6 +348,125 @@ func (s *Server) rssBuilderHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, url)
 }
 
+// getPreferencesHandler returns current preference summary and metadata
+func (s *Server) getPreferencesHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// get preference summary
+	summary, err := s.db.GetSetting(ctx, domain.SettingPreferenceSummary)
+	if err != nil {
+		log.Printf("[WARN] failed to get preference summary: %v", err)
+		renderError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	// get enabled status
+	enabledStr, _ := s.db.GetSetting(ctx, domain.SettingPreferenceSummaryEnabled)
+	enabled := enabledStr != "false" // default to true if not set
+
+	// get feedback count
+	countStr, _ := s.db.GetSetting(ctx, domain.SettingLastSummaryFeedbackCount)
+	feedbackCount := int64(0)
+	if countStr != "" {
+		feedbackCount, _ = strconv.ParseInt(countStr, 10, 64)
+	}
+
+	// get last update time
+	lastUpdateStr, _ := s.db.GetSetting(ctx, domain.SettingPreferenceSummaryLastUpdate)
+	var lastUpdate *time.Time
+	if lastUpdateStr != "" {
+		if t, err := time.Parse(time.RFC3339, lastUpdateStr); err == nil {
+			lastUpdate = &t
+		}
+	}
+
+	response := map[string]interface{}{
+		"summary":        summary,
+		"enabled":        enabled,
+		"feedback_count": feedbackCount,
+		"last_update":    lastUpdate,
+	}
+
+	renderJSON(w, r, http.StatusOK, response)
+}
+
+// updatePreferencesHandler updates preference summary directly
+func (s *Server) updatePreferencesHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		Summary string `json:"summary"`
+		Enabled *bool  `json:"enabled,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		renderError(w, r, fmt.Errorf("invalid request body"), http.StatusBadRequest)
+		return
+	}
+
+	// validate summary length
+	if len(req.Summary) > 1000 {
+		renderError(w, r, fmt.Errorf("preference summary too long (max 1000 characters)"), http.StatusBadRequest)
+		return
+	}
+
+	// update summary if provided
+	if req.Summary != "" {
+		if err := s.db.SetSetting(ctx, domain.SettingPreferenceSummary, req.Summary); err != nil {
+			log.Printf("[WARN] failed to update preference summary: %v", err)
+			renderError(w, r, err, http.StatusInternalServerError)
+			return
+		}
+
+		// update last update time
+		now := time.Now().UTC().Format(time.RFC3339)
+		if err := s.db.SetSetting(ctx, domain.SettingPreferenceSummaryLastUpdate, now); err != nil {
+			log.Printf("[WARN] failed to update last update time: %v", err)
+		}
+	}
+
+	// update enabled status if provided
+	if req.Enabled != nil {
+		enabledStr := "true"
+		if !*req.Enabled {
+			enabledStr = "false"
+		}
+		if err := s.db.SetSetting(ctx, domain.SettingPreferenceSummaryEnabled, enabledStr); err != nil {
+			log.Printf("[WARN] failed to update preference enabled status: %v", err)
+			renderError(w, r, err, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	renderJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// deletePreferencesHandler clears preference summary and resets feedback count
+func (s *Server) deletePreferencesHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// clear preference summary
+	if err := s.db.SetSetting(ctx, domain.SettingPreferenceSummary, ""); err != nil {
+		log.Printf("[WARN] failed to clear preference summary: %v", err)
+		renderError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	// reset feedback count
+	if err := s.db.SetSetting(ctx, domain.SettingLastSummaryFeedbackCount, "0"); err != nil {
+		log.Printf("[WARN] failed to reset feedback count: %v", err)
+		renderError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	// clear last update time
+	if err := s.db.SetSetting(ctx, domain.SettingPreferenceSummaryLastUpdate, ""); err != nil {
+		log.Printf("[WARN] failed to clear last update time: %v", err)
+	}
+
+	renderJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // renderJSON sends JSON response
 func renderJSON(w http.ResponseWriter, _ *http.Request, code int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
