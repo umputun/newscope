@@ -1,490 +1,373 @@
-# Newscope Architecture
+# Newscope Architecture Guide
 
-## Overview
+Welcome to Newscope! This guide will help you understand how the application works and how to contribute effectively.
 
-Newscope is a modern RSS feed aggregator that uses LLM-based classification to identify and rank relevant articles. The system follows a modular architecture with clear separation of concerns, using interfaces defined on the consumer side and dependency injection for testability.
+## What is Newscope?
 
-## Core Components
-
-### 1. Configuration (`pkg/config`)
-
-Manages all application configuration through YAML files with schema validation.
-
-- **Config**: Main configuration struct containing all subsystems
-- **Feed**: Individual feed configuration (URL, name, update interval)
-- **ExtractionConfig**: Content extraction settings (timeout, concurrency, options)
-- **LLMConfig**: LLM API configuration for classification
-- **ClassificationConfig**: Classification-specific settings (score threshold, batch size, JSON mode, preference summary threshold)
-- **ServerConfig**: HTTP server settings (address, timeouts)
-- **Verify()**: Validates configuration against JSON schema
-
-```
-config.yaml → Config struct → Validation → Application components
-```
-
-### 2. Repository Layer (`pkg/repository`)
-
-SQLite-based persistence using pure Go driver (modernc.org/sqlite) with sqlx for query building.
-
-**Core Characteristics:**
-- Pure Go SQLite driver (no CGO dependency)
-- WAL mode for concurrent readers
-- Foreign key constraints enforced
-- Full-text search with FTS5
-- Automatic schema initialization and migrations
-
-#### Storage Schema
-
-**Primary Tables:**
-
-1. **feeds** - RSS/Atom feed sources
-   ```sql
-   - id (INTEGER PRIMARY KEY)
-   - url (TEXT UNIQUE NOT NULL) - Feed URL
-   - title (TEXT) - Feed title
-   - description (TEXT) - Feed description
-   - last_fetched (DATETIME) - Last successful fetch
-   - next_fetch (DATETIME) - Scheduled next fetch
-   - fetch_interval (INTEGER DEFAULT 1800) - Seconds between fetches
-   - last_error (TEXT) - Last fetch error message
-   - error_count (INTEGER DEFAULT 0) - Consecutive error count
-   - priority (INTEGER DEFAULT 1) - Fetch priority
-   - enabled (BOOLEAN DEFAULT 1) - Feed active status
-   - created_at, updated_at (DATETIME)
-   ```
-
-2. **items** - Individual articles/posts
-   ```sql
-   - id (INTEGER PRIMARY KEY)
-   - feed_id (INTEGER NOT NULL, FK → feeds.id)
-   - guid (TEXT NOT NULL) - Unique identifier from feed
-   - title (TEXT NOT NULL) - Article title
-   - link (TEXT NOT NULL) - Article URL
-   - description (TEXT) - Summary/excerpt
-   - content (TEXT) - Original content from feed
-   - author (TEXT) - Author name
-   - published (DATETIME) - Publication date
-   - extracted_content (TEXT) - Full extracted article text
-   - extracted_rich_content (TEXT) - HTML formatted extracted content
-   - extracted_at (DATETIME) - When content was extracted
-   - extraction_error (TEXT) - Any extraction error
-   - relevance_score (REAL DEFAULT 0) - LLM score (0-10)
-   - explanation (TEXT) - LLM explanation for score
-   - topics (JSON) - Topics identified by LLM
-   - classified_at (DATETIME) - When classified
-   - user_feedback (TEXT) - 'like', 'dislike', 'spam'
-   - feedback_at (DATETIME) - When feedback given
-   - created_at, updated_at (DATETIME)
-   - UNIQUE(feed_id, guid) - Prevent duplicates
-   ```
-
-3. **settings** - Key-value configuration store
-   ```sql
-   - key (TEXT PRIMARY KEY)
-   - value (TEXT NOT NULL)
-   - created_at, updated_at (DATETIME)
-   ```
-
-#### Indexes and Performance
-
-**Strategic Indexes:**
-```sql
-- idx_items_feed_published ON items(feed_id, published DESC)
-- idx_items_classification ON items(classified_at, relevance_score DESC)
-- idx_items_feedback ON items(feedback_at DESC)
-- idx_items_extraction ON items(extracted_at)
-```
-
-**Performance Optimizations:**
-- JSON operations using SQLite's json_each for efficient topic queries
-- Pre-joined queries to minimize N+1 problems
-- WAL mode for better concurrent read performance
-- Batch operations for classification updates
-
-#### Full-Text Search (FTS5)
-
-**Search Implementation:**
-- SQLite FTS5 virtual table for full-text search across articles
-- Searches in: title, description, content, extracted_content, summary
-- Porter stemmer with Unicode support for better matching
-- Hybrid search approach:
-  - Single-word queries use SQL LIKE for substring matching (e.g., "GPT" finds "ChatGPT")
-  - Complex queries with operators (OR, AND, NOT) use FTS5 for performance
-  - Supports phrase search with quotes: "exact phrase"
-- Results sorted by BM25 relevance score for FTS5 queries
-- Automatically maintained via triggers on the items table
-
-### 3. Feed System (`pkg/feed`)
-
-Handles RSS/Atom feed parsing and management.
-
-**Components:**
-- **Parser**: Wraps gofeed library for feed parsing
-  - Configurable timeout
-  - Converts external feed format to internal types
-  
-- **Fetcher**: Retrieves and parses individual feeds
-  - HTTP client with timeout
-  - Error handling and retry logic
-  
-- **Manager**: Orchestrates multiple feed operations
-  - Concurrent feed fetching
-  - Item deduplication
-  - Integration with database storage
-
-**Interfaces** (defined by consumers):
-```go
-// In manager.go
-type ConfigProvider interface {
-    GetFeeds() []config.Feed
-    GetExtractionConfig() config.ExtractionConfig
-}
-
-type Fetcher interface {
-    Fetch(ctx context.Context, feedURL, feedName string) ([]types.Item, error)
-}
-```
-
-### 4. Content Extraction (`pkg/content`)
-
-Extracts full article content from web pages using go-trafilatura with rich HTML formatting support.
-
-- **HTTPExtractor**: Main extractor implementation
-  - Configurable timeout and user agent
-  - Options: minimum text length, include images/links
-  - Returns structured ExtractResult with metadata
-  
-- **ExtractResult**: Contains both plain text and rich HTML content
-  - `Content`: Plain text version
-  - `RichContent`: HTML formatted version with preserved structure
-  - Supports common HTML tags (p, h1-h6, ul, ol, li, blockquote, strong, em, code, pre)
-  - Automatic HTML escaping for security
-
-### 5. LLM Classification (`pkg/llm`)
-
-Uses OpenAI-compatible APIs to classify and score articles based on relevance with persistent learning through preference summaries.
+Newscope is an RSS feed aggregator that uses AI to automatically classify and score articles based on their relevance to your interests. Think of it as a smart news reader that learns what you like and filters out the noise.
 
 **Key Features:**
-- Support for any OpenAI-compatible endpoint (OpenAI, Ollama, etc.)
-- Batch processing of multiple articles
-- Feedback-based prompt enhancement
-- Configurable system prompts
-- JSON mode for structured responses
-- Persistent preference learning through summaries
+- Fetches articles from RSS/Atom feeds
+- Extracts full article content from web pages
+- Uses LLM (Large Language Models) to score articles 0-10 for relevance
+- Learns from your feedback (likes/dislikes) to improve over time
+- Provides a clean web UI and RSS export for high-scoring articles
 
-**Components:**
-- **Classifier**: Main classification logic
-  - Builds prompts with feedback examples and preference summaries
-  - Handles batch classification
-  - Parses LLM responses
-  - Supports both JSON object and array response formats
-  
-- **Preference Summary System**: Learns from all historical feedback
-  - Generates initial summary after 50 feedback items
-  - Updates summary after configurable threshold of new feedback items (default: 25)
-  - Uses debounced updates with 5-minute delay to prevent excessive API calls
-  - Maintains compressed knowledge of user preferences
-  - Tracks feedback count between updates to determine when to refresh
-  - Included in classification prompts for better accuracy
+## Architecture Overview
 
-**Methods:**
-- `ClassifyArticles()`: Standard classification with recent feedback
-- `ClassifyArticlesWithSummary()`: Enhanced classification with preference summary
-- `GeneratePreferenceSummary()`: Creates initial preference summary from feedback history
-- `UpdatePreferenceSummary()`: Updates existing summary with new feedback patterns
-
-**Data Flow:**
 ```
-Articles + Preference Summary + Recent Feedback → Build Prompt → LLM API → Parse Response → Classifications
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│   Web UI    │     │   RSS Feed   │     │  REST API   │
+│   (HTMX)    │     │   Export     │     │   (JSON)    │
+└──────┬──────┘     └──────┬───────┘     └──────┬──────┘
+       │                   │                     │
+       └───────────────────┴─────────────────────┘
+                           │
+                    ┌──────▼──────┐
+                    │   Server    │
+                    │  (HTTP/API) │
+                    └──────┬──────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+┌───────▼──────┐   ┌───────▼──────┐   ┌──────▼───────┐
+│  Scheduler   │   │   Database   │   │     LLM      │
+│              │   │   (SQLite)   │   │ Classifier   │
+└───────┬──────┘   └──────────────┘   └──────────────┘
+        │
+┌───────▼───────────────────────────────┐
+│          Processing Pipeline          │
+│  ┌─────────┐  ┌──────────┐  ┌──────┐ │
+│  │  Feed   │→ │ Content  │→ │ LLM  │ │
+│  │ Fetcher │  │Extractor │  │Score │ │
+│  └─────────┘  └──────────┘  └──────┘ │
+└───────────────────────────────────────┘
 ```
 
-### 6. Scheduler (`pkg/scheduler`)
+## Core Concepts
 
-Manages periodic feed updates and content processing with a channel-based architecture and preference summary management.
+Before diving into code, understand these key architectural patterns:
 
-**Key Features:**
-- Single feed update interval with concurrent processing
-- Channel-based item processing pipeline
-- Combined extraction and classification in one step
-- errgroup with concurrency limit for worker management
-- Graceful shutdown with context cancellation
-- On-demand operations (UpdateFeedNow, ExtractContentNow)
-- Automatic preference summary generation and updates
+### 1. Interface Segregation
+Interfaces are defined by the **consumer**, not the provider. This means:
+- The `scheduler` package defines what it needs from a database
+- The `server` package defines its own database interface
+- This allows for better decoupling and easier testing
 
-**Workflow:**
-1. **Preference Summary Management**: Check and update preference summary if needed
-2. **Feed Updates**: Periodically fetch new articles from RSS feeds
-3. **Channel Pipeline**: New items are sent to a processing channel
-4. **Processing Worker**: Consumes items from channel, extracts content and classifies with preference summary
-5. **Concurrent Processing**: Uses errgroup.SetLimit() for concurrency control
-
-**Preference Summary Lifecycle:**
-- Generates initial summary after 50 feedback items
-- Updates summary after configurable threshold of new feedbacks (PreferenceSummaryThreshold)
-- Uses dedicated worker with debouncing (5-minute delay) to batch updates
-- Stores summary and last feedback count in settings table
-- Tracks count between updates to determine when threshold is reached
-- Includes summary in all classification requests
-
-**Interfaces** (defined by scheduler):
 ```go
+// In scheduler/scheduler.go - consumer defines what it needs
 type Database interface {
-    GetFeed(ctx context.Context, id int64) (*db.Feed, error)
     GetFeeds(ctx context.Context, enabledOnly bool) ([]db.Feed, error)
     UpdateFeedFetched(ctx context.Context, feedID int64, nextFetch time.Time) error
-    UpdateFeedError(ctx context.Context, feedID int64, errMsg string) error
-    
-    GetItem(ctx context.Context, id int64) (*db.Item, error)
-    CreateItem(ctx context.Context, item *db.Item) error
-    ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
-    ItemExistsByTitleOrURL(ctx context.Context, title, url string) (bool, error)
-    UpdateItemProcessed(ctx context.Context, itemID int64, content, richContent string, classification db.Classification) error
-    UpdateItemExtraction(ctx context.Context, itemID int64, content, richContent string, err error) error
-    GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]db.FeedbackExample, error)
-    GetTopics(ctx context.Context) ([]string, error)
-    GetFeedbackCount(ctx context.Context) (int64, error)
-    GetFeedbackSince(ctx context.Context, offset int64, limit int) ([]db.FeedbackExample, error)
-    GetSetting(ctx context.Context, key string) (string, error)
-    SetSetting(ctx context.Context, key, value string) error
-}
-
-type Classifier interface {
-    ClassifyArticles(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string) ([]db.Classification, error)
-    ClassifyArticlesWithSummary(ctx context.Context, articles []db.Item, feedbacks []db.FeedbackExample, canonicalTopics []string, preferenceSummary string) ([]db.Classification, error)
-    GeneratePreferenceSummary(ctx context.Context, feedback []db.FeedbackExample) (string, error)
-    UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []db.FeedbackExample) (string, error)
+    // ... only methods the scheduler actually uses
 }
 ```
 
-### 7. Server (`server/`)
+### 2. Dependency Injection
+All components receive their dependencies through constructors:
 
-HTTP server providing REST API and web UI with server-side rendering.
-
-**Interfaces** (defined by server):
 ```go
-type Database interface {
-    GetFeeds(ctx context.Context) ([]types.Feed, error)
-    GetItems(ctx context.Context, limit, offset int) ([]types.Item, error)
-    GetClassifiedItems(ctx context.Context, minScore float64, topic string, limit int) ([]types.ClassifiedItem, error)
-    GetClassifiedItem(ctx context.Context, itemID int64) (*types.ClassifiedItem, error)
-    UpdateItemFeedback(ctx context.Context, itemID int64, feedback string) error
-    GetTopics(ctx context.Context) ([]string, error)
-    GetAllFeeds(ctx context.Context) ([]db.Feed, error)
-    CreateFeed(ctx context.Context, feed *db.Feed) error
-    UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
-    DeleteFeed(ctx context.Context, feedID int64) error
-}
-
-type Scheduler interface {
-    UpdateFeedNow(ctx context.Context, feedID int64) error
-    ExtractContentNow(ctx context.Context, itemID int64) error
-    ClassifyNow(ctx context.Context) error
+func New(cfg ConfigProvider, db Database, parser feed.Parser, extractor content.Extractor, classifier Classifier) *Scheduler {
+    // Component is given everything it needs
 }
 ```
 
-**Components:**
-- **Server**: Main HTTP server using routegroup
-  - Middleware support (recovery, throttling, auth)
-  - JSON API endpoints
-  - HTMX-based web UI with Go templates
-  - Server-side rendering with no JavaScript required
-  
-- **DBAdapter**: Adapts database types to domain types
-  - Converts SQL null types to Go types
-  - Implements server's Database interface
-  - Delegates all database operations to db package
-  - Joins with feeds table for enriched data (FeedTitle field)
-  - Supports filtering by score and topic
-  - Efficient GetTopics using SQL json_each for unique topic extraction
+### 3. Context-First Design
+Every operation that might take time accepts a context:
+- Enables cancellation and timeouts
+- Propagates request-scoped values
+- Essential for graceful shutdowns
 
-**Web UI Features:**
-- **Articles Page**: Main view showing classified articles
-  - Score visualization with progress bars
-  - Topic tags and filtering
-  - Real-time score filtering with range slider
-  - Like/dislike feedback buttons
-  - Extracted content display with rich HTML formatting
-  - HTMX for dynamic updates without page reload
+### 4. Channel-Based Processing
+The scheduler uses Go channels for efficient concurrent processing:
+```go
+Items to process → Channel → Workers → Extract & Classify → Database
+```
 
-- **Feeds Page**: Feed management interface
-  - List all feeds with status indicators
-  - Add new feeds with custom fetch intervals
-  - Enable/disable feeds
-  - Trigger immediate feed updates
-  - Delete feeds
-  - Error display for failed feeds
+## Component Guide
 
-- **RSS Export**: Machine-readable RSS feeds
-  - Filter by minimum score
-  - Filter by topic
-  - Uses proper XML encoding for safety
-  - Includes article scores and topics in feed
+### Database Layer (`pkg/repository`)
 
-**Current Endpoints:**
-- `GET /` - Articles page (redirects to /articles)
-- `GET /articles` - Main articles view with filtering
-- `GET /feeds` - Feed management page
-- `GET /settings` - Settings page (not implemented)
-- `GET /rss` - RSS feed of classified articles (supports min_score parameter)
-- `GET /rss/{topic}` - RSS feed filtered by topic
+**What it does:** Manages all data persistence using SQLite.
 
-**API Endpoints:**
-- `GET /api/v1/status` - Server status
-- `POST /api/v1/feedback/{id}/{action}` - Submit user feedback (like/dislike)
-- `POST /api/v1/extract/{id}` - Trigger content extraction and classification for an item
-- `GET /api/v1/articles/{id}/content` - Get extracted content for display
-- `POST /api/v1/feeds` - Create a new feed
-- `POST /api/v1/feeds/{id}/enable` - Enable a feed
-- `POST /api/v1/feeds/{id}/disable` - Disable a feed
-- `POST /api/v1/feeds/{id}/fetch` - Trigger immediate feed fetch
-- `DELETE /api/v1/feeds/{id}` - Delete a feed
+**Key files:**
+- `db.go` - Database connection and core operations
+- `schema.sql` - Database schema (embedded)
+- `types.go` - Data structures
 
-**Templates:**
-- `base.html` - Base layout with navigation
-- `articles.html` - Articles listing with filters
-- `article-card.html` - Reusable article card component
-- `feeds.html` - Feed management page
-- `feed-card.html` - Reusable feed card component
+**Important tables:**
+- `feeds` - RSS feed sources
+- `items` - Individual articles
+- `settings` - Key-value configuration store
 
-**Template Optimization:**
-- Templates are pre-parsed at startup for better performance
-- Page templates are cached separately to avoid naming conflicts
-- Component templates can be reused across pages
+**Finding things:**
+- Feed operations: Look for methods starting with `Feed*` (e.g., `GetFeeds`, `UpdateFeedStatus`)
+- Article operations: Methods with `Item*` (e.g., `GetClassifiedItems`, `UpdateItemFeedback`)
+- Search functionality: `SearchItems` uses SQLite FTS5
 
-### 8. Main Application (`cmd/newscope`)
+### Feed System (`pkg/feed`)
 
-Entry point that wires all components together.
+**What it does:** Fetches and parses RSS/Atom feeds.
 
-**Initialization Flow:**
-1. Load and validate configuration
-2. Initialize database with migrations
-3. Create parser and content extractor
-4. Initialize LLM classifier
-5. Initialize scheduler with all components
-6. Create server with database adapter
-7. Start scheduler and server
-8. Handle graceful shutdown on signals
+**Key components:**
+- `Parser` - Wraps the gofeed library
+- `Fetcher` - Downloads individual feeds
+- `Manager` - Coordinates multiple feed operations
 
-## Data Flow
+**Adding feed support:** Modify `parser.go` if you need to handle new feed formats or extract additional metadata.
 
-### Feed Update and Processing Flow:
+### Content Extraction (`pkg/content`)
+
+**What it does:** Extracts full article text from web pages.
+
+**Key file:** `extractor.go`
+
+**How it works:**
+1. Downloads the article's web page
+2. Uses go-trafilatura to extract content
+3. Returns both plain text and rich HTML versions
+
+**Customization:** Modify extraction options in `HTTPExtractor.Extract()`.
+
+### LLM Classification (`pkg/llm`)
+
+**What it does:** Uses AI to score articles and identify topics.
+
+**Key concepts:**
+- **Batch processing** - Classifies multiple articles in one API call
+- **Feedback learning** - Uses your likes/dislikes to improve
+- **Preference summaries** - Maintains a compressed summary of your preferences
+
+**Key files:**
+- `classifier.go` - Main classification logic
+- `prompt.go` - Prompt construction (if separated)
+
+**Customizing classification:** 
+- Modify the system prompt in `buildClassificationPrompt()`
+- Adjust scoring criteria or add new classification features
+
+### Scheduler (`pkg/scheduler`)
+
+**What it does:** Orchestrates the entire processing pipeline.
+
+**Key responsibilities:**
+1. Periodically fetches feeds
+2. Manages the processing pipeline
+3. Handles preference summary updates
+4. Provides on-demand operations
+
+**Important methods:**
+- `Start()` - Begins periodic processing
+- `UpdateFeedNow()` - Manually trigger feed update
+- `updatePreferenceSummary()` - Manages AI preference learning
+
+### Web Server (`server/`)
+
+**What it does:** Provides the web UI and API.
+
+**Key files:**
+- `server.go` - Main server setup and routing
+- `rest.go` - REST API handlers
+- `htmx_handlers.go` - HTMX web UI handlers
+- `adapters.go` - Database adapter for type conversion
+
+**Adding new features:**
+1. API endpoint: Add handler in `rest.go`, register in `routes()`
+2. Web page: Add handler in `htmx_handlers.go`, create template
+3. HTMX component: Create partial template, add handler
+
+**Templates** (`server/templates/`):
+- `base.html` - Layout wrapper
+- `articles.html` - Main article list
+- `article-card.html` - Individual article component
+- Component templates can be rendered independently for HTMX
+
+## Data Flow Examples
+
+### When a new article arrives:
 
 ```
 1. Scheduler triggers feed update
-   └─> Parser fetches RSS feeds
-       └─> New items saved to items table
-       └─> Items sent to processing channel
+   - Checks which feeds need updating
+   - Calls Parser to fetch RSS data
 
-2. Processing Pipeline (per item)
-   └─> Extract article full text
-   └─> Classify with LLM immediately
-   └─> Store both results in single DB update
+2. Parser returns new items
+   - Deduplicates against existing articles
+   - Saves to database
 
-3. Web UI Display
-   └─> Query items with JOIN on feeds for feed names
-   └─> Filter by minimum score and topics
-   └─> Display with HTMX for dynamic updates
-   └─> Collect user feedback (like/dislike)
+3. Item enters processing pipeline
+   - Sent to processing channel
+   - Worker picks it up
+
+4. Worker processes item:
+   - Extracts full content from article URL
+   - Sends to LLM for classification
+   - Saves results in single database update
+
+5. Article appears in UI
+   - With relevance score
+   - Color-coded by score
+   - Ready for user feedback
 ```
 
-### User Interaction Flow:
+### When you click "Like":
 
 ```
-User browses articles → Adjusts score filter → HTMX updates list
-                    ↓
-           Clicks "Show Content" → AJAX loads extracted text
-                    ↓
-           Provides feedback → Updates item → Re-renders card
-                    ↓
-      Feedback used in future classifications
+1. HTMX sends POST to /api/v1/feedback/{id}/like
+
+2. Server updates database
+   - Sets user_feedback = 'like'
+   - Records feedback_at timestamp
+
+3. Triggers preference update
+   - Scheduler checks if threshold reached
+   - Updates preference summary if needed
+
+4. Returns updated article HTML
+   - HTMX swaps the article card
+   - Shows feedback state
 ```
 
-### Classification Process:
+## Common Development Tasks
 
-```
-Unclassified Items → Build Batch Prompt:
-  - System prompt with instructions
-  - Recent user feedback examples (likes/dislikes)
-  - Article data (title, description, extracted content)
-→ LLM API Call (JSON mode if available)
-→ Parse Response:
-  - Score (0-10)
-  - Brief explanation
-  - List of topics
-→ Update items table directly
+### Adding a new API endpoint
+
+1. Define handler in `server/rest.go`:
+```go
+func (s *Server) myNewHandler(w http.ResponseWriter, r *http.Request) {
+    // Implementation
+}
 ```
 
-## Design Principles
-
-1. **Interface Segregation**: Interfaces are defined on the consumer side, not the producer
-2. **Dependency Injection**: All components receive dependencies through constructors
-3. **Context Propagation**: All operations support context for cancellation and timeouts
-4. **Error Handling**: Explicit error returns, no panics in library code
-5. **Testability**: Mock generation with moq, high test coverage
-6. **Pure Go**: No CGO dependencies for easy cross-compilation
-7. **LLM Flexibility**: Support for any OpenAI-compatible API
-8. **Performance First**: Pre-parsed templates, efficient SQL queries, proper indexing
-9. **Type Safety**: Strong typing throughout, minimal interface{} usage
-
-## Configuration Example
-
-```yaml
-llm:
-  endpoint: "https://api.openai.com/v1"
-  api_key: "${OPENAI_API_KEY}"
-  model: "gpt-4o-mini"
-  temperature: 0.3
-  max_tokens: 500
-  classification:
-    feedback_examples: 10
-    batch_size: 5
-    use_json_mode: true
-    preference_summary_threshold: 25  # Number of new feedbacks before updating summary
-
-scheduler:
-  update_interval: 30    # minutes
-  max_workers: 5
-
-extraction:
-  enabled: true
-  timeout: 30s
-  max_concurrent: 5
+2. Register route in `server/server.go`:
+```go
+r.HandleFunc("POST /api/v1/my-endpoint", s.myNewHandler)
 ```
 
-## Testing Strategy
+### Adding a new database operation
 
-- **Unit Tests**: Each package has comprehensive tests
-- **Mock Generation**: Using moq with go:generate directives
-- **Integration Tests**: Database tests with in-memory SQLite
-- **Table-Driven Tests**: Preferred testing pattern
-- **LLM Tests**: Mock HTTP servers for API testing
+1. Add method to `pkg/repository/db.go`:
+```go
+func (db *DB) MyNewOperation(ctx context.Context, param string) error {
+    // Implementation
+}
+```
 
-## Security Considerations
+2. Add to consumer's interface:
+```go
+type Database interface {
+    // existing methods...
+    MyNewOperation(ctx context.Context, param string) error
+}
+```
 
-- API keys stored in environment variables
-- SQL injection prevention through parameterized queries
-- Rate limiting on API endpoints
-- Input validation and sanitization
-- Secure defaults in configuration
+### Modifying the classification prompt
 
-## Recent Improvements
+Edit `pkg/llm/classifier.go`, find `buildClassificationPrompt()`:
+- System prompt defines scoring criteria
+- User prompt includes article data
+- Feedback examples show the AI what you like
 
-- **Rich Content Support**: Articles now preserve HTML formatting during extraction
-- **RSS Feed Generation**: Proper XML encoding using encoding/xml package
-- **Template Performance**: Pre-parsed templates at startup for faster rendering
-- **Database Optimizations**: Efficient topic queries using SQLite json_each
-- **Code Quality**: Reduced complexity, removed redundant code, improved type safety
-- **Feed Management**: Complete CRUD operations for feeds via web UI
+### Adding a new configuration option
 
-## Future Enhancements
+1. Add to `pkg/config/config.go`:
+```go
+type LLMConfig struct {
+    // existing fields...
+    MyNewOption string `yaml:"my_new_option" jsonschema:"default=value"`
+}
+```
 
-- Multiple LLM provider support
-- Fine-tuning support for open models
-- Advanced prompt engineering options
-- Real-time classification updates
-- Export functionality for training data
-- WebSub support for instant updates
-- Multi-user support with personalized models
-- OPML import/export for feed lists
-- Keyboard shortcuts for power users
-- Dark mode support
+2. Use in relevant component:
+```go
+cfg.GetLLMConfig().MyNewOption
+```
+
+## Testing
+
+### Running tests
+```bash
+go test ./...                    # All tests
+go test ./pkg/repository/...     # Specific package
+go test -run TestSpecificName    # Specific test
+```
+
+### Writing tests
+- Use table-driven tests for multiple cases
+- Generate mocks with `go generate ./...`
+- Database tests use in-memory SQLite
+
+Example test structure:
+```go
+func TestMyFeature(t *testing.T) {
+    // Setup
+    db := setupTestDB(t)
+    
+    // Test cases
+    tests := []struct {
+        name    string
+        input   string
+        want    string
+        wantErr bool
+    }{
+        // cases...
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            // Test implementation
+        })
+    }
+}
+```
+
+## Code Organization
+
+```
+newscope/
+├── cmd/newscope/          # Main application entry point
+├── pkg/                   # Core packages
+│   ├── config/           # Configuration management
+│   ├── repository/       # Database layer
+│   ├── feed/            # RSS feed handling
+│   ├── content/         # Content extraction
+│   ├── llm/             # AI classification
+│   └── scheduler/       # Processing orchestration
+├── server/               # HTTP server and web UI
+│   ├── templates/       # HTML templates
+│   └── static/          # CSS, JS, images
+└── testdata/            # Test fixtures
+```
+
+## Debugging Tips
+
+1. **Enable debug logging:**
+   ```bash
+   go run ./cmd/newscope --dbg
+   ```
+
+2. **Check the database:**
+   ```bash
+   sqlite3 newscope.db
+   .tables                    # List tables
+   .schema items             # Show table structure
+   SELECT * FROM items LIMIT 5;  # Query data
+   ```
+
+3. **Test LLM classification:**
+   - Check the `explanation` field in items table
+   - Look for patterns in scores vs your expectations
+
+4. **HTMX issues:**
+   - Use browser DevTools Network tab
+   - Check for `HX-Request: true` header
+   - Verify response includes proper HTML
+
+## Getting Help
+
+1. **Read the tests** - They show real usage examples
+2. **Check interfaces** - They document what each component needs
+3. **Follow the types** - Go's type system guides you
+4. **Ask questions** - Open an issue if something's unclear
+
+Remember: The codebase follows standard Go conventions. When in doubt, check the [Effective Go](https://golang.org/doc/effective_go) guide.
