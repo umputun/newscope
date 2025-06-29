@@ -32,8 +32,8 @@ llm:
   #endpoint: "http://localhost:11434/v1"  # Ollama example
   endpoint: "https://api.openai.com/v1" # OpenAI example
   
-  api_key: "${OPENAI_API_KEY}"  # From environment
-  model: "gpt-4.1-nano"                # or "gpt-4o-mini"
+  api_key: "${OPENAI_API_KEY}"   # From environment
+  model: "gpt-4.1-nano"          # or "gpt-4o-mini"
   temperature: 0.3               # Lower = more consistent
   max_tokens: 2000               # Increased for summaries
   timeout: "30s"
@@ -57,6 +57,19 @@ llm:
     feedback_examples: 50      # Recent examples to include
     use_json_mode: true        # Use JSON mode for classification
     preference_summary_threshold: 25  # Number of new feedbacks before updating preference summary
+    summary_retry_attempts: 3  # Retry if summary contains forbidden phrases
+    forbidden_summary_prefixes: [
+      "The article discusses", "The article introduces", "The article analyzes", "The article explores",
+      "The article examines", "The article explains", "The article details", "The article critiques",
+      "The article narrates", "The article describes", "The article highlights", "The article presents",
+      "The article covers", "Article discusses", "Article introduces", "Article analyzes", 
+      "Article explores", "Article examines", "Article explains", "Article details", "Article critiques",
+      "Article narrates", "Article describes", "Article highlights", "Article presents", "Article covers",
+      "This article", "This post", "The post", "The piece", "Provides an overview", "Discusses",
+      "Introduces", "Analyzes", "Explores", "Examines", "Explains", "Details", "Critiques", "Narrates",
+      "Describes", "Highlights", "Presents", "Covers", "It explores", "It discusses", "It examines",
+      "It explains", "It describes", "It details"
+    ]
     
     # Optional: Custom prompts for preference summary generation
     # prompts:

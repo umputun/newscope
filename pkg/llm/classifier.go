@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-pkgz/repeater/v2"
 	"github.com/sashabaranov/go-openai"
@@ -54,17 +55,21 @@ Each classification should contain:
 - score: relevance score (0-10). Adjust based on topic preferences if provided.
 - explanation: brief explanation (max 100 chars)
 - topics: array of 1-3 relevant topic keywords. IMPORTANT: ALWAYS provide topics for EVERY article, regardless of relevance score. Use topics from the provided canonical list when applicable. Only create new topics if absolutely necessary. Even articles with score 0 must have topics that describe their content.
-- summary: comprehensive summary that captures the key points, findings, main story, and important details (300-500 chars). Write directly about the content itself. NEVER use phrases like "The article discusses", "The article explores", "The piece covers", "The author explains", etc. Start with the actual subject matter. IMPORTANT: Write the summary in the same language as the article content.
+- summary: comprehensive summary that captures the key points, findings, main story, and important details (300-500 chars). RULE: Start DIRECTLY with the facts. NO meta-language. BAD: "The article discusses X". GOOD: "X happens/exists/works". Write the summary in the same language as the article content.
 
 Examples of good summaries:
 - "Go 1.22 introduces range-over-function iterators enabling more expressive code patterns. Compilation speeds improve by 50% for large projects through better parallelization. New toolchain management simplifies version control. Runtime gains 10-15% performance boost via enhanced garbage collection algorithms."
 - "Scientists discover extensive water ice deposits on Mars equator using orbital radar data from Mars Express spacecraft. Ice layers extend 3.7km deep beneath Medusae Fossae Formation. Discovery challenges understanding of Mars climate history and could support future human missions with accessible water resources."
 - "Новый вариант программы-вымогателя BlackCat сначала шифрует облачные резервные копии через API интеграции, затем атакует локальные системы. Использует двойное вымогательство с угрозой публикации данных. Требует оплату в Monero вместо Bitcoin для усложнения отслеживания транзакций." (for Russian content)
 
-Examples of bad summaries:
-- "The article discusses new features in Go 1.22..."
-- "This piece explores the discovery of water on Mars..."
-- "The author explains how ransomware works..."
+Examples of BAD summaries (NEVER write like this):
+- "The article discusses new features in Go 1.22..." ❌
+- "This piece explores the discovery of water on Mars..." ❌
+- "The author explains how ransomware works..." ❌
+- "It examines the impact of AI on healthcare..." ❌
+- "The post describes a new programming technique..." ❌
+
+Remember: Write as if you ARE presenting the information, not describing someone else's writing.
 
 IMPORTANT: Even low-relevance articles (score 0-3) MUST have topics assigned. Examples:
 - Article about "3D sneaker visualizer" (score: 0) should have topics: ["design", "3d", "fashion"]
@@ -94,61 +99,107 @@ func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domai
 
 	var classifications []domain.Classification
 
-	// use repeater for resilient API calls with exponential backoff
-	err := repeater.NewBackoff(5, time.Second,
-		repeater.WithMaxDelay(30*time.Second),
-		repeater.WithJitter(0.1),
-	).Do(ctx, func() error {
-		// create the chat completion request
-		chatReq := openai.ChatCompletionRequest{
-			Model:       c.config.Model,
-			Temperature: float32(c.config.Temperature),
-			MaxTokens:   c.config.MaxTokens,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleSystem,
-					Content: c.systemMsg,
+	// get retry attempts from config, default to 3
+	retryAttempts := c.config.Classification.SummaryRetryAttempts
+	if retryAttempts == 0 {
+		retryAttempts = 3
+	}
+
+	// outer loop for summary validation retries
+	for attempt := 0; attempt <= retryAttempts; attempt++ {
+		// use repeater for resilient API calls with exponential backoff
+		err := repeater.NewBackoff(5, time.Second,
+			repeater.WithMaxDelay(30*time.Second),
+			repeater.WithJitter(0.1),
+		).Do(ctx, func() error {
+			// create the chat completion request
+			chatReq := openai.ChatCompletionRequest{
+				Model:       c.config.Model,
+				Temperature: float32(c.config.Temperature),
+				MaxTokens:   c.config.MaxTokens,
+				Messages: []openai.ChatCompletionMessage{
+					{
+						Role:    openai.ChatMessageRoleSystem,
+						Content: c.systemMsg,
+					},
+					{
+						Role:    openai.ChatMessageRoleUser,
+						Content: prompt,
+					},
 				},
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: prompt,
-				},
-			},
+			}
+
+			// add JSON response format if enabled
+			if c.config.Classification.UseJSONMode {
+				chatReq.ResponseFormat = &openai.ChatCompletionResponseFormat{
+					Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+				}
+			}
+
+			// call the LLM
+			resp, err := c.client.CreateChatCompletion(ctx, chatReq)
+			if err != nil {
+				// all errors will be retried by repeater
+				return fmt.Errorf("llm request failed: %w", err)
+			}
+
+			if len(resp.Choices) == 0 {
+				// this is an unexpected response, but we'll retry it
+				return fmt.Errorf("no response from llm")
+			}
+
+			// parse the response
+			content := resp.Choices[0].Message.Content
+			var parseErr error
+			classifications, parseErr = c.parseResponse(content, req.Articles)
+			if parseErr != nil {
+				// all parsing errors will be retried
+				return fmt.Errorf("failed to parse response: %w", parseErr)
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			return nil, err
 		}
 
-		// add JSON response format if enabled
-		if c.config.Classification.UseJSONMode {
-			chatReq.ResponseFormat = &openai.ChatCompletionResponseFormat{
-				Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		// check if any summaries need fixing
+		needsRetry := false
+		badSummaryCount := 0
+		for i := range classifications {
+			if c.hasForbiddenPrefix(classifications[i].Summary) {
+				needsRetry = true
+				badSummaryCount++
+				// if this is the last attempt, clean the summary instead of retrying
+				if attempt == retryAttempts {
+					original := classifications[i].Summary
+					classifications[i].Summary = c.cleanSummary(classifications[i].Summary)
+					if classifications[i].Summary != original {
+						// log that we cleaned a summary
+						fmt.Printf("[INFO] cleaned summary for article %q: removed forbidden prefix\n", classifications[i].GUID)
+					}
+				}
 			}
 		}
 
-		// call the LLM
-		resp, err := c.client.CreateChatCompletion(ctx, chatReq)
-		if err != nil {
-			// all errors will be retried by repeater
-			return fmt.Errorf("llm request failed: %w", err)
+		// if all summaries are good or we've exhausted retries, return
+		if !needsRetry || attempt == retryAttempts {
+			if attempt > 0 && !needsRetry {
+				fmt.Printf("[INFO] summary validation succeeded after %d retries\n", attempt)
+			} else if needsRetry && attempt == retryAttempts {
+				fmt.Printf("[WARN] exhausted %d retries, %d summaries still have forbidden prefixes\n", retryAttempts, badSummaryCount)
+			}
+			return classifications, nil
 		}
 
-		if len(resp.Choices) == 0 {
-			// this is an unexpected response, but we'll retry it
-			return fmt.Errorf("no response from llm")
+		// log retry attempt
+		fmt.Printf("[INFO] retrying classification (attempt %d/%d): %d summaries have forbidden prefixes\n", attempt+1, retryAttempts, badSummaryCount)
+
+		// add a note to the prompt about the issue
+		if attempt == 0 {
+			prompt += "\n\nIMPORTANT: Remember to write summaries DIRECTLY without meta-language. Do NOT start with 'The article discusses' or similar phrases."
 		}
-
-		// parse the response
-		content := resp.Choices[0].Message.Content
-		var parseErr error
-		classifications, parseErr = c.parseResponse(content, req.Articles)
-		if parseErr != nil {
-			// all parsing errors will be retried
-			return fmt.Errorf("failed to parse response: %w", parseErr)
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
 	}
 
 	return classifications, nil
@@ -276,6 +327,76 @@ func (c *Classifier) parseResponse(content string, articles []domain.Item) ([]do
 	}
 
 	return valid, nil
+}
+
+// hasForbiddenPrefix checks if summary starts with forbidden phrases
+func (c *Classifier) hasForbiddenPrefix(summary string) bool {
+	if summary == "" {
+		return false
+	}
+
+	lowerSummary := strings.ToLower(strings.TrimSpace(summary))
+
+	// check if summary starts with any forbidden prefix
+	for _, prefix := range c.getForbiddenPrefixes() {
+		if strings.HasPrefix(lowerSummary, strings.ToLower(prefix)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// cleanSummary removes forbidden prefixes from summary
+func (c *Classifier) cleanSummary(summary string) string {
+	if summary == "" {
+		return summary
+	}
+
+	lowerSummary := strings.ToLower(strings.TrimSpace(summary))
+
+	// check if summary starts with any forbidden prefix
+	for _, prefix := range c.getForbiddenPrefixes() {
+		lowerPrefix := strings.ToLower(prefix)
+		if strings.HasPrefix(lowerSummary, lowerPrefix) {
+			// try to extract the actual content after the meta-language
+			// look for what comes after the forbidden phrase
+			remaining := summary[len(prefix):]
+			remaining = strings.TrimSpace(remaining)
+
+			// capitalize first letter if needed
+			if remaining != "" {
+				runes := []rune(remaining)
+				runes[0] = unicode.ToUpper(runes[0])
+				return string(runes)
+			}
+		}
+	}
+
+	return summary
+}
+
+// getForbiddenPrefixes returns the list of forbidden summary prefixes
+func (c *Classifier) getForbiddenPrefixes() []string {
+	// if custom forbidden prefixes are configured, use them
+	if len(c.config.Classification.ForbiddenSummaryPrefixes) > 0 {
+		return c.config.Classification.ForbiddenSummaryPrefixes
+	}
+
+	// otherwise use defaults
+	return []string{
+		"The article discusses", "The article introduces", "The article analyzes", "The article explores",
+		"The article examines", "The article explains", "The article details", "The article critiques",
+		"The article narrates", "The article describes", "The article highlights", "The article presents",
+		"The article covers", "Article discusses", "Article introduces", "Article analyzes",
+		"Article explores", "Article examines", "Article explains", "Article details", "Article critiques",
+		"Article narrates", "Article describes", "Article highlights", "Article presents", "Article covers",
+		"This article", "This post", "The post", "The piece", "Provides an overview", "Discusses",
+		"Introduces", "Analyzes", "Explores", "Examines", "Explains", "Details", "Critiques", "Narrates",
+		"Describes", "Highlights", "Presents", "Covers", "It explores", "It discusses", "It examines",
+		"It explains", "It describes", "It details", "The author discusses", "The author explores",
+		"The author explains", "The author describes", "The author analyzes", "The author examines",
+	}
 }
 
 // ClassifyItems implements the scheduler.Classifier interface

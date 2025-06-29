@@ -782,3 +782,194 @@ func TestClassifier_RuneSafeTruncation(t *testing.T) {
 		assert.Contains(t, capturedPrompt, "Content: "+expectedContent)
 	})
 }
+
+func TestClassifier_ForbiddenPrefixHandling(t *testing.T) {
+	callCount := 0
+	// create test server that returns bad summaries on first call
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+
+		var content string
+		if callCount == 1 {
+			// first call returns summaries with forbidden prefixes
+			content = `[
+				{
+					"guid": "item1",
+					"score": 8.5,
+					"explanation": "Relevant content",
+					"topics": ["tech"],
+					"summary": "The article discusses new features in Go 1.22 including range-over-function iterators."
+				}
+			]`
+		} else {
+			// retry returns corrected summary
+			content = `[
+				{
+					"guid": "item1",
+					"score": 8.5,
+					"explanation": "Relevant content",
+					"topics": ["tech"],
+					"summary": "Go 1.22 introduces range-over-function iterators enabling cleaner iteration patterns."
+				}
+			]`
+		}
+
+		resp := openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{
+				{
+					Message: openai.ChatCompletionMessage{
+						Content: content,
+					},
+				},
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	// create classifier with retry enabled
+	cfg := config.LLMConfig{
+		Endpoint:    server.URL + "/v1",
+		APIKey:      "test-key",
+		Model:       "gpt-4",
+		Temperature: 0.3,
+		MaxTokens:   500,
+		Classification: config.ClassificationConfig{
+			SummaryRetryAttempts: 2,
+		},
+	}
+	classifier := NewClassifier(cfg)
+
+	articles := []domain.Item{
+		{
+			GUID:  "item1",
+			Title: "Go 1.22 Released",
+		},
+	}
+
+	ctx := context.Background()
+	classifications, err := classifier.ClassifyItems(ctx, ClassifyRequest{
+		Articles: articles,
+	})
+	require.NoError(t, err)
+	require.Len(t, classifications, 1)
+
+	// should have retried and gotten good summary
+	assert.Equal(t, 2, callCount, "should have made 2 calls (initial + 1 retry)")
+	assert.Equal(t, "Go 1.22 introduces range-over-function iterators enabling cleaner iteration patterns.", classifications[0].Summary)
+}
+
+func TestClassifier_CleanSummary(t *testing.T) {
+	cfg := config.LLMConfig{
+		Classification: config.ClassificationConfig{
+			ForbiddenSummaryPrefixes: []string{
+				"The article discusses",
+				"This post explores",
+			},
+		},
+	}
+	classifier := NewClassifier(cfg)
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "clean forbidden prefix",
+			input:    "The article discusses how Go 1.22 improves performance.",
+			expected: "How Go 1.22 improves performance.",
+		},
+		{
+			name:     "clean custom forbidden prefix",
+			input:    "This post explores new features in Python.",
+			expected: "New features in Python.",
+		},
+		{
+			name:     "no change for good summary",
+			input:    "Go 1.22 introduces new features.",
+			expected: "Go 1.22 introduces new features.",
+		},
+		{
+			name:     "handle empty summary",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "handle case insensitive",
+			input:    "THE ARTICLE DISCUSSES important updates.",
+			expected: "Important updates.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := classifier.cleanSummary(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestClassifier_HasForbiddenPrefix(t *testing.T) {
+	// test with default prefixes
+	classifier := NewClassifier(config.LLMConfig{})
+
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{
+			name:     "has forbidden prefix",
+			input:    "The article discusses new features",
+			expected: true,
+		},
+		{
+			name:     "has another forbidden prefix",
+			input:    "It explores the concept of",
+			expected: true,
+		},
+		{
+			name:     "no forbidden prefix",
+			input:    "New features include improved performance",
+			expected: false,
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: false,
+		},
+		{
+			name:     "case insensitive check",
+			input:    "THE ARTICLE DISCUSSES something",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := classifier.hasForbiddenPrefix(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestClassifier_CustomForbiddenPrefixes(t *testing.T) {
+	// test with custom prefixes
+	cfg := config.LLMConfig{
+		Classification: config.ClassificationConfig{
+			ForbiddenSummaryPrefixes: []string{
+				"In this article",
+				"The study shows",
+			},
+		},
+	}
+	classifier := NewClassifier(cfg)
+
+	assert.True(t, classifier.hasForbiddenPrefix("In this article we explore"))
+	assert.True(t, classifier.hasForbiddenPrefix("The study shows that"))
+	assert.False(t, classifier.hasForbiddenPrefix("The article discusses")) // not in custom list
+	assert.False(t, classifier.hasForbiddenPrefix("Results indicate"))
+}
