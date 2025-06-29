@@ -46,6 +46,9 @@ Open http://localhost:8080 to access the web interface.
 
 ## Screenshots
 
+<details>
+<summary><b>View Screenshots</b></summary>
+
 ### Main Interface
 
 <p align="center">
@@ -53,15 +56,6 @@ Open http://localhost:8080 to access the web interface.
   <br>
   <em>Main articles view with AI-generated scores and topic tags</em>
 </p>
-
-<details>
-<summary>Dark Theme</summary>
-
-<p align="center">
-  <img src="docs/screenshots/articles-main-dark.png" alt="Articles View - Dark Theme" width="800">
-</p>
-
-</details>
 
 ### Article Views
 
@@ -71,21 +65,22 @@ Open http://localhost:8080 to access the web interface.
   <em>Condensed view for scanning through more articles quickly</em>
 </p>
 
-<details>
-<summary>Dark Theme</summary>
-
 <p align="center">
-  <img src="docs/screenshots/articles-condensed-dark.png" alt="Condensed View - Dark Theme" width="800">
+  <img src="docs/screenshots/article-expanded.png" alt="Expanded Article View" width="800">
+  <br>
+  <em>Article card with summary and metadata</em>
 </p>
-
-</details>
-
-### Article Content
 
 <p align="center">
   <img src="docs/screenshots/article-content.png" alt="Article Content" width="800">
   <br>
-  <em>Expanded article with full content extracted and displayed</em>
+  <em>Full article content extracted and displayed</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/articles-filtered.png" alt="Filtered Articles" width="800">
+  <br>
+  <em>Articles filtered by score threshold</em>
 </p>
 
 ### Settings
@@ -102,15 +97,6 @@ Open http://localhost:8080 to access the web interface.
   <em>View and manage AI-learned preferences based on your feedback</em>
 </p>
 
-<details>
-<summary>Dark Theme</summary>
-
-<p align="center">
-  <img src="docs/screenshots/settings-dark.png" alt="Settings - Dark Theme" width="800">
-</p>
-
-</details>
-
 ### Feed Management
 
 <p align="center">
@@ -119,14 +105,19 @@ Open http://localhost:8080 to access the web interface.
   <em>Manage RSS feed subscriptions with custom update intervals</em>
 </p>
 
-<details>
-<summary>Dark Theme</summary>
+### Search & Discovery
 
 <p align="center">
-  <img src="docs/screenshots/feeds-dark.png" alt="Feeds - Dark Theme" width="800">
+  <img src="docs/screenshots/search.png" alt="Search Interface" width="800">
+  <br>
+  <em>Search bar with advanced query support</em>
 </p>
 
-</details>
+<p align="center">
+  <img src="docs/screenshots/search-results.png" alt="Search Results" width="800">
+  <br>
+  <em>Full-text search results with filtering options</em>
+</p>
 
 ### RSS Integration
 
@@ -134,14 +125,6 @@ Open http://localhost:8080 to access the web interface.
   <img src="docs/screenshots/rss-help.png" alt="RSS Help" width="800">
   <br>
   <em>Generate filtered RSS feeds for any RSS reader</em>
-</p>
-
-### Search
-
-<p align="center">
-  <img src="docs/screenshots/search-results.png" alt="Search Results" width="800">
-  <br>
-  <em>Full-text search with advanced operators and filtering</em>
 </p>
 
 ### Mobile View
@@ -153,6 +136,34 @@ Open http://localhost:8080 to access the web interface.
   <br>
   <em>Responsive mobile design in light and dark themes</em>
 </p>
+
+### Dark Theme Examples
+
+<p align="center">
+  <img src="docs/screenshots/articles-main-dark.png" alt="Articles View - Dark Theme" width="800">
+  <br>
+  <em>Main interface in dark theme</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/articles-condensed-dark.png" alt="Condensed View - Dark Theme" width="800">
+  <br>
+  <em>Condensed view in dark theme</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/settings-dark.png" alt="Settings - Dark Theme" width="800">
+  <br>
+  <em>Settings page in dark theme</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/feeds-dark.png" alt="Feeds - Dark Theme" width="800">
+  <br>
+  <em>Feed management in dark theme</em>
+</p>
+
+</details>
 
 ## Installation
 
