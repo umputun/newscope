@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 	"unicode"
@@ -177,7 +178,7 @@ func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domai
 					classifications[i].Summary = c.cleanSummary(classifications[i].Summary)
 					if classifications[i].Summary != original {
 						// log that we cleaned a summary
-						fmt.Printf("[INFO] cleaned summary for article %q: removed forbidden prefix\n", classifications[i].GUID)
+						log.Printf("[INFO] cleaned summary for article %q: removed forbidden prefix", classifications[i].GUID)
 					}
 				}
 			}
@@ -186,15 +187,15 @@ func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domai
 		// if all summaries are good or we've exhausted retries, return
 		if !needsRetry || attempt == retryAttempts {
 			if attempt > 0 && !needsRetry {
-				fmt.Printf("[INFO] summary validation succeeded after %d retries\n", attempt)
+				log.Printf("[INFO] summary validation succeeded after %d retries", attempt)
 			} else if needsRetry && attempt == retryAttempts {
-				fmt.Printf("[WARN] exhausted %d retries, %d summaries still have forbidden prefixes\n", retryAttempts, badSummaryCount)
+				log.Printf("[WARN] exhausted %d retries, %d summaries still have forbidden prefixes", retryAttempts, badSummaryCount)
 			}
 			return classifications, nil
 		}
 
 		// log retry attempt
-		fmt.Printf("[INFO] retrying classification (attempt %d/%d): %d summaries have forbidden prefixes\n", attempt+1, retryAttempts, badSummaryCount)
+		log.Printf("[INFO] retrying classification (attempt %d/%d): %d summaries have forbidden prefixes", attempt+1, retryAttempts, badSummaryCount)
 
 		// add a note to the prompt about the issue
 		if attempt == 0 {
