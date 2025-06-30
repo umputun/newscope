@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add optional multi-user support with three roles: READ (view only), WRITE (vote/feedback), and ADMIN (user management). Leverage `github.com/go-pkgz/auth` library for secure authentication with both email/password and GitHub OAuth.
+Add optional multi-user support with three roles: READ (view only), WRITE (vote/feedback), and ADMIN (user management). Leverage `github.com/go-pkgz/auth` library for secure authentication with email/password, GitHub OAuth, and Telegram.
 
 ## Core Requirements
 
@@ -11,9 +11,10 @@ Add optional multi-user support with three roles: READ (view only), WRITE (vote/
 3. **Three roles**:
    - **READ**: View articles only
    - **WRITE**: Vote, provide feedback, manage preferences  
-   - **ADMIN**: Manage users
+   - **ADMIN**: Manage users (including role changes and deletion)
 4. **Admin-created users only** - Admin chooses auth method: email/password OR GitHub
 5. **Backwards compatible** - works without auth when disabled
+6. **No blocking mechanism** - Access control via role changes or user deletion
 
 ## Implementation
 
@@ -24,17 +25,21 @@ Add optional multi-user support with three roles: READ (view only), WRITE (vote/
 CREATE TABLE users (
     id INTEGER PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
-    password_hash TEXT,  -- NULL for GitHub users
+    password_hash TEXT,  -- NULL for OAuth users
     role TEXT NOT NULL CHECK (role IN ('read', 'write', 'admin')),
-    provider TEXT NOT NULL CHECK (provider IN ('email', 'github')),
-    github_username TEXT UNIQUE,  -- for GitHub users
+    provider TEXT NOT NULL CHECK (provider IN ('email', 'github', 'telegram')),
+    github_id TEXT UNIQUE,  -- GitHub numeric user ID (immutable)
+    github_username TEXT,  -- GitHub username (for display only)
+    telegram_id TEXT UNIQUE,  -- Telegram user ID
+    telegram_username TEXT,  -- Telegram username (optional, for display)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login_at TIMESTAMP
 );
 
 -- Create indexes
 CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_github_username ON users(github_username);
+CREATE INDEX idx_users_github_id ON users(github_id);
+CREATE INDEX idx_users_telegram_id ON users(telegram_id);
 ```
 
 Note: go-pkgz/auth handles sessions via JWT tokens, so no sessions table needed.
@@ -58,6 +63,10 @@ auth:
     enabled: true
     client_id: ${GITHUB_CLIENT_ID}
     client_secret: ${GITHUB_CLIENT_SECRET}
+    
+  telegram:
+    enabled: true
+    token: ${TELEGRAM_TOKEN}  # Bot token from @BotFather
 ```
 
 ### 3. Auth Service Setup
@@ -71,7 +80,7 @@ func (s *Server) setupAuth() (*auth.Service, error) {
         CookieDuration: s.config.Auth.CookieDuration,
         Issuer:         "newscope",
         URL:            s.config.Server.BaseURL,
-        Validator: auth.ValidatorFunc(s.validateAndEnrichClaims),
+        Validator: auth.ValidatorFunc(s.validateUser),
         ClaimsUpd: auth.ClaimsUpdFunc(s.updateClaims),
     }
     
@@ -85,13 +94,31 @@ func (s *Server) setupAuth() (*auth.Service, error) {
         service.AddProvider("github", s.config.Auth.GitHub.ClientID, s.config.Auth.GitHub.ClientSecret)
     }
     
+    // Add Telegram provider if enabled
+    if s.config.Auth.Telegram.Enabled {
+        telegram := &provider.TelegramHandler{
+            ProviderName: "telegram",
+            SuccessMsg:   "✅ You have successfully authenticated, check the web!",
+            Telegram:     provider.NewTelegramAPI(s.config.Auth.Telegram.Token, &http.Client{Timeout: 5 * time.Second}),
+            L:            log.Default(),
+            TokenService: service.TokenService(),
+            AvatarSaver:  service.AvatarProxy(),
+        }
+        service.AddCustomHandler(telegram)
+    }
+    
     return service, nil
 }
 
 // Validate credentials against database
 func (s *Server) checkCredentials(user, password string) (bool, error) {
+    // Pre-generated bcrypt hash for timing attack mitigation
+    dummyHash := "$2a$10$dummyHashForTimingAttackMitigation....................."
+    
     u, err := s.repos.Users.GetByEmail(user)
     if err != nil {
+        // Always perform hash comparison to prevent timing attacks
+        _ = bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte(password))
         return false, nil // Don't reveal user existence
     }
     
@@ -103,34 +130,60 @@ func (s *Server) checkCredentials(user, password string) (bool, error) {
 func (s *Server) updateClaims(claims auth.Claims) auth.Claims {
     var user *domain.User
     
-    if claims.User.ID != "" && strings.HasPrefix(claims.User.ID, "github_") {
-        // GitHub user - check if pre-authorized
-        githubUsername := claims.User.Name // GitHub username
-        user, _ = s.repos.Users.GetByGitHubUsername(githubUsername)
-        if user == nil {
-            // Not authorized - will be rejected by validator
-            return claims
+    switch {
+    case claims.User.ID != "" && strings.HasPrefix(claims.User.ID, "github_"):
+        // GitHub user - check if pre-authorized by immutable ID
+        githubID := strings.TrimPrefix(claims.User.ID, "github_")
+        user, err = s.repos.Users.GetByGitHubID(githubID)
+        if err != nil {
+            log.Printf("[WARN] failed to get user by GitHub ID %s: %v", githubID, err)
         }
-    } else {
+        
+    case claims.User.ID != "" && strings.HasPrefix(claims.User.ID, "telegram_"):
+        // Telegram user - check if pre-authorized
+        telegramID := strings.TrimPrefix(claims.User.ID, "telegram_")
+        user, err = s.repos.Users.GetByTelegramID(telegramID)
+        if err != nil {
+            log.Printf("[WARN] failed to get user by Telegram ID %s: %v", telegramID, err)
+        }
+        
+    default:
         // Email auth user
-        user, _ = s.repos.Users.GetByEmail(claims.User.Email)
+        user, err = s.repos.Users.GetByEmail(claims.User.Email)
+        if err != nil {
+            log.Printf("[WARN] failed to get user by email %s: %v", claims.User.Email, err)
+        }
     }
     
     if user != nil {
         claims.User.SetStrAttr("role", user.Role)
         claims.User.SetStrAttr("user_id", fmt.Sprintf("%d", user.ID))
+        
+        // Set admin flag for go-pkgz/auth AdminOnly middleware compatibility
+        if user.Role == "admin" {
+            claims.User.SetAdmin(true)
+        }
+        
         // Update last login
         s.repos.Users.UpdateLastLogin(user.ID)
+        
+        // For GitHub users, update the GitHub ID if not set (first login)
+        if user.Provider == "github" && user.GitHubID == "" && strings.HasPrefix(claims.User.ID, "github_") {
+            githubID := strings.TrimPrefix(claims.User.ID, "github_")
+            if err := s.repos.Users.UpdateGitHubID(user.ID, githubID); err != nil {
+                log.Printf("[WARN] failed to update GitHub ID for user %d: %v", user.ID, err)
+            }
+        }
     }
     
     return claims
 }
 
 // Validate that user exists in our database
-func (s *Server) validateAndEnrichClaims(token string, claims auth.Claims) bool {
-    // Check if user exists in our database
-    userID := claims.User.StrAttr("user_id")
-    return userID != "" // User was found and enriched
+func (s *Server) validateUser(token string, claims auth.Claims) bool {
+    // Check if user exists in our database by checking if role was set
+    userRole := claims.User.StrAttr("role")
+    return userRole != "" // User was found and has a role
 }
 ```
 
@@ -188,16 +241,9 @@ func hasRole(userRole, requiredRole string) bool {
 // Setup auth service
 authService, _ := s.setupAuth()
 
-// Auth routes
-router.Mount("/auth").Route(func(r *routegroup.Bundle) {
-    // go-pkgz/auth endpoints
-    authHandler := authService.Handlers()
-    r.GET("/github/login", authHandler.LoginHandler("github"))
-    r.GET("/github/callback", authHandler.AuthHandler("github"))
-    r.POST("/login", authHandler.LoginHandler("email"))
-    r.GET("/logout", authHandler.LogoutHandler)
-    r.GET("/user", authHandler.UserInfo)
-})
+// Auth routes - go-pkgz/auth handles all the endpoints automatically
+authHandler := authService.Handlers()
+router.Mount("/auth", authHandler)
 
 // Apply auth middleware to all routes
 router.Use(authService.Middleware())
@@ -232,11 +278,13 @@ router.Mount("/api/admin").With(s.requireRole("admin")).Route(func(r *routegroup
 ```go
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
     var req struct {
-        Email          string `json:"email"`
-        Password       string `json:"password"`      // Only for email users
-        GitHubUsername string `json:"github_username"` // Only for GitHub users  
-        Role           string `json:"role"`
-        Provider       string `json:"provider"` // "email" or "github"
+        Email            string `json:"email"`
+        Password         string `json:"password"`         // Only for email users
+        GitHubUsername   string `json:"github_username"`   // For GitHub users
+        TelegramUsername string `json:"telegram_username"` // For Telegram users (optional)
+        TelegramID       string `json:"telegram_id"`       // For Telegram users
+        Role             string `json:"role"`
+        Provider         string `json:"provider"` // "email", "github", or "telegram"
     }
     
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -250,13 +298,21 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
         Provider: req.Provider,
     }
     
-    if req.Provider == "email" {
+    switch req.Provider {
+    case "email":
         // Hash password for email users
         hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
         user.PasswordHash = string(hash)
-    } else if req.Provider == "github" {
-        // Store GitHub username for matching during login
+        
+    case "github":
+        // Store GitHub username for display
         user.GitHubUsername = req.GitHubUsername
+        // Note: GitHub ID will be resolved and stored on first login via claims.User.ID
+        
+    case "telegram":
+        // Store Telegram info for matching during login
+        user.TelegramUsername = req.TelegramUsername
+        user.TelegramID = req.TelegramID
     }
     
     created, err := s.repos.Users.Create(user)
@@ -269,14 +325,25 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-#### GitHub User Login Flow
+#### OAuth User Login Flow
 
-When a pre-authorized GitHub user logs in:
+When a pre-authorized OAuth user logs in:
+
+**GitHub:**
 1. Redirected to GitHub OAuth
-2. On callback, go-pkgz/auth creates JWT with GitHub info
-3. Our `updateClaims` function checks if GitHub username exists in database
-4. If not found, `validateAndEnrichClaims` returns false, rejecting the login
-5. If found, user gets their assigned role
+2. On callback, go-pkgz/auth creates JWT with GitHub info including numeric ID
+3. Our `updateClaims` function checks if GitHub ID exists in database
+4. If not found but username matches, store the GitHub ID for future logins
+5. If not found at all, `validateUser` returns false, rejecting the login
+6. If found, user gets their assigned role
+
+**Telegram:**
+1. User clicks Telegram login button, opens Telegram bot
+2. User sends `/start` or clicks auth link in bot
+3. go-pkgz/auth validates and creates JWT with Telegram info
+4. Our `updateClaims` function checks if Telegram ID exists in database
+5. If not found, `validateUser` returns false, rejecting the login
+6. If found, user gets their assigned role
 
 ### 7. UI Implementation
 
@@ -295,10 +362,16 @@ When a pre-authorized GitHub user logs in:
     
     <div class="divider">OR</div>
     
-    <!-- GitHub login -->
-    <a href="/auth/github/login" class="github-login">
-        <i class="fab fa-github"></i> Login with GitHub
-    </a>
+    <!-- OAuth logins -->
+    <div class="oauth-buttons">
+        <a href="/auth/github/login" class="github-login">
+            <i class="fab fa-github"></i> Login with GitHub
+        </a>
+        
+        <a href="/auth/telegram/login" class="telegram-login">
+            <i class="fab fa-telegram"></i> Login with Telegram
+        </a>
+    </div>
 </div>
 ```
 
@@ -334,6 +407,7 @@ When a pre-authorized GitHub user logs in:
         <select name="provider" hx-on:change="toggleAuthFields(this)">
             <option value="email">Email/Password</option>
             <option value="github">GitHub</option>
+            <option value="telegram">Telegram</option>
         </select>
         
         <div id="email-fields">
@@ -342,6 +416,12 @@ When a pre-authorized GitHub user logs in:
         
         <div id="github-fields" style="display:none">
             <input type="text" name="github_username" placeholder="GitHub username">
+        </div>
+        
+        <div id="telegram-fields" style="display:none">
+            <input type="text" name="telegram_username" placeholder="Telegram username (optional)">
+            <input type="text" name="telegram_id" placeholder="Telegram ID" required>
+            <small>User can get their ID from @userinfobot on Telegram</small>
         </div>
         
         <select name="role">
@@ -358,6 +438,8 @@ When a pre-authorized GitHub user logs in:
             select.value === 'email' ? 'block' : 'none';
         document.getElementById('github-fields').style.display = 
             select.value === 'github' ? 'block' : 'none';
+        document.getElementById('telegram-fields').style.display = 
+            select.value === 'telegram' ? 'block' : 'none';
     }
     </script>
     
@@ -378,8 +460,10 @@ When a pre-authorized GitHub user logs in:
                 <td>
                     {{if eq .Provider "email"}}
                         <i class="fas fa-envelope"></i> Email
-                    {{else}}
+                    {{else if eq .Provider "github"}}
                         <i class="fab fa-github"></i> GitHub (@{{.GitHubUsername}})
+                    {{else if eq .Provider "telegram"}}
+                        <i class="fab fa-telegram"></i> Telegram ({{if .TelegramUsername}}@{{.TelegramUsername}}{{else}}ID: {{.TelegramID}}{{end}})
                     {{end}}
                 </td>
                 <td>
@@ -446,6 +530,18 @@ We only need to:
 - Store users and roles in database
 - Implement role checking middleware
 - Handle user management UI
+
+Important security considerations:
+- **JWT Secret**: Must be a high-entropy, cryptographically random string
+- **Password Reset**: Admin-created passwords should be temporary, require change on first login
+- **GitHub ID**: We store GitHub numeric ID (immutable) not just username (mutable)
+
+### 10. Access Control
+
+Since all users are admin-created:
+- **No user blocking needed** - Admin can change role or delete user
+- **Role changes are immediate** - Next request will use updated role
+- **Deleted users lose access** - JWT validation fails for non-existent users
 
 ## Implementation Steps
 
