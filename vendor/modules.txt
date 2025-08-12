@@ -38,8 +38,8 @@ github.com/go-pkgz/lgr
 # github.com/go-pkgz/repeater/v2 v2.1.0
 ## explicit; go 1.23
 github.com/go-pkgz/repeater/v2
-# github.com/go-pkgz/rest v1.20.3
-## explicit; go 1.21
+# github.com/go-pkgz/rest v1.20.4
+## explicit; go 1.23.0
 github.com/go-pkgz/rest
 github.com/go-pkgz/rest/logger
 github.com/go-pkgz/rest/realip
