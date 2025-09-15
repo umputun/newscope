@@ -248,13 +248,24 @@ func (r *ChatCompletionResponseFormatJSONSchema) UnmarshalJSON(data []byte) erro
 	return nil
 }
 
+// ChatCompletionRequestExtensions contains third-party OpenAI API extensions
+// (e.g., vendor-specific implementations like vLLM).
+type ChatCompletionRequestExtensions struct {
+	// GuidedChoice is a vLLM-specific extension that restricts the model's output
+	// to one of the predefined string choices provided in this field. This feature
+	// is used to constrain the model's responses to a controlled set of options,
+	// ensuring predictable and consistent outputs in scenarios where specific
+	// choices are required.
+	GuidedChoice []string `json:"guided_choice,omitempty"`
+}
+
 // ChatCompletionRequest represents a request structure for chat completion API.
 type ChatCompletionRequest struct {
 	Model    string                  `json:"model"`
 	Messages []ChatCompletionMessage `json:"messages"`
 	// MaxTokens The maximum number of tokens that can be generated in the chat completion.
 	// This value can be used to control costs for text generated via API.
-	// This value is now deprecated in favor of max_completion_tokens, and is not compatible with o1 series models.
+	// Deprecated: use MaxCompletionTokens. Not compatible with o1-series models.
 	// refs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
 	MaxTokens int `json:"max_tokens,omitempty"`
 	// MaxCompletionTokens An upper bound for the number of tokens that can be generated for a completion,
@@ -309,6 +320,19 @@ type ChatCompletionRequest struct {
 	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 	// Specifies the latency tier to use for processing the request.
 	ServiceTier ServiceTier `json:"service_tier,omitempty"`
+	// Verbosity determines how many output tokens are generated. Lowering the number of
+	// tokens reduces overall latency. It can be set to "low", "medium", or "high".
+	// Note: This field is only confirmed to work with gpt-5, gpt-5-mini and gpt-5-nano.
+	// Also, it is not in the API reference of chat completion at the time of writing,
+	// though it is supported by the API.
+	Verbosity string `json:"verbosity,omitempty"`
+	// A stable identifier used to help detect users of your application that may be violating OpenAI's usage policies.
+	// The IDs should be a string that uniquely identifies each user.
+	// We recommend hashing their username or email address, in order to avoid sending us any identifying information.
+	// https://platform.openai.com/docs/api-reference/chat/create#chat_create-safety_identifier
+	SafetyIdentifier string `json:"safety_identifier,omitempty"`
+	// Embedded struct for non-OpenAI extensions
+	ChatCompletionRequestExtensions
 }
 
 type StreamOptions struct {
