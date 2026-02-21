@@ -41,6 +41,7 @@ archives:
     files:
       - LICENSE
       - README.md
+      - completions/*
 
 nfpms:
   - id: packages
@@ -60,6 +61,12 @@ nfpms:
         dst: /usr/share/doc/newscope/LICENSE
       - src: ./README.md
         dst: /usr/share/doc/newscope/README.md
+      - src: completions/newscope.bash
+        dst: /usr/share/bash-completion/completions/newscope
+      - src: completions/newscope.zsh
+        dst: /usr/share/zsh/vendor-completions/_newscope
+      - src: completions/newscope.fish
+        dst: /usr/share/fish/vendor_completions.d/newscope.fish
 
 checksum:
   name_template: 'checksums.txt'
