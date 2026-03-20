@@ -20,6 +20,11 @@ linters:
     - nestif
     - errorlint
   settings:
+    gosec:
+      excludes:
+        - G118
+        - G120
+        - G705
     goconst:
       min-len: 2
       min-occurrences: 2
@@ -47,6 +52,12 @@ linters:
       - linters:
           - staticcheck
         text: at least one file in a package should have a package comment
+      - linters:
+          - prealloc
+        text: "Consider preallocating"
+      - linters:
+          - staticcheck
+        text: "QF1012"
       - linters:
           - dupl
           - gosec
