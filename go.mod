@@ -15,7 +15,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/sashabaranov/go-openai v1.41.2
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.47.0
 	golang.org/x/sync v0.18.0
 	gopkg.in/yaml.v3 v3.0.1
