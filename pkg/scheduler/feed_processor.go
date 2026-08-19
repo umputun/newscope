@@ -130,9 +130,29 @@ func (fp *FeedProcessor) ProcessingWorker(ctx context.Context, items <-chan doma
 	}
 }
 
-// extractContent extracts content for a single item and updates it in the database
+// extractionEnabled reports whether content extraction is configured
+func (fp *FeedProcessor) extractionEnabled() bool {
+	return fp.extractor != nil
+}
+
+// hasClassifiableContent reports whether the item carries anything to classify.
+// With extraction enabled empty content means extraction failed, with extraction
+// disabled the feed description is all a description-only feed provides.
+func (fp *FeedProcessor) hasClassifiableContent(item *domain.Item) bool {
+	if item.Content != "" {
+		return true
+	}
+	return !fp.extractionEnabled() && item.Description != ""
+}
+
+// extractContent extracts content for a single item and updates it in the database.
+// With extraction disabled the item keeps the content provided by the feed.
 func (fp *FeedProcessor) extractContent(ctx context.Context, item *domain.Item) {
 	itemID := fp.getItemIdentifier(item)
+	if !fp.extractionEnabled() {
+		lgr.Printf("[DEBUG] extraction disabled, using feed content for: %s", itemID)
+		return
+	}
 	lgr.Printf("[DEBUG] extracting content for: %s", itemID)
 
 	// extract content
@@ -270,9 +290,8 @@ func (fp *FeedProcessor) ProcessItem(ctx context.Context, item *domain.Item) {
 	// extract content
 	fp.extractContent(ctx, item)
 
-	// skip classification if extraction failed
-	if item.Content == "" {
-		lgr.Printf("[WARN] skipping classification for item %d: no content extracted", item.ID)
+	if !fp.hasClassifiableContent(item) {
+		lgr.Printf("[WARN] skipping classification for item %d: no content to classify", item.ID)
 		return
 	}
 
@@ -416,6 +435,9 @@ func (fp *FeedProcessor) UpdateFeedNow(ctx context.Context, feedID int64) error 
 // ExtractContentNow triggers immediate content extraction for an item
 func (fp *FeedProcessor) ExtractContentNow(ctx context.Context, itemID int64) error {
 	lgr.Printf("[DEBUG] triggering immediate content extraction for item %d", itemID)
+	if !fp.extractionEnabled() {
+		return fmt.Errorf("content extraction is disabled")
+	}
 	item, err := fp.itemManager.GetItem(ctx, itemID)
 	if err != nil {
 		return fmt.Errorf("get item %d: %w", itemID, err)
