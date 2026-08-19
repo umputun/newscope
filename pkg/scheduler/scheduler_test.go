@@ -1482,7 +1482,8 @@ func TestScheduler_ProcessExistingItems(t *testing.T) {
 		}
 
 		scheduler := &Scheduler{
-			itemManager: itemManager,
+			itemManager:       itemManager,
+			extractionEnabled: true,
 		}
 
 		processCh := make(chan domain.Item, 10)
@@ -1544,7 +1545,8 @@ func TestScheduler_ProcessExistingItems(t *testing.T) {
 		}
 
 		scheduler := &Scheduler{
-			itemManager: itemManager,
+			itemManager:       itemManager,
+			extractionEnabled: true,
 		}
 
 		processCh := make(chan domain.Item, 10)
@@ -1563,6 +1565,39 @@ func TestScheduler_ProcessExistingItems(t *testing.T) {
 			t.Fatal("no items should have been sent for processing")
 		default:
 			// expected - no items sent
+		}
+	})
+
+	t.Run("skips extraction backlog with extraction disabled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		itemManager := &mocks.ItemManagerMock{}
+		itemManager.GetItemsNeedingExtractionFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+			return []domain.Item{{ID: 1, Title: "Item 1", Link: "http://example.com/1"}}, nil
+		}
+		itemManager.GetUnclassifiedItemsFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+			return []domain.Item{}, nil
+		}
+
+		scheduler := &Scheduler{itemManager: itemManager, extractionEnabled: false}
+
+		processCh := make(chan domain.Item, 10)
+		scheduler.wg.Add(1)
+
+		go scheduler.processExistingItems(ctx, processCh)
+
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+		scheduler.wg.Wait()
+
+		// items needing extraction are never marked as extracted with extraction disabled,
+		// so querying them would loop forever
+		assert.Empty(t, itemManager.GetItemsNeedingExtractionCalls())
+		select {
+		case <-processCh:
+			t.Fatal("no items should have been sent for processing")
+		default:
 		}
 	})
 
@@ -1581,7 +1616,8 @@ func TestScheduler_ProcessExistingItems(t *testing.T) {
 		}
 
 		scheduler := &Scheduler{
-			itemManager: itemManager,
+			itemManager:       itemManager,
+			extractionEnabled: true,
 		}
 
 		processCh := make(chan domain.Item, 10)
@@ -1602,4 +1638,24 @@ func TestScheduler_ProcessExistingItems(t *testing.T) {
 			// expected - no items sent
 		}
 	})
+}
+
+func TestNewScheduler_ExtractionDisabled(t *testing.T) {
+	s := NewScheduler(Params{
+		FeedManager:           &mocks.FeedManagerMock{},
+		ItemManager:           &mocks.ItemManagerMock{},
+		ClassificationManager: &mocks.ClassificationManagerMock{},
+		SettingManager:        &mocks.SettingManagerMock{},
+		Parser:                &mocks.ParserMock{},
+		Extractor:             nil,
+		Classifier:            &mocks.ClassifierMock{},
+		MaxWorkers:            1,
+	})
+
+	assert.False(t, s.extractionEnabled)
+	assert.False(t, s.feedProcessor.extractionEnabled())
+
+	err := s.ExtractContentNow(context.Background(), 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "disabled")
 }

@@ -99,20 +99,24 @@ func run(ctx context.Context, opts Opts) error {
 	// setup feed parser and content extractor
 	feedParser := feed.NewParser(cfg.Server.Timeout, cfg.Extraction.UserAgent)
 
-	var contentExtractor *content.HTTPExtractor
+	// extractor stays nil when extraction is disabled, the scheduler treats it as "no extraction"
+	var contentExtractor scheduler.Extractor
 	if cfg.Extraction.Enabled {
-		contentExtractor = content.NewHTTPExtractor(cfg.Extraction.Timeout, cfg.Extraction.UserAgent)
+		httpExtractor := content.NewHTTPExtractor(cfg.Extraction.Timeout, cfg.Extraction.UserAgent)
 		if cfg.Extraction.FallbackURL != "" {
-			contentExtractor.SetFallbackURL(cfg.Extraction.FallbackURL)
+			httpExtractor.SetFallbackURL(cfg.Extraction.FallbackURL)
 		}
-		contentExtractor.SetOptions(cfg.Extraction.MinTextLength, cfg.Extraction.IncludeImages, cfg.Extraction.IncludeLinks)
+		httpExtractor.SetOptions(cfg.Extraction.MinTextLength, cfg.Extraction.IncludeImages, cfg.Extraction.IncludeLinks)
 		// use retry config from schedule settings
-		contentExtractor.SetRetryConfig(
+		httpExtractor.SetRetryConfig(
 			cfg.Schedule.RetryAttempts,
 			cfg.Schedule.RetryInitialDelay,
 			cfg.Schedule.RetryMaxDelay,
 			cfg.Schedule.RetryJitter,
 		)
+		contentExtractor = httpExtractor
+	} else {
+		log.Printf("[INFO] content extraction disabled, classification will use feed content")
 	}
 	classifier := llm.NewClassifier(cfg.LLM)
 	log.Printf("[INFO] LLM classifier enabled with model: %s", cfg.LLM.Model)
