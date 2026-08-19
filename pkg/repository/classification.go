@@ -70,7 +70,7 @@ func (c classificationSQL) Value() (driver.Value, error) {
 }
 
 // Scan implements sql.Scanner for database retrieval
-func (c *classificationSQL) Scan(value interface{}) error {
+func (c *classificationSQL) Scan(value any) error {
 	if value == nil {
 		*c = classificationSQL{}
 		return nil
@@ -106,7 +106,7 @@ func (r *ClassificationRepository) GetClassifiedItems(ctx context.Context, filte
 		WHERE i.relevance_score >= ?
 		AND i.classified_at IS NOT NULL`
 
-	args := []interface{}{filter.MinScore}
+	args := []any{filter.MinScore}
 
 	// add topic filter if specified
 	if filter.Topic != "" {
@@ -298,7 +298,7 @@ func (r *ClassificationRepository) UpdateItemFeedback(ctx context.Context, itemI
 // GetRecentFeedback retrieves recent user feedback for LLM context
 func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
 	var query string
-	var args []interface{}
+	var args []any
 
 	if feedbackType == "" {
 		// get both likes and dislikes
@@ -314,7 +314,7 @@ func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedba
 			ORDER BY feedback_at DESC
 			LIMIT ?
 		`
-		args = []interface{}{limit}
+		args = []any{limit}
 	} else {
 		// get specific feedback type
 		query = `
@@ -329,7 +329,7 @@ func (r *ClassificationRepository) GetRecentFeedback(ctx context.Context, feedba
 			ORDER BY feedback_at DESC
 			LIMIT ?
 		`
-		args = []interface{}{feedbackType, limit}
+		args = []any{feedbackType, limit}
 	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -465,7 +465,7 @@ func (r *ClassificationRepository) GetClassifiedItemsCount(ctx context.Context, 
 		WHERE i.relevance_score >= ?
 		AND i.classified_at IS NOT NULL`
 
-	args := []interface{}{filter.MinScore}
+	args := []any{filter.MinScore}
 
 	// add topic filter if specified
 	if filter.Topic != "" {
@@ -496,7 +496,7 @@ func (r *ClassificationRepository) GetClassifiedItemsCount(ctx context.Context, 
 }
 
 // buildSearchWhereClause builds the common WHERE clause for search queries
-func (r *ClassificationRepository) buildSearchWhereClause(searchQuery string, filter *domain.ItemFilter) (whereClause string, args []interface{}) {
+func (r *ClassificationRepository) buildSearchWhereClause(searchQuery string, filter *domain.ItemFilter) (whereClause string, args []any) {
 	// sanitize search query for FTS5 - escape double quotes but allow other operators
 	// this allows OR, AND, NOT operators while preventing injection via quotes
 	sanitizedQuery := strings.ReplaceAll(searchQuery, `"`, `""`)
@@ -526,7 +526,7 @@ func (r *ClassificationRepository) buildSearchWhereClause(searchQuery string, fi
 			AND i.classified_at IS NOT NULL`
 
 		likePattern := "%" + sanitizedQuery + "%"
-		args = []interface{}{likePattern, likePattern, likePattern, likePattern, likePattern}
+		args = []any{likePattern, likePattern, likePattern, likePattern, likePattern}
 	} else {
 		// use FTS5 for complex queries
 		whereClause = `
@@ -536,7 +536,7 @@ func (r *ClassificationRepository) buildSearchWhereClause(searchQuery string, fi
 			WHERE items_fts MATCH ?
 			AND i.classified_at IS NOT NULL`
 
-		args = []interface{}{sanitizedQuery}
+		args = []any{sanitizedQuery}
 	}
 
 	// add score filter

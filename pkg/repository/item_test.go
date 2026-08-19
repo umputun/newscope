@@ -61,7 +61,7 @@ func TestItemRepository_GetItems(t *testing.T) {
 	// create test items with different scores
 	baseTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 	testItems := make([]domain.Item, 5)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		testItems[i] = domain.Item{
 			FeedID:      testFeed.ID,
 			GUID:        fmt.Sprintf("item-%d", i+1),

@@ -73,7 +73,7 @@ func (t topicsSQL) Value() (driver.Value, error) {
 }
 
 // Scan implements sql.Scanner for database retrieval
-func (t *topicsSQL) Scan(value interface{}) error {
+func (t *topicsSQL) Scan(value any) error {
 	if value == nil {
 		*t = topicsSQL{}
 		return nil
@@ -215,7 +215,7 @@ func (r *ItemRepository) GetItemsNeedingExtraction(ctx context.Context, limit in
 // UpdateItemExtraction updates item after content extraction
 func (r *ItemRepository) UpdateItemExtraction(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
 	var query string
-	var args []interface{}
+	var args []any
 
 	if extraction.Error != "" {
 		query = `
@@ -223,14 +223,14 @@ func (r *ItemRepository) UpdateItemExtraction(ctx context.Context, itemID int64,
 			SET extraction_error = ?, extracted_at = datetime('now')
 			WHERE id = ?
 		`
-		args = []interface{}{extraction.Error, itemID}
+		args = []any{extraction.Error, itemID}
 	} else {
 		query = `
 			UPDATE items 
 			SET extracted_content = ?, extracted_rich_content = ?, extracted_at = datetime('now')
 			WHERE id = ?
 		`
-		args = []interface{}{extraction.PlainText, extraction.RichHTML, itemID}
+		args = []any{extraction.PlainText, extraction.RichHTML, itemID}
 	}
 
 	_, err := r.db.ExecContext(ctx, query, args...)
@@ -264,7 +264,7 @@ func (r *ItemRepository) UpdateItemProcessed(ctx context.Context, itemID int64, 
 
 	return retrier.Do(ctx, func() error {
 		var query string
-		var args []interface{}
+		var args []any
 
 		if extraction != nil {
 			// update both extraction and classification
@@ -280,7 +280,7 @@ func (r *ItemRepository) UpdateItemProcessed(ctx context.Context, itemID int64, 
 				    classified_at = datetime('now')
 				WHERE id = ?
 			`
-			args = []interface{}{extraction.PlainText, extraction.RichHTML, classification.Score,
+			args = []any{extraction.PlainText, extraction.RichHTML, classification.Score,
 				classification.Explanation, topicsSQL(classification.Topics), classification.Summary, itemID}
 		} else {
 			// update only classification (extraction was saved separately)
@@ -293,7 +293,7 @@ func (r *ItemRepository) UpdateItemProcessed(ctx context.Context, itemID int64, 
 				    classified_at = datetime('now')
 				WHERE id = ?
 			`
-			args = []interface{}{classification.Score, classification.Explanation,
+			args = []any{classification.Score, classification.Explanation,
 				topicsSQL(classification.Topics), classification.Summary, itemID}
 		}
 

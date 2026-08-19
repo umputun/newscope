@@ -940,7 +940,7 @@ func TestIsReasoningModel(t *testing.T) {
 func TestClassifier_GPT5_MaxCompletionTokens(t *testing.T) {
 	// create test server that verifies correct token parameter
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var reqBody map[string]interface{}
+		var reqBody map[string]any
 		json.NewDecoder(r.Body).Decode(&reqBody)
 
 		// for gpt-5 models, should use max_completion_tokens, not max_tokens
@@ -989,7 +989,7 @@ func TestClassifier_GPT5_MaxCompletionTokens(t *testing.T) {
 func TestClassifier_RegularModel_MaxTokens(t *testing.T) {
 	// create test server that verifies correct token parameter for regular models
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var reqBody map[string]interface{}
+		var reqBody map[string]any
 		json.NewDecoder(r.Body).Decode(&reqBody)
 
 		// for regular models, should use max_tokens, not max_completion_tokens

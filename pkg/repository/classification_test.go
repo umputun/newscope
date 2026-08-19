@@ -322,7 +322,7 @@ func TestClassificationRepository_Pagination(t *testing.T) {
 	baseTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 	testItems := make([]domain.Item, 15) // create 15 items for pagination testing
 
-	for i := 0; i < 15; i++ {
+	for i := range 15 {
 		testItems[i] = domain.Item{
 			FeedID:      testFeed.ID,
 			GUID:        fmt.Sprintf("pagination-item-%d", i+1),
@@ -890,7 +890,7 @@ func TestClassificationRepository_GetFeedbackCount(t *testing.T) {
 	testFeed := createTestFeed(t, repos, "Test Feed")
 
 	// create items with feedback
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		item := &domain.Item{
 			FeedID:      testFeed.ID,
 			GUID:        fmt.Sprintf("feedback-item-%d", i+1),
@@ -929,7 +929,7 @@ func TestClassificationRepository_GetFeedbackSince(t *testing.T) {
 	testFeed := createTestFeed(t, repos, "Test Feed")
 
 	// create items with feedback
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		item := &domain.Item{
 			FeedID:      testFeed.ID,
 			GUID:        fmt.Sprintf("feedback-item-%d", i+1),
