@@ -238,6 +238,8 @@ extraction:
   timeout: "30s"
 ```
 
+With `extraction.enabled: false` articles are classified from the content provided by the feed itself, and the manual "extract content" action on an article reports that extraction is disabled.
+
 ## Web Interface
 
 ### Adding Feeds

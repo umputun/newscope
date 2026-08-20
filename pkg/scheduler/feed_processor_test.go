@@ -798,3 +798,151 @@ func TestFeedProcessor_ProcessItem_NonHTMLContent(t *testing.T) {
 	assert.Len(t, extractor.ExtractCalls(), 1)
 	assert.Len(t, itemManager.UpdateItemExtractionCalls(), 1)
 }
+
+func TestFeedProcessor_ExtractionDisabled(t *testing.T) {
+	retryFunc := func(ctx context.Context, op func() error) error {
+		return op()
+	}
+
+	settingManager := &mocks.SettingManagerMock{
+		GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "", nil },
+	}
+
+	newProcessor := func(itemManager *mocks.ItemManagerMock, classificationManager *mocks.ClassificationManagerMock,
+		classifier *mocks.ClassifierMock) *FeedProcessor {
+		return NewFeedProcessor(FeedProcessorConfig{
+			FeedManager:           &mocks.FeedManagerMock{},
+			ItemManager:           itemManager,
+			ClassificationManager: classificationManager,
+			SettingManager:        settingManager,
+			Parser:                &mocks.ParserMock{},
+			Extractor:             nil, // extraction disabled
+			Classifier:            classifier,
+			MaxWorkers:            1,
+			RetryFunc:             retryFunc,
+		})
+	}
+
+	t.Run("classifies item with feed content", func(t *testing.T) {
+		itemManager := &mocks.ItemManagerMock{}
+		classificationManager := &mocks.ClassificationManagerMock{}
+		classifier := &mocks.ClassifierMock{}
+
+		classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+			return []domain.FeedbackExample{}, nil
+		}
+		classificationManager.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
+			return []string{}, nil
+		}
+		classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+			require.Len(t, req.Articles, 1)
+			assert.Equal(t, "content from the feed", req.Articles[0].Content)
+			return []domain.Classification{{GUID: "test-guid", Score: 7.5, Summary: "summary"}}, nil
+		}
+		itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64,
+			extraction *domain.ExtractedContent, classification *domain.Classification) error {
+			assert.Equal(t, int64(1), itemID)
+			assert.Nil(t, extraction)
+			return nil
+		}
+
+		fp := newProcessor(itemManager, classificationManager, classifier)
+		item := &domain.Item{ID: 1, GUID: "test-guid", Link: "https://example.com/item1", Content: "content from the feed"}
+		fp.ProcessItem(context.Background(), item)
+
+		assert.Len(t, classifier.ClassifyItemsCalls(), 1, "item should be classified from feed content")
+		assert.Empty(t, itemManager.UpdateItemExtractionCalls(), "no extraction result should be stored")
+	})
+
+	t.Run("classifies description-only item", func(t *testing.T) {
+		itemManager := &mocks.ItemManagerMock{}
+		classificationManager := &mocks.ClassificationManagerMock{}
+		classifier := &mocks.ClassifierMock{}
+
+		classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+			return []domain.FeedbackExample{}, nil
+		}
+		classificationManager.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
+			return []string{}, nil
+		}
+		classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+			require.Len(t, req.Articles, 1)
+			assert.Equal(t, "description from the feed", req.Articles[0].Description)
+			return []domain.Classification{{GUID: "test-guid", Score: 6}}, nil
+		}
+		itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64,
+			extraction *domain.ExtractedContent, classification *domain.Classification) error {
+			return nil
+		}
+
+		fp := newProcessor(itemManager, classificationManager, classifier)
+		item := &domain.Item{ID: 1, GUID: "test-guid", Link: "https://example.com/item1", Description: "description from the feed"}
+		fp.ProcessItem(context.Background(), item)
+
+		assert.Len(t, classifier.ClassifyItemsCalls(), 1, "description is enough to classify without extraction")
+	})
+
+	t.Run("skips item without content or description", func(t *testing.T) {
+		itemManager := &mocks.ItemManagerMock{}
+		classifier := &mocks.ClassifierMock{}
+
+		fp := newProcessor(itemManager, &mocks.ClassificationManagerMock{}, classifier)
+		item := &domain.Item{ID: 1, GUID: "test-guid", Link: "https://example.com/item1"}
+		fp.ProcessItem(context.Background(), item)
+
+		assert.Empty(t, classifier.ClassifyItemsCalls())
+	})
+
+	t.Run("extract content now reports extraction disabled", func(t *testing.T) {
+		itemManager := &mocks.ItemManagerMock{}
+		fp := newProcessor(itemManager, &mocks.ClassificationManagerMock{}, &mocks.ClassifierMock{})
+
+		err := fp.ExtractContentNow(context.Background(), 1)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "disabled")
+		assert.Empty(t, itemManager.GetItemCalls(), "item should not be loaded at all")
+	})
+
+	t.Run("processing worker classifies without extraction", func(t *testing.T) {
+		itemManager := &mocks.ItemManagerMock{}
+		classificationManager := &mocks.ClassificationManagerMock{}
+		classifier := &mocks.ClassifierMock{}
+
+		classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+			return []domain.FeedbackExample{}, nil
+		}
+		classificationManager.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
+			return []string{}, nil
+		}
+		classified := make(chan struct{})
+		classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+			defer close(classified)
+			return []domain.Classification{{GUID: "test-guid", Score: 5}}, nil
+		}
+		itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64,
+			extraction *domain.ExtractedContent, classification *domain.Classification) error {
+			return nil
+		}
+
+		fp := newProcessor(itemManager, classificationManager, classifier)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		items := make(chan domain.Item, 1)
+		items <- domain.Item{ID: 1, GUID: "test-guid", Link: "https://example.com/item1", Content: "content from the feed"}
+		close(items)
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			fp.ProcessingWorker(ctx, items)
+		}()
+
+		select {
+		case <-classified:
+		case <-ctx.Done():
+			t.Fatal("classification never happened")
+		}
+		<-done
+	})
+}

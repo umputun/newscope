@@ -29,6 +29,7 @@ type Scheduler struct {
 	itemManager       ItemManager
 
 	updateInterval     time.Duration
+	extractionEnabled  bool
 	cleanupAge         time.Duration
 	cleanupMinScore    float64
 	cleanupInterval    time.Duration
@@ -109,7 +110,7 @@ type Params struct {
 	ClassificationManager ClassificationManager
 	SettingManager        SettingManager
 	Parser                Parser
-	Extractor             Extractor
+	Extractor             Extractor // optional, nil disables content extraction
 	Classifier            Classifier
 
 	// configuration
@@ -133,6 +134,7 @@ func NewScheduler(params Params) *Scheduler {
 	s := &Scheduler{
 		itemManager:        params.ItemManager,
 		updateInterval:     params.UpdateInterval,
+		extractionEnabled:  params.Extractor != nil,
 		cleanupAge:         params.CleanupAge,
 		cleanupMinScore:    params.CleanupMinScore,
 		cleanupInterval:    params.CleanupInterval,
@@ -331,6 +333,13 @@ func (s *Scheduler) processExistingItems(ctx context.Context, processCh chan<- d
 	// process all items needing extraction in batches
 	totalExtraction := 0
 	for {
+		// with extraction disabled nothing ever marks these items as extracted,
+		// so the query would keep returning the same items forever
+		if !s.extractionEnabled {
+			lgr.Printf("[DEBUG] extraction disabled, skipping startup extraction of pending items")
+			break
+		}
+
 		items, err := s.itemManager.GetItemsNeedingExtraction(ctx, startupBatchSize)
 		if err != nil {
 			lgr.Printf("[ERROR] failed to get items needing extraction: %v", err)
