@@ -250,8 +250,7 @@ func TestScheduler_Integration_FullWorkflow(t *testing.T) {
 	scheduler := NewScheduler(params)
 
 	// start scheduler
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	scheduler.Start(ctx)
 	defer scheduler.Stop()
@@ -396,8 +395,7 @@ func TestScheduler_Integration_ErrorHandling(t *testing.T) {
 	scheduler := NewScheduler(params)
 
 	// start scheduler
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	scheduler.Start(ctx)
 	defer scheduler.Stop()

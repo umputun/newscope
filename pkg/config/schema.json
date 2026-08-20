@@ -21,9 +21,34 @@
           "description": "Number of new feedbacks required before updating preference summary",
           "default": 10
         },
+        "summary_retry_attempts": {
+          "type": "integer",
+          "maximum": 5,
+          "minimum": 0,
+          "description": "Number of retries if summary contains forbidden phrases",
+          "default": 3
+        },
+        "forbidden_summary_prefixes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "List of forbidden prefixes for article summaries"
+        },
         "prompts": {
           "$ref": "#/$defs/ClassificationPrompts",
           "description": "Custom prompts for classification and preference summaries"
+        },
+        "batch_size": {
+          "type": "integer",
+          "maximum": 20,
+          "minimum": 1,
+          "description": "Number of articles to classify in a single API call",
+          "default": 10
+        },
+        "batch_timeout": {
+          "type": "integer",
+          "description": "Timeout for collecting articles into a batch"
         }
       },
       "additionalProperties": false,
@@ -32,7 +57,11 @@
         "feedback_examples",
         "use_json_mode",
         "preference_summary_threshold",
-        "prompts"
+        "summary_retry_attempts",
+        "forbidden_summary_prefixes",
+        "prompts",
+        "batch_size",
+        "batch_timeout"
       ]
     },
     "ClassificationPrompts": {

@@ -517,7 +517,7 @@ func TestFeedProcessor_UpdateFeed_ItemCreationError(t *testing.T) {
 
 	// retry function that retries up to 5 times
 	retryFunc := func(ctx context.Context, op func() error) error {
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			if err := op(); err != nil {
 				if i < 4 {
 					continue
@@ -630,7 +630,7 @@ func TestFeedProcessor_UpdateFeed_ItemCreationWithLockError(t *testing.T) {
 
 	// setup retry function that actually retries on lock errors
 	retryFunc := func(ctx context.Context, op func() error) error {
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			if err := op(); err != nil {
 				if i < 4 && isLockError(err) {
 					time.Sleep(10 * time.Millisecond) // simulate backoff

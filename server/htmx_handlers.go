@@ -473,7 +473,7 @@ func (s *Server) articleContentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// also send out-of-band update for the button
-	data := map[string]interface{}{
+	data := map[string]any{
 		"ID":    id,
 		"URL":   fmt.Sprintf("/api/v1/articles/%d/hide", id),
 		"Label": "Hide Content",
@@ -498,7 +498,7 @@ func (s *Server) hideContentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// also send out-of-band update for the button
-	data := map[string]interface{}{
+	data := map[string]any{
 		"ID":    id,
 		"URL":   fmt.Sprintf("/api/v1/articles/%d/content", id),
 		"Label": "Show Content",
@@ -509,7 +509,7 @@ func (s *Server) hideContentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // renderPage renders a pre-parsed page template
-func (s *Server) renderPage(w http.ResponseWriter, templateName string, data interface{}) error {
+func (s *Server) renderPage(w http.ResponseWriter, templateName string, data any) error {
 	// get the pre-parsed template
 	tmpl, ok := s.pageTemplates[templateName]
 	if !ok {

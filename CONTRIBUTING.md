@@ -38,7 +38,7 @@ Enhancement suggestions are welcome! Please provide:
 
 ### Prerequisites
 
-- Go 1.24 or higher
+- Go 1.26 or higher
 - golangci-lint
 - Docker (optional, for container builds)
 

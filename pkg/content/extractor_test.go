@@ -307,7 +307,7 @@ func TestHTTPExtractor_Extract_LargeContent(t *testing.T) {
 	// create large HTML content
 	var sb strings.Builder
 	sb.WriteString("<html><body><article>")
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		sb.WriteString("<p>This is paragraph number ")
 		sb.WriteString(strings.Repeat("content ", 100))
 		sb.WriteString("</p>")

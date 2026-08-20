@@ -120,10 +120,7 @@ func generatePageNumbers(currentPage, totalPages int) []int {
 	}
 	if end > totalPages {
 		end = totalPages
-		start = end - 4
-		if start < 1 {
-			start = 1
-		}
+		start = max(end-4, 1)
 	}
 
 	for i := start; i <= end; i++ {

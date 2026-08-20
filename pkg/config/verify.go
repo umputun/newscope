@@ -15,7 +15,7 @@ var embeddedSchemaData []byte
 // VerifyAgainstEmbeddedSchema validates the config against the embedded JSON schema
 func VerifyAgainstEmbeddedSchema(cfg *Config) error {
 	// parse embedded schema
-	var schema map[string]interface{}
+	var schema map[string]any
 	if err := json.Unmarshal(embeddedSchemaData, &schema); err != nil {
 		return fmt.Errorf("parse embedded schema: %w", err)
 	}

@@ -46,7 +46,7 @@ func TestServer_statusHandler(t *testing.T) {
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
 	// check response body
-	var status map[string]interface{}
+	var status map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &status)
 	require.NoError(t, err)
 
@@ -482,7 +482,7 @@ func TestRenderError(t *testing.T) {
 			assert.Equal(t, tt.expectedCode, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-			var result map[string]interface{}
+			var result map[string]any
 			err := json.Unmarshal(w.Body.Bytes(), &result)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedMsg, result["error"])
@@ -970,7 +970,7 @@ func TestServer_GetPreferencesHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 
@@ -997,7 +997,7 @@ func TestServer_GetPreferencesHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 
@@ -1027,7 +1027,7 @@ func TestServer_GetPreferencesHandler(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		require.NoError(t, err)
 

@@ -15,7 +15,7 @@ import (
 
 // statusHandler returns server status
 func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
-	status := map[string]interface{}{
+	status := map[string]any{
 		"status":  "ok",
 		"version": s.version,
 		"time":    time.Now().UTC(),
@@ -380,7 +380,7 @@ func (s *Server) getPreferencesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"summary":        summary,
 		"enabled":        enabled,
 		"feedback_count": feedbackCount,
@@ -468,7 +468,7 @@ func (s *Server) deletePreferencesHandler(w http.ResponseWriter, r *http.Request
 }
 
 // renderJSON sends JSON response
-func renderJSON(w http.ResponseWriter, _ *http.Request, code int, data interface{}) {
+func renderJSON(w http.ResponseWriter, _ *http.Request, code int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	if data != nil {
