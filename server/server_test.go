@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -97,6 +98,104 @@ func TestServer_Run(t *testing.T) {
 	// shutdown server
 	cancel()
 	time.Sleep(100 * time.Millisecond)
+}
+
+func TestServer_CrossOriginProtection(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := listener.Addr().(*net.TCPAddr).Port
+	require.NoError(t, listener.Close())
+
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return fmt.Sprintf("127.0.0.1:%d", port), 30 * time.Second
+		},
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
+	}
+	database := &mocks.DatabaseMock{
+		GetFeedsFunc:    func(_ context.Context) ([]domain.Feed, error) { return nil, nil },
+		GetItemsFunc:    func(_ context.Context, _, _ int) ([]domain.Item, error) { return nil, nil },
+		CreateFeedFunc:  func(_ context.Context, _ *domain.Feed) error { return nil },
+		GetAllFeedsFunc: func(_ context.Context) ([]domain.Feed, error) { return nil, nil },
+		GetClassifiedItemsFunc: func(_ context.Context, _ float64, _ string, _ int) ([]domain.ClassifiedItem, error) {
+			return nil, nil
+		},
+	}
+	scheduler := &mocks.SchedulerMock{
+		UpdateFeedNowFunc: func(_ context.Context, _ int64) error { return nil },
+	}
+	srv := New(cfg, database, scheduler, "test", false)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go func() { _ = srv.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/ping", port))
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, 2*time.Second, 50*time.Millisecond, "server did not start")
+
+	tests := []struct {
+		name         string
+		method       string
+		path         string
+		secFetchSite string
+		origin       string
+		wantStatus   int
+	}{
+		{name: "cross-site GET stays allowed for feed readers", method: "GET", path: "/rss",
+			secFetchSite: "cross-site", wantStatus: http.StatusOK},
+		{name: "POST same-origin allowed", method: "POST", path: "/api/v1/feeds",
+			secFetchSite: "same-origin", wantStatus: http.StatusOK},
+		{name: "POST none allowed (direct navigation)", method: "POST", path: "/api/v1/feeds",
+			secFetchSite: "none", wantStatus: http.StatusOK},
+		{name: "POST without browser headers allowed (api clients)", method: "POST", path: "/api/v1/feeds",
+			wantStatus: http.StatusOK},
+		{name: "POST cross-site rejected", method: "POST", path: "/api/v1/feeds",
+			secFetchSite: "cross-site", wantStatus: http.StatusForbidden},
+		{name: "POST same-site rejected (subdomain)", method: "POST", path: "/api/v1/feeds",
+			secFetchSite: "same-site", wantStatus: http.StatusForbidden},
+		{name: "POST origin mismatch rejected", method: "POST", path: "/api/v1/feeds",
+			origin: "http://evil.com", wantStatus: http.StatusForbidden},
+	}
+
+	createdBefore := len(database.CreateFeedCalls())
+	allowedPosts := 0
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body io.Reader
+			req, err := http.NewRequest(tt.method, fmt.Sprintf("http://127.0.0.1:%d%s", port, tt.path), body)
+			if tt.method == http.MethodPost {
+				form := url.Values{"url": {"http://example.com/feed"}, "title": {"example"}}
+				req, err = http.NewRequest(tt.method, fmt.Sprintf("http://127.0.0.1:%d%s", port, tt.path),
+					strings.NewReader(form.Encode()))
+				require.NoError(t, err)
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			}
+			require.NoError(t, err)
+			if tt.secFetchSite != "" {
+				req.Header.Set("Sec-Fetch-Site", tt.secFetchSite)
+			}
+			if tt.origin != "" {
+				req.Header.Set("Origin", tt.origin)
+			}
+
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, tt.wantStatus, resp.StatusCode)
+		})
+		if tt.method == http.MethodPost && tt.wantStatus == http.StatusOK {
+			allowedPosts++
+		}
+	}
+
+	// every allowed POST reached the handler, every rejected one did not
+	assert.Len(t, database.CreateFeedCalls(), createdBefore+allowedPosts)
 }
 
 func TestGeneratePageNumbers(t *testing.T) {
