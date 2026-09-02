@@ -144,6 +144,10 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 
 	// template functions
 	funcMap := template.FuncMap{
+		"extractionEnabled": func() bool {
+			c := cfg.GetFullConfig()
+			return c != nil && c.Extraction.Enabled
+		},
 		"mul": func(a, b float64) float64 {
 			return a * b
 		},

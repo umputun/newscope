@@ -238,7 +238,7 @@ extraction:
   timeout: "30s"
 ```
 
-With `extraction.enabled: false` articles are classified from the content provided by the feed itself, and the manual "extract content" action on an article reports that extraction is disabled.
+With `extraction.enabled: false` articles are classified from the content provided by the feed itself, and the "Extract Content" button is not offered on articles.
 
 ## Web Interface
 
@@ -300,7 +300,7 @@ To manage your preferences:
 
 ### Content Extraction
 
-Click "Extract Content" on any article to fetch and display the full text. Content is sanitized and formatted for readability.
+With `extraction.enabled: true`, click "Extract Content" on any article to fetch and display the full text. Content is sanitized and formatted for readability.
 
 ## Custom RSS Feeds
 
