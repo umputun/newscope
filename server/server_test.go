@@ -326,3 +326,64 @@ func TestServer_respondWithError(t *testing.T) {
 		})
 	}
 }
+
+func TestServer_ExtractControlsFollowExtractionSetting(t *testing.T) {
+	newServer := func(extractionEnabled bool) *Server {
+		cfg := &mocks.ConfigProviderMock{
+			GetServerConfigFunc: func() (string, time.Duration) {
+				return ":8080", 30 * time.Second
+			},
+			GetFullConfigFunc: func() *config.Config {
+				c := &config.Config{}
+				c.Extraction.Enabled = extractionEnabled
+				return c
+			},
+		}
+		return testServer(t, cfg, &mocks.DatabaseMock{}, &mocks.SchedulerMock{})
+	}
+
+	article := &domain.ClassifiedItem{
+		Item:           &domain.Item{ID: 1, Title: "Test Article", Content: "content from the feed"},
+		Classification: &domain.Classification{Score: 8.5},
+	}
+
+	t.Run("extract button offered with extraction enabled", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		newServer(true).renderArticleCard(w, article)
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "Extract Content")
+	})
+
+	t.Run("extract button hidden with extraction disabled", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		newServer(false).renderArticleCard(w, article)
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.NotContains(t, w.Body.String(), "Extract Content",
+			"the button posts to an endpoint that only returns an error when extraction is off")
+	})
+
+	t.Run("no button when the config is unavailable", func(t *testing.T) {
+		cfg := &mocks.ConfigProviderMock{
+			GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+			GetFullConfigFunc:   func() *config.Config { return nil },
+		}
+		srv := testServer(t, cfg, &mocks.DatabaseMock{}, &mocks.SchedulerMock{})
+
+		w := httptest.NewRecorder()
+		srv.renderArticleCard(w, article)
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.NotContains(t, w.Body.String(), "Extract Content")
+	})
+
+	t.Run("content placeholder points at the button only when it exists", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		require.NoError(t, newServer(true).templates.ExecuteTemplate(w, "article-content.html", article))
+		assert.Contains(t, w.Body.String(), `Click "Extract Content"`)
+
+		w = httptest.NewRecorder()
+		require.NoError(t, newServer(false).templates.ExecuteTemplate(w, "article-content.html", article))
+		body := w.Body.String()
+		assert.Contains(t, body, "content extraction is disabled")
+		assert.NotContains(t, body, `Click "Extract Content"`)
+	})
+}

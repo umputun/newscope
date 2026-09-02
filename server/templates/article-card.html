@@ -115,7 +115,7 @@
                     Show Content
                 </button>
             </span>
-            {{else if not .GetExtractionError}}
+            {{else if and extractionEnabled (not .GetExtractionError)}}
             <button class="btn-extract"
                     hx-post="/api/v1/extract/{{.ID}}"
                     hx-swap="outerHTML"
