@@ -44,15 +44,16 @@ type FeedProcessorConfig struct {
 	ClassificationManager ClassificationManager
 	SettingManager        SettingManager
 	Parser                Parser
-	Extractor             Extractor
+	Extractor             Extractor // optional, nil disables content extraction
 	Classifier            Classifier
 	MaxWorkers            int
 	RetryFunc             func(ctx context.Context, operation func() error) error
 }
 
 // NewFeedProcessor creates a new feed processor with the provided configuration.
-// The configuration must include all required dependencies (managers, parser, extractor, classifier)
-// and operational parameters (max workers, retry function).
+// The configuration must include the managers, parser and classifier along with the
+// operational parameters (max workers, retry function); the extractor is optional and
+// a nil one disables content extraction.
 func NewFeedProcessor(cfg FeedProcessorConfig) *FeedProcessor {
 	return &FeedProcessor{
 		feedManager:           cfg.FeedManager,
