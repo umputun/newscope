@@ -290,6 +290,8 @@ func (s *Server) setupMiddleware() {
 
 	s.router.Use(rest.Recoverer(lgr.Default()))
 	s.router.Use(rest.Throttle(defaultThrottleLimit))
+	// cross-origin check runs before the size limit, which reads the body into memory
+	s.router.Use(http.NewCrossOriginProtection().Handler)
 	s.router.Use(rest.SizeLimit(defaultSizeLimit))
 }
 
