@@ -17,8 +17,12 @@
 <div class="extraction-error">
     <p>Failed to extract content: {{.GetExtractionError}}</p>
 </div>
-{{else}}
+{{else if extractionEnabled}}
 <div class="no-content">
     <p>No extracted content available. Click "Extract Content" to fetch the full article.</p>
+</div>
+{{else}}
+<div class="no-content">
+    <p>No extracted content available, content extraction is disabled.</p>
 </div>
 {{end}}
