@@ -70,6 +70,7 @@ type LLMConfig struct {
 	MaxTokens      int                  `yaml:"max_tokens" json:"max_tokens" jsonschema:"default=500,description=Maximum tokens in response"`
 	Timeout        time.Duration        `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=Request timeout"`
 	SystemPrompt   string               `yaml:"system_prompt" json:"system_prompt" jsonschema:"description=System prompt for the LLM (optional)"`
+	UseStreaming   bool                 `yaml:"use_streaming" json:"use_streaming" jsonschema:"default=false,description=Use streaming mode (required by some providers e.g. ChatGPT subscription via litellm)"`
 	Classification ClassificationConfig `yaml:"classification" json:"classification" jsonschema:"description=Classification-specific settings"`
 }
 
