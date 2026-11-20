@@ -73,7 +73,7 @@ jobs:
           echo ${DOCKER_HUB_TOKEN} | docker login -u ${USERNAME} --password-stdin
           docker buildx build --push \
               --build-arg CI=github --build-arg GITHUB_SHA=${GITHUB_SHA} --build-arg GITHUB_REF_NAME=${GITHUB_REF_NAME} \
-              --platform linux/amd64,linux/arm/v7,linux/arm64 \
+              --platform linux/amd64,linux/arm64 \
               -t ghcr.io/${USERNAME}/newscope:${GITHUB_REF_NAME} -t ${USERNAME}/newscope:${GITHUB_REF_NAME} .
 
       - name: build and deploy tagged image to ghcr.io and dockerhub
@@ -89,6 +89,6 @@ jobs:
           echo ${DOCKER_HUB_TOKEN} | docker login -u ${USERNAME} --password-stdin
           docker buildx build --push \
               --build-arg CI=github --build-arg GITHUB_SHA=${GITHUB_SHA} --build-arg GITHUB_REF_NAME=${GITHUB_REF_NAME} \
-              --platform linux/amd64,linux/arm/v7,linux/arm64 \
+              --platform linux/amd64,linux/arm64 \
               -t ghcr.io/${USERNAME}/newscope:${GITHUB_REF_NAME} -t ghcr.io/${USERNAME}/newscope:latest \
               -t ${USERNAME}/newscope:${GITHUB_REF_NAME} -t ${USERNAME}/newscope:latest .
