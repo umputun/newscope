@@ -23,8 +23,8 @@ github.com/buger/jsonparser
 # github.com/dustin/go-humanize v1.0.1
 ## explicit; go 1.16
 github.com/dustin/go-humanize
-# github.com/fatih/color v1.18.0
-## explicit; go 1.17
+# github.com/fatih/color v1.19.0
+## explicit; go 1.25.0
 github.com/fatih/color
 # github.com/forPelevin/gomoji v1.4.1
 ## explicit; go 1.19
