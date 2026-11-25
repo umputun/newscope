@@ -1226,3 +1226,83 @@ func TestClassifier_CustomForbiddenPrefixes(t *testing.T) {
 	assert.False(t, classifier.hasForbiddenPrefix("The article discusses")) // not in custom list
 	assert.False(t, classifier.hasForbiddenPrefix("Results indicate"))
 }
+
+func TestClassifier_Streaming(t *testing.T) {
+	// SSE response covering the 2 articles from the classify prompt
+	sseBody := `data: {"id":"cmpl-1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"["}}]}
+
+data: {"id":"cmpl-1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"{\"guid\":\"item1\",\"score\":7,\"explanation\":\"ok\",\"topics\":[\"go\"],\"summary\":\"Go 1.22 ships range-over-func iterators with 50% faster compilation, better GC, and new toolchain management that simplifies Go version control across projects and CI pipelines today.\"}"}}]}
+
+data: {"id":"cmpl-1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":",{\"guid\":\"item2\",\"score\":2,\"explanation\":\"no\",\"topics\":[\"sports\"],\"summary\":\"Manchester United beats Chelsea 3-1 with Bruno Fernandes scoring twice while Liverpool holds top spot after 2-2 draw with Arsenal at Emirates Stadium in Premier League weekend action.\"}]"}}]}
+
+data: {"id":"cmpl-1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}
+
+data: [DONE]
+
+`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/chat/completions", r.URL.Path)
+		var body map[string]any
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		assert.Equal(t, true, body["stream"], "stream must be true when UseStreaming is set")
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, err := w.Write([]byte(sseBody))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	cfg := config.LLMConfig{
+		Endpoint:     server.URL + "/v1",
+		APIKey:       "test-key",
+		Model:        "gpt-test",
+		Temperature:  0.3,
+		MaxTokens:    100,
+		UseStreaming: true,
+	}
+	classifier := NewClassifier(cfg)
+
+	classifications, err := classifier.ClassifyItems(context.Background(), ClassifyRequest{
+		Articles: []domain.Item{
+			{GUID: "item1", Title: "Go 1.22 released"},
+			{GUID: "item2", Title: "Football news"},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, classifications, 2)
+	assert.Equal(t, "item1", classifications[0].GUID)
+	assert.InDelta(t, 7.0, classifications[0].Score, 0.01)
+	assert.Equal(t, "item2", classifications[1].GUID)
+}
+
+func TestClassifier_Streaming_DefaultOff(t *testing.T) {
+	// without UseStreaming, request must not set stream=true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		stream, _ := body["stream"].(bool)
+		assert.False(t, stream)
+
+		resp := openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{{
+				Message: openai.ChatCompletionMessage{Content: `[{"guid":"x","score":1,"explanation":"e","topics":["t"],"summary":"Short and punchy summary covering the main points without preamble and staying within the required 300-500 character window so the classifier accepts it."}]`},
+			}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		assert.NoError(t, json.NewEncoder(w).Encode(resp))
+	}))
+	defer server.Close()
+
+	cfg := config.LLMConfig{
+		Endpoint: server.URL + "/v1",
+		APIKey:   "test-key",
+		Model:    "gpt-test",
+	}
+	classifier := NewClassifier(cfg)
+
+	_, err := classifier.ClassifyItems(context.Background(), ClassifyRequest{
+		Articles: []domain.Item{{GUID: "x", Title: "t"}},
+	})
+	require.NoError(t, err)
+}
