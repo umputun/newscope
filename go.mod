@@ -3,7 +3,7 @@ module github.com/umputun/newscope
 go 1.26.0
 
 require (
-	github.com/fatih/color v1.18.0
+	github.com/fatih/color v1.19.0
 	github.com/go-pkgz/lgr v0.12.1
 	github.com/go-pkgz/repeater/v2 v2.2.0
 	github.com/go-pkgz/rest v1.24.0
